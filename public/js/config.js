@@ -119,6 +119,37 @@ export const rewardsTeam = (kills, won) => ({
 
 export const QUICK_CHAT = ['gg', 'help', 'attack', 'nice'];
 
+// ---- Building (Fortnite-style walls & ramps) --------------------------------
+export const BUILD = {
+  matsStart: 10, matsMax: 30, matsPerKill: 4,
+  wallCost: 2, rampCost: 3,
+  wallHp: 130,
+  placeCd: 0.4,
+};
+
+// ---- Daily challenges -------------------------------------------------------
+export const CHALLENGE_POOL = [
+  { id: 'kills8', type: 'kills', n: 8, reward: 80 },
+  { id: 'kills15', type: 'kills', n: 15, reward: 140 },
+  { id: 'hs4', type: 'headshots', n: 4, reward: 90 },
+  { id: 'win1', type: 'wins', n: 1, reward: 120 },
+  { id: 'matches3', type: 'matches', n: 3, reward: 70 },
+  { id: 'builds6', type: 'builds', n: 6, reward: 60 },
+  { id: 'nades3', type: 'nadeKills', n: 3, reward: 110 },
+];
+// deterministic 3 challenges per calendar day
+export const dailyChallenges = (dateStr) => {
+  let h = 0;
+  for (const c of dateStr) h = (h * 31 + c.charCodeAt(0)) | 0;
+  const pool = [...CHALLENGE_POOL];
+  const out = [];
+  for (let i = 0; i < 3; i++) {
+    h = (h * 1103515245 + 12345) & 0x7fffffff;
+    out.push(pool.splice(h % pool.length, 1)[0]);
+  }
+  return out;
+};
+
 // ---- Grenades ---------------------------------------------------------------
 export const GRENADE = { dmg: 82, radius: 5, fuse: 1.15, speed: 17, upVel: 5, cd: 0.9, start: 1, max: 3 };
 
@@ -134,6 +165,7 @@ export const PICKUPS = {
     hp:     { weight: 3, amount: 40 },
     armor:  { weight: 2, amount: 50 },
     nade:   { weight: 2, amount: 1 },
+    mats:   { weight: 2, amount: 8 },
     weapon: { weight: 3 },
   },
 };

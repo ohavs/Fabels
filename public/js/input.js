@@ -24,6 +24,8 @@ export class Input {
     this.wantReload = false;
     this.wantNade = false;
     this.wantEmote = false;
+    this.wantWall = false;
+    this.wantRamp = false;
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;
@@ -47,6 +49,8 @@ export class Input {
   consumeReload() { const v = this.wantReload; this.wantReload = false; return v; }
   consumeNade()   { const v = this.wantNade;   this.wantNade = false;   return v; }
   consumeEmote()  { const v = this.wantEmote;  this.wantEmote = false;  return v; }
+  consumeWall()   { const v = this.wantWall;   this.wantWall = false;   return v; }
+  consumeRamp()   { const v = this.wantRamp;   this.wantRamp = false;   return v; }
   consumeChat()   { const v = this.wantChat;   this.wantChat = -1;      return v; }
 
   requestLock() {
@@ -74,6 +78,8 @@ export class Input {
       if (e.code === 'KeyR') this.wantReload = true;
       if (e.code === 'KeyG') this.wantNade = true;
       if (e.code === 'KeyB') this.wantEmote = true;
+      if (e.code === 'KeyQ') this.wantWall = true;
+      if (e.code === 'KeyF') this.wantRamp = true;
       const n = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
       if (n !== undefined) this.wantChat = n;
     });

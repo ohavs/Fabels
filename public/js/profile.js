@@ -5,7 +5,7 @@
 // ============================================================
 
 import { FB } from './fb.js';
-import { SKINS, levelFor, rankFor, DAILY_SHARDS } from './config.js';
+import { SKINS, levelFor, rankFor, DAILY_SHARDS, dailyChallenges } from './config.js';
 import { randomName } from './i18n.js';
 
 const LS_KEY = 'starshards.profile.v2';
@@ -19,6 +19,7 @@ function defaultProfile() {
     skin: 'scout',
     skins: { scout: true },
     stats: { kills: 0, deaths: 0, wins: 0, matches: 0 },
+    chall: { date: '', prog: {}, done: {} },
     lastDaily: 0,
     createdAt: Date.now(),
   };
@@ -31,6 +32,7 @@ function normalize(p) {
   const out = { ...d, ...p };
   out.skins = { scout: true, ...(p.skins || {}) };
   out.stats = { ...d.stats, ...(p.stats || {}) };
+  out.chall = { date: '', prog: {}, done: {}, ...(p.chall || {}) };
   if (!SKINS[out.skin] || !out.skins[out.skin]) out.skin = 'scout';
   return out;
 }
@@ -121,6 +123,45 @@ export function applyRewards({ xp = 0, shards = 0, rp = 0, kills = 0, deaths = 0
     levelUp: playerLevel() > beforeLvl ? playerLevel() : 0,
     rankUp: playerRank().id !== beforeRank ? playerRank().id : null,
   };
+}
+
+// ---- daily challenges ----------------------------------------------------
+function ensureToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (profile.chall.date !== today) {
+    profile.chall = { date: today, prog: {}, done: {} };
+  }
+  return today;
+}
+
+export function getChallenges() {
+  const today = ensureToday();
+  return dailyChallenges(today).map((c) => ({
+    ...c,
+    prog: Math.min(c.n, profile.chall.prog[c.id] || 0),
+    done: !!profile.chall.done[c.id],
+  }));
+}
+
+// deltas: {kills, headshots, wins, matches, builds, nadeKills}
+// returns the list of challenges completed by this update
+export function trackChallenges(deltas) {
+  ensureToday();
+  const completed = [];
+  for (const c of getChallenges()) {
+    if (c.done) continue;
+    const add = deltas[c.type] || 0;
+    if (!add) continue;
+    const next = (profile.chall.prog[c.id] || 0) + add;
+    profile.chall.prog[c.id] = next;
+    if (next >= c.n) {
+      profile.chall.done[c.id] = true;
+      profile.shards += c.reward;
+      completed.push(c);
+    }
+  }
+  saveProfile();
+  return completed;
 }
 
 export async function fetchLeaderboard(topN = 50) {

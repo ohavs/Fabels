@@ -173,6 +173,24 @@ export const STR = {
   // emotes
   emote: 'ריקוד',
   emoted: '{name} רוקד! 🕺',
+
+  // building
+  noMats: 'אין מספיק חומרים! 🧱',
+  buildDestroyed: 'המבנה נהרס!',
+
+  // kill-cam
+  killedByCam: 'חוסלתם על ידי {name}',
+
+  // daily challenges
+  challengesTitle: '🎯 אתגרים יומיים',
+  ch_kills8: 'חסלו 8 יריבים',
+  ch_kills15: 'חסלו 15 יריבים',
+  ch_hs4: 'השיגו 4 פגיעות ראש',
+  ch_win1: 'נצחו במשחק אחד',
+  ch_matches3: 'שחקו 3 משחקים',
+  ch_builds6: 'הציבו 6 מבנים',
+  ch_nades3: 'חסלו 3 יריבים עם רימונים',
+  chDone: 'אתגר הושלם: +{n} רסיסים!',
 };
 
 export function t(key, params) {

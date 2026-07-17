@@ -43,6 +43,9 @@
         "pickups": {
           ".write": "auth != null"
         },
+        "builds": {
+          ".write": "auth != null"
+        },
         "flags": {
           ".write": "auth != null"
         }

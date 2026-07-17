@@ -7,7 +7,7 @@ import { t } from './i18n.js';
 import {
   SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel,
 } from './config.js';
-import { profile, playerLevel, playerRank, buySkin, equipSkin } from './profile.js';
+import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX } from './audio.js';
 
@@ -46,6 +46,19 @@ export function refreshMenu() {
   $('menu-shards').textContent = `💠 ${profile.shards}`;
   const lo = xpForLevel(lvl), hi = xpForLevel(lvl + 1);
   $('menu-xpbar').style.width = `${clamp(((profile.xp - lo) / Math.max(1, hi - lo)) * 100, 0, 100)}%`;
+  renderChallenges();
+}
+
+function renderChallenges() {
+  const el = $('challenges');
+  const rows = getChallenges().map((c) => {
+    const pct = Math.round((c.prog / c.n) * 100);
+    return `<div class="chall-row${c.done ? ' done' : ''}">` +
+      `<span class="ch-name">${t('ch_' + c.id)}</span>` +
+      `<span class="ch-bar"><i style="width:${c.done ? 100 : pct}%"></i></span>` +
+      `<span class="ch-reward">${c.done ? '✓' : `${c.prog}/${c.n} · 💠${c.reward}`}</span></div>`;
+  }).join('');
+  el.innerHTML = `<div class="chall-title">${t('challengesTitle')}</div>${rows}`;
 }
 
 // ---------------- lobby (online + offline practice) ----------------
@@ -255,7 +268,7 @@ export function updateHUD(game, input) {
   fill.classList.toggle('low', frac < 0.3);
   $('hud-armor-fill').style.width = `${clamp(me.armor / 100, 0, 1) * 100}%`;
   $('hud-hp-text').textContent = Math.max(0, Math.round(me.hp));
-  $('hud-nades').textContent = `💣 ×${me.nades}`;
+  $('hud-nades').textContent = `💣 ×${me.nades} · 🧱 ×${me.mats}`;
 
   drawMinimap(game);
 
@@ -456,6 +469,8 @@ export function bindHUD(input, { onExit, onChat }) {
   });
   hold($('btn-nade'), () => { input.wantNade = true; });
   hold($('btn-emote'), () => { input.wantEmote = true; });
+  hold($('btn-wall'), () => { input.wantWall = true; });
+  hold($('btn-ramp'), () => { input.wantRamp = true; });
   hold($('btn-score'), () => { sbToggle = !sbToggle; });
   hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
   for (const b of $('chat-panel').querySelectorAll('button')) {

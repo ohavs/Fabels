@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, CTF,
+  ZOMBIES, zombieWave, BR, CTF, BUILD,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -62,6 +62,8 @@ export class Game {
     this.players = new Map();
     this.projectiles = [];
     this.grenades = [];
+    this.builds = new Map();           // id → {id, t, meshes, hp, owner}
+    this.matchStats = { headshots: 0, nadeKills: 0, builds: 0 };
     this.pickups = new Map();          // id → {k, x, y, z, tier?, mesh}
     this.pickupT = PICKUPS.everyMs / 1000;
     this.isLoadout = LOADOUT_MODES.includes(o.mode);
@@ -98,6 +100,8 @@ export class Game {
     this.onWave = null;         // zombies host → net
     this.onCtfState = null;     // ctf host → net (flags/score snapshot)
     this.onCtfEvent = null;     // ctf host → net (banner events)
+    this.onBuildPlace = null;   // my build → net
+    this.onBuildDestroy = null; // build I destroyed → net
   }
 
   // ---------------- entities ----------------
@@ -114,6 +118,7 @@ export class Game {
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
       ads: false, bloom: 0,
       armor: 0, nades: GRENADE.start, nadeCd: 0,
+      mats: BUILD.matsStart, buildCd: 0,
       streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
@@ -528,6 +533,7 @@ export class Game {
       p.invulnT = Math.max(0, p.invulnT - dt);
       p.chatT = Math.max(0, p.chatT - dt);
       p.nadeCd = Math.max(0, p.nadeCd - dt);
+      p.buildCd = Math.max(0, p.buildCd - dt);
       p.buffSpeedT = Math.max(0, p.buffSpeedT - dt);
       p.buffDmgT = Math.max(0, p.buffDmgT - dt);
       p.danceT = Math.max(0, p.danceT - dt);
@@ -634,6 +640,8 @@ export class Game {
       if (input.consumeReload()) this._startReload(p);
       if (input.consumeNade()) this.throwNade(p);
       if (input.consumeEmote()) this.doEmote();
+      if (input.consumeWall()) this.placeBuild('w');
+      if (input.consumeRamp()) this.placeBuild('r');
       const chat = input.consumeChat();
       if (chat >= 0 && this.onChat) this.onChat(chat);
 
@@ -708,6 +716,20 @@ export class Game {
   }
 
   _syncCamera(p, dt = 1 / 60) {
+    // kill-cam: while dead, ease the camera toward the killer
+    if (!p.alive && this._killerCam) {
+      const killer = this.players.get(this._killerCam);
+      if (killer && killer.alive) {
+        const dx = killer.x - p.x, dz = killer.z - p.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const wantYaw = Math.atan2(-dx, -dz);
+        const wantPitch = -Math.atan2((killer.y + 1.3) - (p.y + GAME.eyeHeight), d);
+        p.yaw = lerpAngle(p.yaw, wantYaw, Math.min(1, dt * 3));
+        p.pitch = lerp(p.pitch, wantPitch, Math.min(1, dt * 3));
+      }
+    } else if (p.alive) {
+      this._killerCam = null;
+    }
     const sp = Math.hypot(p.vx, p.vz);
     if (sp > 1 && p.grounded) this._bobT += Math.min(0.06, sp * 0.004);
     const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6) * (p.ads ? 0.3 : 1);
@@ -749,7 +771,7 @@ export class Game {
     let hits = overlaps(nx, p.y, p.z);
     if (hits.length) {
       const stepTop = Math.max(...hits.map((c) => c.y1));
-      if (p.grounded && stepTop - p.y <= 0.55 && !overlaps(nx, stepTop + 0.01, p.z).length) {
+      if (p.grounded && stepTop - p.y <= 0.6 && !overlaps(nx, stepTop + 0.01, p.z).length) {
         p.y = stepTop + 0.01;
       } else {
         nx = p.x; p.vx = 0;
@@ -762,7 +784,7 @@ export class Game {
     hits = overlaps(p.x, p.y, nz);
     if (hits.length) {
       const stepTop = Math.max(...hits.map((c) => c.y1));
-      if (p.grounded && stepTop - p.y <= 0.55 && !overlaps(p.x, stepTop + 0.01, nz).length) {
+      if (p.grounded && stepTop - p.y <= 0.6 && !overlaps(p.x, stepTop + 0.01, nz).length) {
         p.y = stepTop + 0.01;
       } else {
         nz = p.z; p.vz = 0;
@@ -880,15 +902,15 @@ export class Game {
   }
 
   _hitscan(p, eye, dir, w, visual, muzzle) {
-    let tWall = w.range;
+    let tWall = w.range, hitBuild = null;
     for (const c of this.world.colliders) {
       const tt = rayAABB(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, c);
-      if (tt < tWall) tWall = tt;
+      if (tt < tWall) { tWall = tt; hitBuild = c.buildId || null; }
     }
     // ground plane
     if (dir.y < -1e-6) {
       const tg = -eye.y / dir.y;
-      if (tg > 0 && tg < tWall) tWall = tg;
+      if (tg > 0 && tg < tWall) { tWall = tg; hitBuild = null; }
     }
 
     let hitP = null, hitT = tWall, headshot = false;
@@ -914,11 +936,13 @@ export class Game {
       this.fx.impact(end, 0xff5964, 5, 2.5);
       if (hitP.view) flashCharacter(hitP.view.char);
       if (!visual) {
+        if (headshot && p === this.me) this.matchStats.headshots++;
         const dmg = w.dmg * (headshot ? w.hsMult : 1) * (p.buffDmgT > 0 ? 1.4 : 1);
         this._damagePlayer(hitP, dmg, p.uid, { hs: headshot, mel: false });
       }
     } else if (hitT < w.range) {
-      this.fx.impact(end, 0xd9c9a0, 4, 2);
+      this.fx.impact(end, hitBuild ? 0x9a7148 : 0xd9c9a0, 4, 2);
+      if (hitBuild && !visual) this.damageBuild(hitBuild, w.dmg);
     }
   }
 
@@ -993,6 +1017,92 @@ export class Game {
     return (x - this.me.x) ** 2 + (z - this.me.z) ** 2 < d * d;
   }
 
+  // ---------------- building (walls & ramps) ----------------
+  placeBuild(kind) {
+    const p = this.me;
+    if (!p?.alive || p.buildCd > 0) return;
+    const cost = kind === 'w' ? BUILD.wallCost : BUILD.rampCost;
+    if (p.mats < cost) {
+      this.hudFlags.tierBanner = t('noMats');
+      return;
+    }
+    p.mats -= cost;
+    p.buildCd = BUILD.placeCd;
+    this.matchStats.builds++;
+    // snap facing to the dominant axis so colliders stay axis-aligned
+    const f = forwardOf(p.yaw);
+    const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
+    const dir = ax === 'x' ? Math.sign(f.x) || 1 : Math.sign(f.z) || 1;
+    const spec = {
+      id: 'b' + randId(5), t: kind, o: p.uid,
+      x: +(p.x + (ax === 'x' ? dir * 2.4 : 0)).toFixed(1),
+      y: +Math.max(0, p.y).toFixed(1),
+      z: +(p.z + (ax === 'z' ? dir * 2.4 : 0)).toFixed(1),
+      ax, dir,
+    };
+    this._addBuild(spec);
+    if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
+    SFX.reloadDone();
+  }
+
+  _addBuild(spec) {
+    if (this.builds.has(spec.id)) return;
+    const meshes = [];
+    const cols = [];
+    const woodM = mat(0x9a7148);
+    const addPiece = (x, y, z, w, h, d) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), woodM);
+      m.position.set(x, y + h / 2, z);
+      m.scale.set(w, h, d);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.scene.add(m);
+      meshes.push(m);
+      const c = { x0: x - w / 2, y0: y, z0: z - d / 2, x1: x + w / 2, y1: y + h, z1: z + d / 2, buildId: spec.id };
+      this.world.colliders.push(c);
+      cols.push(c);
+    };
+    if (spec.t === 'w') {
+      // wall: 3.6 wide, 3 tall, thin along the facing axis
+      if (spec.ax === 'x') addPiece(spec.x, spec.y, spec.z, 0.3, 3, 3.6);
+      else addPiece(spec.x, spec.y, spec.z, 3.6, 3, 0.3);
+    } else {
+      // ramp: 4 rising steps away from the builder
+      for (let i = 0; i < 4; i++) {
+        const off = i * 0.95;
+        const h = 0.55 * (i + 1);
+        if (spec.ax === 'x') addPiece(spec.x + spec.dir * off, spec.y, spec.z, 0.95, h, 3);
+        else addPiece(spec.x, spec.y, spec.z + spec.dir * off, 3, h, 0.95);
+      }
+    }
+    this.builds.set(spec.id, { id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o });
+  }
+
+  applyRemoteBuild(spec) { this._addBuild(spec); }
+
+  removeBuild(id, withFx = true) {
+    const b = this.builds.get(id);
+    if (!b) return;
+    if (withFx && b.meshes[0]) {
+      const m = b.meshes[0];
+      this.fx.impact(V1.copy(m.position), 0x9a7148, 14, 5);
+      if (this._nearPoint(m.position.x, m.position.z, 45)) SFX.explode();
+    }
+    for (const m of b.meshes) this.scene.remove(m);
+    this.world.colliders = this.world.colliders.filter((c) => c.buildId !== id);
+    this.builds.delete(id);
+  }
+
+  damageBuild(id, dmg) {
+    const b = this.builds.get(id);
+    if (!b) return;
+    b.hp -= dmg;
+    if (b.hp <= 0) {
+      this.removeBuild(id, true);
+      if (this.online && this.onBuildDestroy) this.onBuildDestroy(id);
+    }
+  }
+
   // ---------------- grenades ----------------
   throwNade(p) {
     if (!p.alive || p.nades <= 0 || p.nadeCd > 0) return;
@@ -1057,7 +1167,15 @@ export class Game {
       const d = Math.hypot(q.x - g.x, q.y + 0.9 - g.y, q.z - g.z);
       if (d < GRENADE.radius) {
         const dmg = GRENADE.dmg * dmgMul * (1 - (d / GRENADE.radius) * 0.75);
-        this._damagePlayer(q, dmg, g.owner, {});
+        this._damagePlayer(q, dmg, g.owner, { nade: true });
+      }
+    }
+    // grenades wreck builds
+    for (const [id, b] of this.builds) {
+      const m = b.meshes[0];
+      if (!m) continue;
+      if (Math.hypot(m.position.x - g.x, m.position.z - g.z) < GRENADE.radius + 1.5) {
+        this.damageBuild(id, GRENADE.dmg);
       }
     }
   }
@@ -1124,6 +1242,11 @@ export class Game {
     } else if (pk.k === 'nade') {
       color = 0xffaa33;
       group.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0x4a6b3a })));
+    } else if (pk.k === 'mats') {
+      color = 0xc98d4e;
+      const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.28), new THREE.MeshBasicMaterial({ color: 0x9a7148 }));
+      const b2 = b1.clone(); b2.position.y = 0.2; b2.rotation.y = 0.5;
+      group.add(b1, b2);
     } else { // weapon crate
       color = CRATE_TIERS[pk.tier || 0].color;
       const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.42), new THREE.MeshBasicMaterial({ color }));
@@ -1157,6 +1280,9 @@ export class Game {
     } else if (pk.k === 'nade') {
       q.nades = Math.min(GRENADE.max, q.nades + 1);
       this.feed.push({ text: '+💣', t: 2.5 });
+    } else if (pk.k === 'mats') {
+      q.mats = Math.min(BUILD.matsMax, q.mats + PICKUPS.kinds.mats.amount);
+      this.feed.push({ text: `+${PICKUPS.kinds.mats.amount} 🧱`, t: 2.5 });
     } else if (pk.k === 'weapon' && this.isLoadout) {
       q.weapon = pk.w;
       q.ammo = WEAPONS[pk.w].mag;
@@ -1173,6 +1299,7 @@ export class Game {
   _myKillFx() {
     const me = this.me;
     me.streak++;
+    me.mats = Math.min(BUILD.matsMax, me.mats + BUILD.matsPerKill);
     for (const ks of KILLSTREAKS) {
       if (me.streak !== ks.at) continue;
       if (ks.k === 'speed') { me.buffSpeedT = ks.dur; this.hudFlags.tierBanner = t('streak3'); }
@@ -1208,7 +1335,7 @@ export class Game {
   }
 
   // ---------------- damage & kills ----------------
-  _damagePlayer(q, dmg, fromUid, { hs = false, mel = false } = {}) {
+  _damagePlayer(q, dmg, fromUid, { hs = false, mel = false, nade = false } = {}) {
     if (!q.alive || q.invulnT > 0) return;
     // guests don't own bots — relay damage to the host
     if (q.bot && this.online && !this.isHost) {
@@ -1218,7 +1345,7 @@ export class Game {
       return;
     }
     if (q.remote) {
-      if (this.onHitRemote) this.onHitRemote(q.uid, Math.round(dmg), { hs, mel, from: fromUid });
+      if (this.onHitRemote) this.onHitRemote(q.uid, Math.round(dmg), { hs, mel, nade, from: fromUid });
       this.hudFlags.hitmarker = 0.25;
       if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
       return;
@@ -1240,11 +1367,11 @@ export class Game {
         if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
       }
     }
-    if (q.hp <= 0) this._killPlayer(q, fromUid, mel);
+    if (q.hp <= 0) this._killPlayer(q, fromUid, mel, nade);
   }
 
-  applyHitOnMe(dmg, fromUid, hs, mel) {
-    if (this.me) this._damagePlayer(this.me, dmg, fromUid, { hs, mel });
+  applyHitOnMe(dmg, fromUid, hs, mel, nade) {
+    if (this.me) this._damagePlayer(this.me, dmg, fromUid, { hs, mel, nade });
   }
 
   // host applies guests' damage to bots
@@ -1253,12 +1380,18 @@ export class Game {
     if (b && b.bot && b.alive) this._damagePlayer(b, dmg, fromUid, {});
   }
 
-  _killPlayer(q, fromUid, mel) {
+  _killPlayer(q, fromUid, mel, nade = false) {
     q.hp = 0;
     q.armor = 0;
     q.alive = false;
     q.deaths++;
-    if (q === this.me) q.streak = 0;
+    if (q === this.me) {
+      q.streak = 0;
+      // kill-cam: watch whoever got you while waiting to respawn
+      this._killerCam = fromUid !== q.uid ? fromUid : null;
+      const killer0 = this.players.get(fromUid);
+      if (killer0 && killer0 !== q) this.hudFlags.tierBanner = t('killedByCam', { name: killer0.name });
+    }
     q.respawnT = GAME.respawnTime;
     this.fx.impact(V1.set(q.x, q.y + 1, q.z), 0xff8866, 18, 6);
     if (q === this.me || this._near(q, 45)) SFX.die();
@@ -1275,11 +1408,14 @@ export class Game {
 
     if (!this.online) {
       this.feed.push({ text: t(mel ? 'killKnife' : 'kill', { a: killerName, b: q.name }), t: 5 });
-      if (killer && killer !== q) this._creditLocal(killer, q, mel);
+      if (killer && killer !== q) {
+        this._creditLocal(killer, q, mel);
+        if (killer === this.me && nade) this.matchStats.nadeKills++;
+      }
       if (mel && !q.bot) this._demote(q);
       this._tallyTeams(killer, q);
     } else if (q === this.me) {
-      if (this.onSelfDeath) this.onSelfDeath(fromUid, mel);
+      if (this.onSelfDeath) this.onSelfDeath(fromUid, mel, nade);
       if (mel) this._demote(q);
     } else if (q.bot && this.isHost) {
       // host announces bot deaths so every client can tally the team score
@@ -1300,10 +1436,11 @@ export class Game {
   }
 
   // called by net when a kill event says I'm the killer
-  creditKill(victimName, mel, victimIsBot) {
+  creditKill(victimName, mel, victimIsBot, nade = false) {
     if (!this.me) return;
     this.me.kills++;
     this.me.score += 100;
+    if (nade) this.matchStats.nadeKills++;
     this.feed.push({ text: t('youKilled', { name: victimName }), t: 4 });
     this._myKillFx();
     if (!this.isLoadout) this._advanceTier(this.me);

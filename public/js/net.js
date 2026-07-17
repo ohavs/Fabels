@@ -208,18 +208,18 @@ export class Room {
 
     // ---- hits (victim-authoritative) ----
     game.onHitRemote = (toUid, dmg, info = {}) =>
-      pushTransient('hits', { to: toUid, from: info.from || FB.uid, dmg, hs: !!info.hs, mel: !!info.mel });
+      pushTransient('hits', { to: toUid, from: info.from || FB.uid, dmg, hs: !!info.hs, mel: !!info.mel, nd: !!info.nade });
     this._unsubs.push(d.onChildAdded(this._ref('hits'), (s) => {
       const v = s.val();
       if (!v || v.to !== FB.uid || !fresh(v)) return;
-      game.applyHitOnMe(v.dmg, v.from, v.hs, v.mel);
+      game.applyHitOnMe(v.dmg, v.from, v.hs, v.mel, v.nd);
     }));
 
     // ---- kills / chat / win / over ----
-    game.onSelfDeath = (fromUid, mel) => {
+    game.onSelfDeath = (fromUid, mel, nade) => {
       const killerName = this.playersCache[fromUid]?.name
         || [...game.players.values()].find((q) => q.uid === fromUid)?.name || '🤖';
-      pushTransient('events', { k: 'kill', a: fromUid, an: killerName, b: FB.uid, bn: game.me.name, mel: !!mel, vb: false });
+      pushTransient('events', { k: 'kill', a: fromUid, an: killerName, b: FB.uid, bn: game.me.name, mel: !!mel, nd: !!nade, vb: false });
       d.update(meRef, game.getSelfState()).catch(() => {});
     };
     game.onKillBroadcast = (fromUid, killerName, botUid, botName, mel) =>
@@ -237,7 +237,7 @@ export class Room {
           game.feed.push({ text: t(v.mel ? 'killKnife' : 'kill', { a: v.an, b: v.bn }), t: 5 });
           game.tallyRemoteKill(v.a, v.b);
           // credit myself unless I'm the host who already credited locally (bot victims)
-          if (v.a === FB.uid && !(v.vb && game.isHost)) game.creditKill(v.bn, v.mel, v.vb);
+          if (v.a === FB.uid && !(v.vb && game.isHost)) game.creditKill(v.bn, v.mel, v.vb, v.nd);
           break;
         case 'chat':
           game.showChat(v.u, QUICK_CHAT[v.c] || 'gg');
@@ -310,6 +310,17 @@ export class Room {
         if (!game.isHost) game.setCtfState(s.val());
       }));
     }
+
+    // ---- builds (anyone places; destroyer removes) ----
+    game.onBuildPlace = (spec) => d.set(this._ref('builds/' + spec.id), spec).catch(() => {});
+    game.onBuildDestroy = (id) => d.remove(this._ref('builds/' + id)).catch(() => {});
+    this._unsubs.push(d.onChildAdded(this._ref('builds'), (s) => {
+      const v = s.val();
+      if (v && v.o !== FB.uid) game.applyRemoteBuild(v);
+    }));
+    this._unsubs.push(d.onChildRemoved(this._ref('builds'), (s) => {
+      game.removeBuild(s.key, true);
+    }));
 
     // ---- pickups (all modes; host spawns, taker removes) ----
     game.onPickupSpawn = (pk) => d.set(this._ref('pickups/' + pk.id), {

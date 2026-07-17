@@ -11,6 +11,7 @@ import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
 import {
   profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, fetchLeaderboard,
+  trackChallenges,
 } from './profile.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
@@ -440,6 +441,14 @@ function finishMatch(results) {
       xp: rw.xp, shards: rw.shards, rp: rw.rp,
       kills: myRow.kills, deaths: myRow.deaths, win: results.win,
     });
+
+    // daily challenge progress
+    const ms = game.matchStats || {};
+    const completed = trackChallenges({
+      kills: myRow.kills, wins: results.win ? 1 : 0, matches: 1,
+      headshots: ms.headshots || 0, builds: ms.builds || 0, nadeKills: ms.nadeKills || 0,
+    });
+    for (const c of completed) UI.toast(t('chDone', { n: c.reward }), 'gold');
 
     UI.renderResults(results, rw);
     UI.showScreen('results');
