@@ -24,6 +24,8 @@ export const STR = {
   map_mine: 'מכרה הגבישים',
   map_port: 'נמל החלל',
   map_canyon: 'קניון האש',
+  map_city: 'עיר הניאון',
+  map_ice: 'האי הקפוא',
 
   // weapons (gun-game ladder)
   weapon_pistol: 'אקדח',

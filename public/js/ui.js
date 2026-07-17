@@ -420,7 +420,29 @@ export function bindHUD(input, { onExit, onChat }) {
     el.addEventListener('touchend', (e) => { e.preventDefault(); up && up(); }, { passive: false });
     el.addEventListener('touchcancel', () => up && up());
   };
-  hold($('btn-fire'), () => { input.firing = true; }, () => { input.firing = false; });
+  // fire button also aims while dragging (Fortnite-mobile style)
+  const fireBtn = $('btn-fire');
+  let fireTouch = null;
+  fireBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const t0 = e.changedTouches[0];
+    fireTouch = { id: t0.identifier, px: t0.clientX, py: t0.clientY };
+    input.firing = true;
+  }, { passive: false });
+  fireBtn.addEventListener('touchmove', (e) => {
+    if (!fireTouch) return;
+    for (const t0 of e.changedTouches) {
+      if (t0.identifier !== fireTouch.id) continue;
+      e.preventDefault();
+      const sens = 0.005 * input.sensitivity * (input.aiming ? 0.55 : 1);
+      input.lookDX += (t0.clientX - fireTouch.px) * sens;
+      input.lookDY += (t0.clientY - fireTouch.py) * sens;
+      fireTouch.px = t0.clientX; fireTouch.py = t0.clientY;
+    }
+  }, { passive: false });
+  const fireEnd = () => { fireTouch = null; input.firing = false; };
+  fireBtn.addEventListener('touchend', (e) => { e.preventDefault(); fireEnd(); }, { passive: false });
+  fireBtn.addEventListener('touchcancel', fireEnd);
   hold($('btn-jump'), () => { input.wantJump = true; });
   hold($('btn-reload'), () => { input.wantReload = true; });
   // toggles: crouch & ADS

@@ -575,6 +575,21 @@ body.touch .action-btn, body.touch .fire-btn, body.touch .tb { display: flex; }
   .menu-footer { position: static; margin-top: 14px; width: min(760px, 94vw); }
 }
 
+/* compact HUD on small phones — free up play space */
+@media (max-height: 430px) {
+  #minimap { width: 92px; height: 92px; left: 58px; }
+  .hud-weapon { padding: 5px 10px; min-width: 96px; }
+  #hud-ammo { font-size: 1.2rem; }
+  .hud-stat { min-width: 52px; padding: 3px 7px; }
+  .hud-center { font-size: 0.95rem; padding: 4px 12px; }
+  .hp-track, .armor-track { width: min(30vw, 170px); }
+  .fire-btn { width: 82px; height: 82px; }
+  .tb { width: 52px; height: 52px; }
+  .tb-aim { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 176px); }
+  .tb-nade { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 238px); }
+  #hud-feed li { font-size: 0.64rem; }
+}
+
 /* ---------- desktop ---------- */
 @media (min-width: 760px) {
   .mode-cards { grid-template-columns: repeat(3, 1fr); width: min(820px, 94vw); }

@@ -572,8 +572,10 @@ export class Game {
     input.update();
     const look = input.consumeLook();
     if (p.alive && !this.over) {
-      p.yaw -= look.dx;
-      p.pitch = clamp(p.pitch + look.dy, -1.45, 1.45);
+      // sticky aim assist on touch: slow the look while over an enemy
+      const assist = input.touchMode && this._aimNearEnemy(p) ? 0.45 : 1;
+      p.yaw -= look.dx * assist;
+      p.pitch = clamp(p.pitch + look.dy * assist, -1.45, 1.45);
     }
 
     p.slideCd = Math.max(0, p.slideCd - dt);
@@ -648,6 +650,21 @@ export class Game {
     this._physics(p, wishX, wishZ, speed, dt);
     if (p.y < GAME.fallY && p.alive) this._killPlayer(p, p.uid, false);
     this._syncCamera(p, dt);
+  }
+
+  // wider cone than auto-fire: used to soften look sensitivity (sticky aim)
+  _aimNearEnemy(p) {
+    const f = forwardOf(p.yaw, p.pitch);
+    for (const q of this.players.values()) {
+      if (q === p || !q.alive) continue;
+      if (this.teamplay && q.team === p.team) continue;
+      const dx = q.x - p.x, dy = (q.y + 1.1) - (p.y + GAME.eyeHeight), dz = q.z - p.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d > 45 || d < 1) continue;
+      const dot = (dx * f.x + dy * f.y + dz * f.z) / d;
+      if (dot > Math.cos(0.09 + 0.8 / d)) return true;
+    }
+    return false;
   }
 
   // is an enemy under the crosshair (small cone + line of sight)?

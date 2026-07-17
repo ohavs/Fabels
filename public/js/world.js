@@ -7,7 +7,7 @@
 
 import * as THREE from './vendor/three.module.js';
 import { MAPS } from './config.js';
-import { rng } from './util.js';
+import { rng, TAU } from './util.js';
 
 export function createRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -198,7 +198,10 @@ export class World {
   _build() {
     this._base();
     const r = rng(0xc0ffee ^ this.mapId.split('').reduce((a, c) => a + c.charCodeAt(0), 0));
-    ({ town: this._town, mine: this._mine, port: this._port, canyon: this._canyon })[this.mapId].call(this, r);
+    ({
+      town: this._town, mine: this._mine, port: this._port,
+      canyon: this._canyon, city: this._city, ice: this._ice,
+    })[this.mapId].call(this, r);
     // scatter nav points between spawns
     const S = this.size;
     for (let i = 0; i < 14; i++) this.nav((r() - 0.5) * S * 0.8, (r() - 0.5) * S * 0.8);
@@ -327,6 +330,110 @@ export class World {
     this.spawn(-30, -24); this.spawn(30, 24); this.spawn(-30, 24); this.spawn(30, -24);
     this.spawn(0, -30); this.spawn(0, 30); this.spawn(26, 0); this.spawn(-14, -10);
     this.nav(14, 3.8, 8); this.nav(-26, 10.2, 0);
+  }
+
+  // ═══════════ MAP 5: עיר הניאון — night city blocks ═══════════
+  _city(r) {
+    const neon = [0xff3e8a, 0x00d5ff, 0xffd200, 0x9d5cff];
+    const bldg = [0x565678, 0x4a4a6b, 0x626287];
+    // extra city glow so night reads as neon, not black
+    this.scene.add(new THREE.AmbientLight(0x8888c0, 0.55));
+    // building grid with streets between
+    for (let gx = -1; gx <= 1; gx++) {
+      for (let gz = -1; gz <= 1; gz++) {
+        if (gx === 0 && gz === 0) continue; // central plaza stays open
+        const x = gx * 22, z = gz * 22;
+        const h = 7 + r() * 10;
+        const w = 8 + r() * 3, d = 8 + r() * 3;
+        this.box(x, 0, z, w, h, d, bldg[(r() * 3) | 0]);
+        // neon edge strips on several faces + lit windows
+        const c = neon[(r() * 4) | 0];
+        this.box(x, h - 0.8, z + d / 2 + 0.05, w * 0.9, 0.35, 0.12, c, { collide: false, emissive: c, shadow: false });
+        this.box(x, h - 0.8, z - d / 2 - 0.05, w * 0.9, 0.35, 0.12, c, { collide: false, emissive: c, shadow: false });
+        this.box(x - w / 2 - 0.05, h * 0.5, z, 0.12, h * 0.7, 0.35, neon[(r() * 4) | 0], { collide: false, emissive: c, shadow: false });
+        for (let wy = 1.6; wy < h - 1.4; wy += 2.1) {
+          if (r() < 0.35) continue;
+          this.box(x + (r() - 0.5) * w * 0.5, wy, z + d / 2 + 0.03, 0.9, 0.7, 0.06, 0xffe9a0, { collide: false, emissive: 0xffe9a0, shadow: false });
+        }
+        // some rooftops reachable via stairs
+        if ((gx + gz) % 2 === 0 && h < 10) {
+          this.stairs(x + w / 2 + 0.6, 0, z - 2, 'z', Math.ceil(h / 0.5), 2, 0x44445f);
+          this.nav(x, z, h + 0.3);
+        }
+      }
+    }
+    // street decals
+    this.box(0, 0.01, 0, this.size, 0.02, 6, 0x1c1c2c, { collide: false, shadow: false });
+    this.box(0, 0.01, 0, 6, 0.02, this.size, 0x1c1c2c, { collide: false, shadow: false });
+    // central plaza: holo-fountain + enterable kiosk
+    this.cyl(0, 0, 0, 2.2, 0.5, 0x33334d);
+    this.cone(0, 0.5, 0, 1, 3, 0x00d5ff, { collide: true, emissive: 0x00d5ff });
+    const l = new THREE.PointLight(0x00d5ff, 8, 16);
+    l.position.set(0, 3, 0);
+    this.scene.add(l);
+    this.room(11, -11, 6, 5, 3.2, 0x3a3a55, 0x26263a, '-x');
+    // neon street signs + lamps
+    for (let i = 0; i < 5; i++) {
+      const x = -28 + i * 14, z = i % 2 ? 8.5 : -8.5;
+      this.box(x, 0, z, 0.3, 4.5, 0.3, 0x44445f);
+      const c = neon[i % 4];
+      this.box(x, 4.5, z, 1.8, 0.9, 0.2, c, { collide: false, emissive: c, shadow: false });
+      if (i % 2 === 0) {
+        const lamp = new THREE.PointLight(c, 5, 13);
+        lamp.position.set(x, 4.2, z);
+        this.scene.add(lamp);
+      }
+    }
+    // parked hover-cars (cover)
+    for (let i = 0; i < 5; i++) {
+      this.box(-24 + i * 12, 0.25, (r() < 0.5 ? -1 : 1) * (3 + r() * 2), 3.4, 1.1, 1.7, neon[(r() * 4) | 0], { rotY: r() * 0.4 });
+    }
+    this.spawn(-30, -30); this.spawn(30, 30); this.spawn(-30, 30); this.spawn(30, -30);
+    this.spawn(0, -32); this.spawn(0, 32); this.spawn(-32, 0); this.spawn(32, 0);
+  }
+
+  // ═══════════ MAP 6: האי הקפוא — frozen island ═══════════
+  _ice(r) {
+    // frozen lake decal (centre)
+    const lake = new THREE.Mesh(new THREE.CircleGeometry(11, 32), mat(0xb8e0ff));
+    lake.rotation.x = -Math.PI / 2;
+    lake.position.y = 0.02;
+    this.scene.add(lake);
+    // ice spikes & boulders
+    for (let i = 0; i < 12; i++) {
+      const x = (r() - 0.5) * 54, z = (r() - 0.5) * 54;
+      if (Math.hypot(x, z) < 13) continue;
+      if (r() < 0.5) this.cone(x, 0, z, 1 + r(), 3 + r() * 3.5, 0xd6ecff, { collide: true, emissive: 0x9fccf5, rotY: r() * 3 });
+      else this.cyl(x, 0, z, 1.4 + r(), 2 + r() * 2, 0xc4dff5, { seg: 7 });
+    }
+    // igloos (dome + entrance tunnel, solid)
+    for (const [x, z, rot] of [[-18, 14, 0.6], [20, -12, -2.2]]) {
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xf4faff));
+      dome.position.set(x, 0, z);
+      dome.castShadow = true;
+      this.scene.add(dome);
+      this.colliders.push({ x0: x - 2.6, y0: 0, z0: z - 2.6, x1: x + 2.6, y1: 2.9, z1: z + 2.6 });
+      this.cyl(x + Math.cos(rot) * 3.4, 0, z + Math.sin(rot) * 3.4, 1.1, 1.5, 0xe8f4ff, { seg: 8 });
+    }
+    // snowy pines
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * TAU;
+      const x = Math.cos(a) * 28 + (r() - 0.5) * 5, z = Math.sin(a) * 28 + (r() - 0.5) * 5;
+      this.cyl(x, 0, z, 0.25, 1.3, 0x7a5c48, { seg: 6 });
+      this.cone(x, 1, z, 1.2, 2.8, 0xd8ecdf, { seg: 7 });
+    }
+    // ice ridge walls + enterable research cabin with roof stairs
+    this.box(-6, 0, -20, 16, 2.6, 1.6, 0xcfe6f8, { rotY: 0.3 });
+    this.box(10, 0, 18, 14, 2.2, 1.6, 0xcfe6f8, { rotY: -0.5 });
+    this.room(-16, -8, 7, 6, 3.4, 0x9fb8cc, 0x718ea6, 'x');
+    this.stairs(-11.6, 0, -11.4, 'x', 7, 2, 0x718ea6);
+    this.nav(-16, -8, 0); this.nav(-16, -8, 3.7);
+    // central frozen fort
+    this.box(0, 0, 0, 6, 2, 6, 0xdcefff);
+    this.stairs(-3.9, 0, 0, '-x', 4, 2.4, 0xc4dff5);
+    this.nav(0, 0, 2.1);
+    this.spawn(-28, -26); this.spawn(28, 26); this.spawn(-28, 26); this.spawn(28, -26);
+    this.spawn(0, -30); this.spawn(0, 30); this.spawn(-30, 0); this.spawn(30, 0);
   }
 
   // ═══════════ MAP 4: קניון האש — desert mesas ═══════════

@@ -201,7 +201,8 @@ export class Input {
     if (this._stick) {
       this.move.x = this._stick.dx;
       this.move.y = -this._stick.dy;
-      this.sprintHeld = (this._stick.mag || 0) > 1.15 && this.move.y > 0.35;
+      // auto-sprint: a firm forward push is enough (no rim-break needed)
+      this.sprintHeld = (this._stick.mag || 0) > 0.62 && this.move.y > 0.3;
     } else {
       let x = 0, y = 0;
       if (this._keys.has('KeyW') || this._keys.has('ArrowUp')) y += 1;

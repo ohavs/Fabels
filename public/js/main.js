@@ -78,6 +78,8 @@ async function boot() {
 
 function fitRenderer() {
   const c = $('game-canvas');
+  // phones: cap the pixel ratio for a solid frame rate
+  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, state.input?.touchMode ? 1.5 : 2));
   state.renderer.setSize(c.clientWidth, c.clientHeight, false);
   if (state.game) {
     state.game.camera.aspect = c.clientWidth / c.clientHeight;
