@@ -61,7 +61,13 @@ function pillRow(el, items, selected, canPick, onPick, labelFn) {
   }
 }
 
-export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick }) {
+export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, practiceMode }) {
+  const wrap = $('practice-mode-wrap');
+  wrap.style.display = practiceMode ? '' : 'none';
+  if (practiceMode) {
+    pillRow($('practice-mode-picker'), ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br'],
+      practiceMode, true, (m) => onPick({ mode: m }), (m) => t('mode_' + m));
+  }
   pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
   $('bots-opts').style.display = showBots ? '' : 'none';
   if (showBots) {
@@ -230,6 +236,12 @@ export function updateHUD(game, input) {
   // center: mode status
   if (game.mode === 'team') {
     $('hud-center').textContent = `${fmtTime(game.timeLeft())} · ${t('teamScore', { a: game.teamScore, b: game.botScore })}`;
+  } else if (game.mode === 'zombies') {
+    $('hud-center').textContent = t('zwave', { n: Math.max(1, game.wave) });
+  } else if (game.mode === 'ctf' && game.ctf) {
+    $('hud-center').textContent = `${fmtTime(game.timeLeft())} · ${t('ctfScore', { r: game.ctf.score.r, b: game.ctf.score.b })}`;
+  } else if (game.mode === 'br') {
+    $('hud-center').textContent = t('brAlive', { n: game.brAliveCount() });
   } else {
     $('hud-center').textContent = `נשק ${Math.min(me.tier + 1, WEAPON_LADDER.length)}/${WEAPON_LADDER.length}`;
   }
@@ -337,6 +349,24 @@ function drawMinimap(game) {
   x.fillStyle = 'rgba(255, 210, 0, 0.8)';
   for (const pk of game.pickups.values()) x.fillRect(px(pk.x) - 1.5, px(pk.z) - 1.5, 3, 3);
 
+  // battle-royale zone circle
+  if (game.zone) {
+    x.strokeStyle = 'rgba(57, 160, 255, 0.9)';
+    x.lineWidth = 1.5;
+    x.beginPath();
+    x.arc(60, 60, game.zone.r * k, 0, Math.PI * 2);
+    x.stroke();
+  }
+
+  // CTF flags
+  if (game.ctf) {
+    for (const teamId of ['r', 'b']) {
+      const f = game.ctf.flags[teamId];
+      x.fillStyle = teamId === 'r' ? '#ff4444' : '#448cff';
+      x.fillRect(px(f.x) - 2.5, px(f.z) - 2.5, 5, 5);
+    }
+  }
+
   for (const p of game.players.values()) {
     if (!p.alive || p === game.me) continue;
     const sameTeam = game.mode !== 'gungame' && game.mode !== 'duel' && game.mode !== 'br' && p.team === game.me?.team;
@@ -425,6 +455,18 @@ export function renderResults(results, rewards) {
     title.textContent = results.win ? t('teamWin', { n: results.teamScore }) : t('teamLose');
     title.className = results.win ? 'win' : 'lose';
     $('res-sub').textContent = t('mode_team');
+  } else if (results.mode === 'zombies') {
+    title.textContent = t('gameOver');
+    title.className = 'lose';
+    $('res-sub').textContent = t('zSurvived', { n: results.wave });
+  } else if (results.mode === 'ctf') {
+    title.textContent = results.win ? t('ctfWin') : t('ctfLose');
+    title.className = results.win ? 'win' : 'lose';
+    $('res-sub').textContent = t('ctfScore', { r: results.ctfScoreR ?? '', b: results.ctfScoreB ?? '' }) || t('mode_ctf');
+  } else if (results.mode === 'br') {
+    title.textContent = results.win ? t('brWin') : t('brPlace', { n: results.brPlace || myPlace, of: results.brOf || '' });
+    title.className = results.win ? 'win' : 'lose';
+    $('res-sub').textContent = results.winnerName ? t('winner', { name: results.winnerName }) : t('mode_br');
   } else {
     title.textContent = results.win ? t('victory') : t('place', { n: myPlace });
     title.className = results.win ? 'win' : (myPlace <= 2 ? '' : 'lose');

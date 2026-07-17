@@ -119,7 +119,12 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 .lore { color: var(--muted); font-size: 0.92rem; font-weight: 700; max-width: 380px; margin: 0.5rem auto 0; line-height: 1.5; }
 
 /* mode cards — big punchy gradient tiles */
-.mode-cards { display: flex; flex-direction: column; gap: 12px; width: min(420px, 92vw); }
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(460px, 94vw); }
+.mode-card.wide2 { grid-column: span 2; }
+.mode-card.br { background: linear-gradient(135deg, #0aa1dd, #7726ff 90%); }
+.mode-card.duel { background: linear-gradient(135deg, #ff416c, #a80038 90%); }
+.mode-card.zombies { background: linear-gradient(135deg, #2f9e44, #0b5f22 90%); }
+.mode-card.ctf { background: linear-gradient(135deg, #e8590c, #d9480f 90%); }
 .mode-card {
   position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;
   column-gap: 14px; align-items: center; text-align: right;
@@ -572,8 +577,7 @@ body.touch .action-btn, body.touch .fire-btn, body.touch .tb { display: flex; }
 
 /* ---------- desktop ---------- */
 @media (min-width: 760px) {
-  .mode-cards { flex-direction: row; width: min(780px, 94vw); }
-  .mode-card { flex: 1; grid-template-columns: 1fr; grid-template-rows: auto auto auto; text-align: center; padding: 24px 14px; }
-  .mode-icon { grid-row: auto; font-size: 2.6rem; margin-bottom: 6px; }
+  .mode-cards { grid-template-columns: repeat(3, 1fr); width: min(820px, 94vw); }
+  .mode-card.wide2 { grid-column: span 3; }
   .menu-row, .join-row { width: min(520px, 92vw); }
 }

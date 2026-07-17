@@ -15,7 +15,68 @@ export function botName(i) {
 
 export function attachBrains(game) {
   for (const p of game.players.values()) {
-    if (p.bot && !p.bot.brain) p.bot.brain = new BotBrain(p, game);
+    if (p.bot && !p.bot.brain) {
+      p.bot.brain = p.bot.zombie ? new ZombieBrain(p, game) : new BotBrain(p, game);
+    }
+  }
+}
+
+// ============================================================
+// Zombies: relentless pursuit, melee swipes / acid spit.
+// Simpler than soldier bots — they always know where you are,
+// but they're slow and dumb about obstacles (by design).
+// ============================================================
+class ZombieBrain {
+  constructor(p, game) {
+    this.p = p;
+    this.game = game;
+    this.attackCd = 0;
+    this.zig = Math.random() * Math.PI * 2;
+    this.stuckT = 0;
+    this.lastX = p.x; this.lastZ = p.z;
+    p.bot.wish = { x: 0, z: 0 };
+  }
+
+  update(dt) {
+    const p = this.p, g = this.game;
+    const Z = p.bot.zdef;
+    this.attackCd = Math.max(0, this.attackCd - dt);
+
+    // nearest living human
+    let t = null, td = Infinity;
+    for (const q of g.players.values()) {
+      if (q.bot || !q.alive) continue;
+      const d = Math.hypot(q.x - p.x, q.z - p.z);
+      if (d < td) { td = d; t = q; }
+    }
+    if (!t) { p.bot.wish.x = p.bot.wish.z = 0; return; }
+
+    const nx = (t.x - p.x) / (td || 1), nz = (t.z - p.z) / (td || 1);
+    p.yaw = Math.atan2(-nx, -nz);
+    const dy = (t.y + 1.1) - (p.y + GAME.eyeHeight);
+    p.pitch = clamp(-Math.atan2(dy, td), -1, 1);
+
+    // runners zigzag; everyone else beelines
+    this.zig += dt * 3;
+    const zigAmt = p.bot.zombie === 'runner' ? 0.5 : 0.12;
+    p.bot.wish.x = nx + -nz * Math.sin(this.zig) * zigAmt;
+    p.bot.wish.z = nz + nx * Math.sin(this.zig) * zigAmt;
+    const wl = Math.hypot(p.bot.wish.x, p.bot.wish.z) || 1;
+    p.bot.wish.x /= wl; p.bot.wish.z /= wl;
+
+    // attack
+    if (this.attackCd <= 0 && td < Z.range * 1.05 && Math.abs((t.y) - p.y) < 2.2) {
+      this.attackCd = Z.rate;
+      this.game.zombieAttack(p, t);
+    }
+
+    // stuck → hop
+    const moved = Math.hypot(p.x - this.lastX, p.z - this.lastZ);
+    this.lastX = p.x; this.lastZ = p.z;
+    if (moved < 0.3 * dt * Z.speed) {
+      this.stuckT += dt;
+      if (this.stuckT > 0.6) { if (p.grounded) p.bot.wantJump = true; this.stuckT = 0; }
+    } else this.stuckT = 0;
   }
 }
 
@@ -81,8 +142,8 @@ class BotBrain {
     let best = null, bestScore = Infinity;
     for (const q of g.players.values()) {
       if (q === p || !q.alive) continue;
-      if (g.mode === 'team' && q.team === p.team) continue;
-      if (g.mode !== 'team' && q.bot && Math.random() < 0.6) continue; // FFA bots prefer humans
+      if ((g.teamplay || g.mode === 'ctf') && q.team === p.team) continue;
+      if (!g.teamplay && q.bot && Math.random() < 0.6) continue; // FFA bots prefer humans
       const d = Math.hypot(q.x - p.x, q.z - p.z);
       const score = d + (this._canSee(q) ? 0 : 25);
       if (score < bestScore) { bestScore = score; best = q; }

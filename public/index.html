@@ -52,17 +52,37 @@
       <button id="btn-gungame" class="mode-card pvp">
         <span class="mode-icon">🔫</span>
         <span class="mode-name">משחק רובים</span>
-        <span class="mode-desc">‏PvP מקוון · עד 6 לוחמים · 8 נשקים</span>
+        <span class="mode-desc">‏PvP · עד 6 · סולם 8 נשקים</span>
+      </button>
+      <button id="btn-br" class="mode-card br">
+        <span class="mode-icon">🌀</span>
+        <span class="mode-name">באטל רויאל</span>
+        <span class="mode-desc">אזור מתכווץ · אחרון ששורד</span>
+      </button>
+      <button id="btn-duel" class="mode-card duel">
+        <span class="mode-icon">⚔️</span>
+        <span class="mode-name">דו-קרב 1v1</span>
+        <span class="mode-desc">ראש בראש · סולם נשקים</span>
       </button>
       <button id="btn-team" class="mode-card coop">
         <span class="mode-icon">🤖</span>
         <span class="mode-name">נגד בוטים</span>
-        <span class="mode-desc">‏Co-op מקוון · עד 6 חברים נגד בוטים</span>
+        <span class="mode-desc">קבוצה נגד בוטים · בחירת רמה</span>
       </button>
-      <button id="btn-practice" class="mode-card practice">
+      <button id="btn-zombies" class="mode-card zombies">
+        <span class="mode-icon">🧟</span>
+        <span class="mode-name">מתקפת זומבים</span>
+        <span class="mode-desc">‏Co-op · גלים אינסופיים</span>
+      </button>
+      <button id="btn-ctf" class="mode-card ctf">
+        <span class="mode-icon">🚩</span>
+        <span class="mode-name">כיבוש הדגל</span>
+        <span class="mode-desc">קבוצות · 3 כיבושים לניצחון</span>
+      </button>
+      <button id="btn-practice" class="mode-card practice wide2">
         <span class="mode-icon">🎯</span>
         <span class="mode-name">אימון חופשי</span>
-        <span class="mode-desc">מול בוטים · ללא חיבור · בחירת מפה</span>
+        <span class="mode-desc">מול בוטים · ללא חיבור · כל המפות והמצבים</span>
       </button>
     </nav>
 
@@ -90,6 +110,10 @@
       <div id="lobby-code" class="room-code"></div>
 
       <div class="lobby-opts">
+        <div id="practice-mode-wrap" class="opt-group" style="display:none">
+          <div class="opt-label">מצב משחק</div>
+          <div id="practice-mode-picker" class="opt-row"></div>
+        </div>
         <div class="opt-group">
           <div class="opt-label">בחירת מפה</div>
           <div id="map-picker" class="opt-row"></div>

@@ -87,6 +87,16 @@ export function buildGunMesh(id, scale = 1) {
       g.userData.muzzle = new THREE.Vector3(0, 0, -0.3);
       break;
     }
+    case 'zmelee':
+    case 'spit': {
+      // zombie claws
+      for (let i = -1; i <= 1; i++) {
+        const claw = p(g, 0.02, 0.02, 0.14, 0xd8e6b0, i * 0.035, 0, -0.1);
+        claw.rotation.x = 0.2;
+      }
+      g.userData.muzzle = new THREE.Vector3(0, 0, -0.2);
+      break;
+    }
     default: // botgun
       p(g, 0.08, 0.12, 0.36, 0x5c1f2e, 0, 0, -0.1);
       p(g, 0.05, 0.05, 0.2, 0xff5964, 0, 0.02, -0.32, true);

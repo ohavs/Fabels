@@ -5,6 +5,7 @@
 
 import {
   GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
+  CTF, BR, rewardsZombies, rewardsBr,
 } from './config.js';
 import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
@@ -85,9 +86,10 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  $('btn-gungame').addEventListener('click', () => { SFX.click(); enterMode('gungame'); });
-  $('btn-team').addEventListener('click', () => { SFX.click(); enterMode('team'); });
-  $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby('gungame'); });
+  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br']) {
+    $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
+  }
+  $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
 
   $('btn-shop').addEventListener('click', () => { SFX.click(); UI.renderShop(); UI.showScreen('shop'); });
   $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); UI.showScreen('menu'); });
@@ -183,10 +185,11 @@ function renderPracticeLobby() {
   UI.renderLobby([{ uid: 'me', name: profile.name, lvl: playerLevel(), me: true }], fakeMeta, 'me', '');
   UI.renderLobbyOptions({
     map: pr.map, botLevel: pr.botLevel, botCount: pr.botCount,
-    showBots: true, canPick: true,
+    showBots: pr.mode !== 'zombies' && pr.mode !== 'duel', canPick: true,
+    practiceMode: pr.mode,
     onPick: (patch) => { Object.assign(pr, patch); renderPracticeLobby(); },
   });
-  $('lobby-status').textContent = t('mode_practice');
+  $('lobby-status').textContent = t('mode_practice') + ' · ' + t('mode_' + pr.mode);
   $('btn-start').disabled = false;
   $('btn-start').style.display = '';
 }
@@ -232,6 +235,9 @@ function enterOnlineLobby(room) {
     if (state.matchStarted) return;
     UI.renderLobby(players, meta, FB.uid, room.id);
     renderOpts();
+    if (room.mode === 'duel' && players.length >= 2 && room.isHost && meta.state === 'waiting') {
+      room.startMatch();
+    }
     if (room.isHost && meta.state === 'waiting' && players.length >= (meta.maxPlayers || 6)) {
       room.startMatch();
     }
@@ -258,11 +264,18 @@ function enterOnlineLobby(room) {
 }
 
 // ---------------- match setup ----------------
+const endAtFor = (mode, startAt) =>
+  mode === 'team' ? startAt + GAME.matchTimeTeam * 1000
+    : mode === 'ctf' ? startAt + CTF.timeSec * 1000
+    : 0;
+
 function beginOnlineMatch() {
   if (state.matchStarted || !state.room) return;
   state.matchStarted = true;
   const room = state.room;
   const meta = room.meta;
+  const order = room.playerOrder();
+  const myIdx = Math.max(0, order.indexOf(FB.uid));
 
   const game = new Game({
     mode: room.mode,
@@ -272,37 +285,67 @@ function beginOnlineMatch() {
     botLevel: meta.botLevel || 'normal',
     input: state.input,
     timeFn: () => FB.serverNow(),
-    endAt: room.mode === 'team' ? meta.startAt + GAME.matchTimeTeam * 1000 : 0,
+    startAt: meta.startAt,
+    endAt: endAtFor(room.mode, meta.startAt),
   });
-  const spawnIdx = Math.max(0, room.playerOrder().indexOf(FB.uid));
-  game.addLocal(FB.uid, profile.name, profile.skin, spawnIdx);
 
-  if (room.mode === 'team' && room.isHost) {
-    for (let i = 0; i < (meta.botCount || 4); i++) game.addBot(botName(i), meta.botLevel || 'normal');
+  // CTF: humans alternate red/blue by join order
+  const myTeam = room.mode === 'ctf' ? (myIdx % 2 === 0 ? 'r' : 'b') : 'p';
+  game.addLocal(FB.uid, profile.name, profile.skin, myIdx, myTeam);
+
+  if (room.isHost) {
+    const lvl = meta.botLevel || 'normal';
+    if (room.mode === 'team') {
+      for (let i = 0; i < (meta.botCount || 4); i++) game.addBot(botName(i), lvl);
+    } else if (room.mode === 'ctf') {
+      const humansR = order.filter((_, i) => i % 2 === 0).length;
+      const humansB = order.length - humansR;
+      for (let i = humansR; i < CTF.teamSize; i++) game.addBot(botName(i), lvl, -1, 'r');
+      for (let i = humansB; i < CTF.teamSize; i++) game.addBot(botName(i + 3), lvl, -1, 'b');
+    } else if (room.mode === 'br') {
+      for (let i = order.length; i < BR.combatants; i++) game.addBot(botName(i), lvl);
+    }
     attachBrains(game);
   }
 
   room.onGameOver((results) => finishMatch(results));
   room.bindGame(game);
+  if (room.isHost) game.spawnBrLoot();
   startLoop(game);
   SFX.go();
 }
 
 function startOffline() {
   const pr = state.practice;
+  const mode = pr.mode || 'gungame';
+  const now = Date.now();
   const game = new Game({
-    mode: pr.mode === 'team' ? 'team' : 'gungame',
+    mode,
     online: false,
     isHost: true,
     mapId: pr.map,
     botLevel: pr.botLevel,
     input: state.input,
     timeFn: () => Date.now(),
-    endAt: pr.mode === 'team' ? Date.now() + GAME.matchTimeTeam * 1000 : 0,
+    startAt: now,
+    endAt: endAtFor(mode, now),
   });
-  game.addLocal('me', profile.name, profile.skin, 0);
-  for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
+
+  const myTeam = mode === 'ctf' ? 'r' : 'p';
+  game.addLocal('me', profile.name, profile.skin, 0, myTeam);
+
+  if (mode === 'duel') {
+    game.addBot(botName(0), 'hard');
+  } else if (mode === 'ctf') {
+    for (let i = 1; i < CTF.teamSize; i++) game.addBot(botName(i), pr.botLevel, -1, 'r');
+    for (let i = 0; i < CTF.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
+  } else if (mode === 'br') {
+    for (let i = 1; i < BR.combatants; i++) game.addBot(botName(i), pr.botLevel);
+  } else if (mode !== 'zombies') {
+    for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
+  }
   attachBrains(game);
+  game.spawnBrLoot();
   game.onChat = (idx) => game.showChat('me', QUICK_CHAT[idx]);
   game.onOver = (results) => finishMatch(results);
   startLoop(game);
@@ -372,9 +415,16 @@ function finishMatch(results) {
     const myRow = results.placements.find((p) => p.me) || { kills: 0, deaths: 0 };
     const place = Math.max(0, results.placements.indexOf(results.placements.find((p) => p.me)));
     let rw;
-    if (results.mode === 'team') {
+    if (results.mode === 'team' || results.mode === 'ctf') {
       rw = rewardsTeam(myRow.kills, results.win);
       rw.rp = 0;
+    } else if (results.mode === 'zombies') {
+      rw = rewardsZombies(results.wave, myRow.kills);
+      rw.rp = 0;
+    } else if (results.mode === 'br') {
+      const brPlace = results.win ? 1 : (results.brPlace || place + 1);
+      rw = rewardsBr(brPlace, myRow.kills, results.brOf || BR.combatants);
+      rw.rp = wasOnline ? (brPlace === 1 ? 30 : brPlace <= 3 ? 10 : -4) : 0;
     } else {
       rw = rewardsGunGame(myRow.kills, place, results.win);
       rw.rp = wasOnline ? (RP_BY_PLACE[Math.min(place, RP_BY_PLACE.length - 1)] ?? 0) : 0;

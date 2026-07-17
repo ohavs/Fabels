@@ -21,7 +21,8 @@ function part(parent, w, h, d, color, x, y, z) {
 }
 
 export function buildCharacter(skinId) {
-  const s = SKINS[skinId] || SKINS.scout;
+  // accepts a skin id or a raw {body, accent, skin} palette (zombies)
+  const s = typeof skinId === 'object' && skinId !== null ? skinId : (SKINS[skinId] || SKINS.scout);
   const group = new THREE.Group();
 
   // legs (pivots at the hip so they swing)

@@ -13,7 +13,8 @@ import { GAME, QUICK_CHAT } from './config.js';
 import { roomCode } from './util.js';
 import { t } from './i18n.js';
 
-const maxFor = () => GAME.maxPlayers;
+const maxFor = (mode) => (mode === 'duel' ? 2 : GAME.maxPlayers);
+const teamlike = (mode) => mode === 'team' || mode === 'zombies' || mode === 'ctf';
 
 export class Room {
   constructor(id, mode) {
@@ -65,7 +66,7 @@ export class Room {
       botLevel: options.botLevel || 'normal',
       botCount: options.botCount || 4,
       startAt: 0,
-      createdAt: FB.serverNow(), maxPlayers: maxFor(),
+      createdAt: FB.serverNow(), maxPlayers: maxFor(mode),
     };
     await FB.d.set(room._ref('meta'), meta);
     room.meta = meta;
@@ -96,7 +97,7 @@ export class Room {
       const okState = meta.state === 'waiting' || (allowStarting && meta.state === 'starting');
       if (!okState) return false;
       const count = Object.keys(playersSnap.val() || {}).length;
-      if (count >= (meta.maxPlayers || maxFor())) return false;
+      if (count >= (meta.maxPlayers || maxFor(this.mode))) return false;
       this.meta = meta;
       this.mode = meta.mode;
       await this._enter(lobbyInfo);
@@ -247,6 +248,21 @@ export class Room {
         case 'emote':
           if (v.u !== FB.uid) game.applyEmote(v.u);
           break;
+        case 'wave':
+          if (!game.isHost) {
+            game.wave = v.n;
+            game.hudFlags.tierBanner = t('zwave', { n: v.n });
+          }
+          break;
+        case 'ctf':
+          if (!game.isHost) {
+            const msgs = {
+              ftaken: t('flagTaken', { name: v.name }), fdrop: t('flagDropped'),
+              fret: t('flagReturned'), fcap: t('flagCaptured', { name: v.name }),
+            };
+            game.feed.push({ text: msgs[v.kind] || '', t: 4 });
+          }
+          break;
         case 'win':
           game.hudFlags.winBanner = t('winner', { name: v.name });
           game.forceGameOver({ winnerUid: v.u, winnerName: v.name });
@@ -257,8 +273,8 @@ export class Room {
       }
     }));
 
-    // ---- bots (team mode) ----
-    if (this.mode === 'team') {
+    // ---- bots (team / zombies / ctf) ----
+    if (teamlike(this.mode)) {
       game.onBotDamage = (id, dmg) => pushTransient('bdmg', { id, dmg, from: FB.uid });
       this._unsubs.push(d.onChildAdded(this._ref('bdmg'), (s) => {
         const v = s.val();
@@ -277,7 +293,7 @@ export class Room {
 
     game.onOver = (results) => {
       if (game.isHost) {
-        if (this.mode === 'team' && results.teamWin !== undefined) {
+        if (teamlike(this.mode) && results.teamWin !== undefined) {
           pushTransient('events', { k: 'over', teamWin: !!results.teamWin });
         }
         d.update(this._ref('meta'), { state: 'ended' }).catch(() => {});
@@ -285,6 +301,15 @@ export class Room {
       }
       if (this._onGameOver) this._onGameOver(results);
     };
+
+    // ---- CTF: host-authoritative flags/score snapshot + banner events ----
+    if (this.mode === 'ctf') {
+      game.onCtfState = (st) => d.set(this._ref('flags'), st).catch(() => {});
+      game.onCtfEvent = (ev) => pushTransient('events', { k: 'ctf', ...ev });
+      this._unsubs.push(d.onValue(this._ref('flags'), (s) => {
+        if (!game.isHost) game.setCtfState(s.val());
+      }));
+    }
 
     // ---- pickups (all modes; host spawns, taker removes) ----
     game.onPickupSpawn = (pk) => d.set(this._ref('pickups/' + pk.id), {
@@ -314,7 +339,11 @@ export class Room {
 
   _startHostLoops() {
     const game = this.game;
-    if (!game || this.mode !== 'team') return;
+    if (!game || !teamlike(this.mode)) return;
+    game.onWave = (n) => {
+      const r = FB.d.push(this._ref('events'), { k: 'wave', n, t: FB.serverNow() });
+      setTimeout(() => FB.d.remove(r).catch(() => {}), 5000);
+    };
     game.onBotShot = (spec) => {
       const r = FB.d.push(this._ref('bshots'), { ...spec, t: FB.serverNow() });
       setTimeout(() => FB.d.remove(r).catch(() => {}), 5000);

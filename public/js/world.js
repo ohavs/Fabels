@@ -97,6 +97,42 @@ export class World {
     }
   }
 
+  // enterable building: four walls with a doorway, walkable flat roof
+  room(x, z, w, d, h, wallColor, roofColor, doorSide = 'z') {
+    const T = 0.35, doorW = 1.5, doorH = 2.3;
+    // north/south walls (along X)
+    for (const [zz, hasDoor] of [[z - d / 2, doorSide === '-z'], [z + d / 2, doorSide === 'z']]) {
+      if (hasDoor) {
+        const seg = (w - doorW) / 2;
+        this.box(x - (doorW + seg) / 2, 0, zz, seg, h, T, wallColor);
+        this.box(x + (doorW + seg) / 2, 0, zz, seg, h, T, wallColor);
+        this.box(x, doorH, zz, doorW, h - doorH, T, wallColor); // lintel
+      } else {
+        this.box(x, 0, zz, w, h, T, wallColor);
+        // window
+        this.box(x, 1.1, zz + (zz > z ? 0.02 : -0.02), 1.4, 1, 0.1, 0x9fd8ef, { collide: false, shadow: false });
+      }
+    }
+    // east/west walls (along Z)
+    for (const [xx, hasDoor] of [[x - w / 2, doorSide === '-x'], [x + w / 2, doorSide === 'x']]) {
+      if (hasDoor) {
+        const seg = (d - doorW) / 2;
+        this.box(xx, 0, z - (doorW + seg) / 2, T, h, seg, wallColor);
+        this.box(xx, 0, z + (doorW + seg) / 2, T, h, seg, wallColor);
+        this.box(xx, doorH, z, T, h - doorH, doorW, wallColor);
+      } else {
+        this.box(xx, 0, z, T, h, d, wallColor);
+        this.box(xx + (xx > x ? 0.02 : -0.02), 1.1, z, 0.1, 1, 1.4, 0x9fd8ef, { collide: false, shadow: false });
+      }
+    }
+    // walkable roof slab + parapet
+    this.box(x, h, z, w + 0.5, 0.3, d + 0.5, roofColor);
+    this.box(x, h + 0.3, z - d / 2 - 0.1, w + 0.5, 0.45, 0.25, roofColor);
+    this.box(x, h + 0.3, z + d / 2 + 0.1, w + 0.5, 0.45, 0.25, roofColor);
+    // interior cover
+    this.crate(x + w / 4, 0, z - d / 4, 0.9);
+  }
+
   house(x, z, w, d, h, wallColor, roofColor, rotY = 0) {
     this.box(x, 0, z, w, h, d, wallColor, { rotY });
     const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.72, h * 0.6, 4), mat(roofColor));
@@ -172,11 +208,22 @@ export class World {
   _town(r) {
     const houseCols = [0xf2d5a0, 0xe8b4b8, 0xbcd8c1, 0xd8d3cd, 0xf4e8c1];
     const roofCols = [0xc0392b, 0x8e5b3a, 0x6b4f9e, 0x3a6b8e];
-    // two rows of houses along a main street
+    // two rows of houses along a main street; two are enterable with roof access
     for (let i = 0; i < 4; i++) {
       const x = -22 + i * 15;
-      this.house(x, -12, 6 + r() * 2, 5.5, 4 + r() * 1.5, houseCols[i % 5], roofCols[i % 4]);
-      this.house(x + 6, 12, 6 + r() * 2, 5.5, 4 + r() * 1.5, houseCols[(i + 2) % 5], roofCols[(i + 1) % 4]);
+      if (i === 1) {
+        this.room(x, -12, 7, 6, 3.6, houseCols[i % 5], roofCols[i % 4], 'z');
+        this.stairs(x + 4.6, 0, -14.8, 'x', 7, 2, 0xa98a6a); // up to the roof
+        this.nav(x, -12, 0); this.nav(x, -12, 3.9);
+      } else {
+        this.house(x, -12, 6 + r() * 2, 5.5, 4 + r() * 1.5, houseCols[i % 5], roofCols[i % 4]);
+      }
+      if (i === 2) {
+        this.room(x + 6, 12, 7.5, 6, 3.6, houseCols[(i + 2) % 5], roofCols[(i + 1) % 4], '-z');
+        this.nav(x + 6, 12, 0);
+      } else {
+        this.house(x + 6, 12, 6 + r() * 2, 5.5, 4 + r() * 1.5, houseCols[(i + 2) % 5], roofCols[(i + 1) % 4]);
+      }
     }
     // street decals
     this.box(0, 0.01, 0, this.size, 0.02, 7, 0x9a9a94, { collide: false, shadow: false });
@@ -240,6 +287,9 @@ export class World {
     for (let i = 0; i < 5; i++) {
       this.box(-20 + i * 10, 0, (r() - 0.5) * 30, 2.2, 1.3, 1.4, 0x5c5c66, { rotY: r() });
     }
+    // enterable mining shack
+    this.room(-18, -10, 6, 5, 3.2, 0x6b5d8f, 0x4a3d63, 'x');
+    this.nav(-18, -10, 0);
     this.spawn(-26, -26); this.spawn(26, 26); this.spawn(-26, 26); this.spawn(26, -26);
     this.spawn(0, -28); this.spawn(0, 28); this.spawn(-28, 0); this.spawn(28, 0);
   }
@@ -296,6 +346,10 @@ export class World {
     this.box(6, 0, -8, 1.6, 6, 1.6, rock2);
     this.box(12, 0, -8, 1.6, 6, 1.6, rock2);
     this.box(9, 6, -8, 8, 1.4, 2, rock);
+    // enterable desert outpost with roof access
+    this.room(14, 8, 7, 6, 3.4, 0xd9a066, 0xa85f33, '-x');
+    this.stairs(18.2, 0, 11.6, 'x', 7, 2, 0xa85f33);
+    this.nav(14, 8, 0); this.nav(14, 8, 3.7);
     // cacti + barrels
     for (let i = 0; i < 8; i++) {
       const x = (r() - 0.5) * 56, z = (r() - 0.5) * 56;

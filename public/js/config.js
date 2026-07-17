@@ -62,6 +62,9 @@ export const WEAPONS = {
   knife:   { dmg: 100, rate: 0.5, mag: Infinity, reload: 0, spread: 0, auto: false, pellets: 1, range: 2.4, hsMult: 1.0, color: 0xffd166, melee: true },
   // bots' fixed weapon
   botgun:  { dmg: 11, rate: 0.42, mag: Infinity, reload: 0, spread: 0.05, auto: true, pellets: 1, range: 55, hsMult: 1.0, color: 0xff5964 },
+  // zombie attacks
+  spit:    { dmg: 12, rate: 1.8, mag: Infinity, reload: 0, spread: 0.02, auto: false, pellets: 1, range: 30, hsMult: 1, color: 0x7fbf4a, projectile: { speed: 14, radius: 0.2, splash: 1.6 } },
+  zmelee:  { dmg: 14, rate: 0.9, mag: Infinity, reload: 0, spread: 0, auto: false, pellets: 1, range: 1.6, hsMult: 1, color: 0x69a24a, melee: true },
 };
 
 // ---- Maps ----------------------------------------------------------------

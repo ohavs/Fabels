@@ -14,11 +14,13 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
+  ZOMBIES, zombieWave, BR, CTF,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
-import { World } from './world.js';
+import { World, mat } from './world.js';
 import { buildCharacter, setCharacterWeapon, animateCharacter, flashCharacter, makeNameSprite, makeHpBar, updateHpBar } from './chars.js';
 import { Effects, ViewModel } from './weapons.js';
+import { attachBrains } from './bots.js';
 import { SFX } from './audio.js';
 import { t } from './i18n.js';
 
@@ -63,7 +65,14 @@ export class Game {
     this.pickups = new Map();          // id → {k, x, y, z, tier?, mesh}
     this.pickupT = PICKUPS.everyMs / 1000;
     this.isLoadout = LOADOUT_MODES.includes(o.mode);
+    this.teamplay = ['team', 'zombies', 'ctf'].includes(o.mode);
+    this.wave = 0;
+    this.waveDelay = 3;
+    this.startAt = o.startAt || Date.now();
     this.me = null;
+
+    if (o.mode === 'br') this._initZone();
+    if (o.mode === 'ctf') this._initCtf();
     this.feed = [];
     this.over = null;
     this.elapsed = 0;
@@ -86,6 +95,9 @@ export class Game {
     this.onPickupTaken = null;
     this.onNadeThrow = null;    // my grenade → remote visual
     this.onEmote = null;
+    this.onWave = null;         // zombies host → net
+    this.onCtfState = null;     // ctf host → net (flags/score snapshot)
+    this.onCtfEvent = null;     // ctf host → net (banner events)
   }
 
   // ---------------- entities ----------------
@@ -132,10 +144,15 @@ export class Game {
     p.yaw = Math.atan2(-(0 - p.x), -(0 - p.z)); // face arena centre
   }
 
-  addLocal(uid, name, skinId, spawnIdx) {
-    const p = this._base(uid, name, skinId, 'p');
+  addLocal(uid, name, skinId, spawnIdx, team = 'p') {
+    const p = this._base(uid, name, skinId, team);
     p.local = true;
-    this._place(p, this._spawnPos(p, spawnIdx ?? 0));
+    if (this.mode === 'ctf' && this.ctf) {
+      const base = this.ctf.bases[team] || this.ctf.bases.r;
+      this._place(p, { x: base.x + (Math.random() - 0.5) * 4, y: base.y, z: base.z + (Math.random() - 0.5) * 4 });
+    } else {
+      this._place(p, this._spawnPos(p, spawnIdx ?? 0));
+    }
     this.players.set(uid, p);
     this.me = p;
     this.viewModel.setWeapon(p.weapon);
@@ -146,8 +163,10 @@ export class Game {
   _makeView(p, isBot) {
     const char = buildCharacter(p.skin);
     char.group.position.set(p.x, p.y, p.z);
-    const skin = SKINS[p.skin] || SKINS.scout;
-    const name = makeNameSprite(p.name, isBot ? '#ff9b9b' : '#ffffff');
+    const nameColor = this.mode === 'ctf'
+      ? (p.team === 'r' ? '#ff6b6b' : '#7db4ff')
+      : isBot ? '#ff9b9b' : '#ffffff';
+    const name = makeNameSprite(p.name, nameColor);
     char.group.add(name);
     const bar = makeHpBar();
     char.group.add(bar.bg, bar.fg);
@@ -156,19 +175,293 @@ export class Game {
     p.view = { char, bar };
   }
 
-  addBot(name, level, spawnIdx) {
+  addBot(name, level, spawnIdx, team = 'b') {
     const uid = 'bot_' + randId(5);
     const skins = Object.keys(SKINS);
-    const p = this._base(uid, name, skins[(Math.random() * skins.length) | 0], 'b');
+    const p = this._base(uid, name, skins[(Math.random() * skins.length) | 0], team);
     const L = BOT_LEVELS[level] || BOT_LEVELS.normal;
     p.maxHp = p.hp = L.hp;
-    p.weapon = 'botgun';
-    p.ammo = Infinity;
+    p.weapon = this.isLoadout ? 'pistol' : 'botgun';
+    if (!this.isLoadout) p.ammo = Infinity;
     p.bot = { level: L, brain: null };
-    this._place(p, this._spawnPos(p, spawnIdx ?? -1));
+    if (this.mode === 'ctf' && this.ctf && this.ctf.bases[team]) {
+      const base = this.ctf.bases[team];
+      this._place(p, { x: base.x + (Math.random() - 0.5) * 5, y: base.y, z: base.z + (Math.random() - 0.5) * 5 });
+    } else {
+      this._place(p, this._spawnPos(p, spawnIdx ?? -1));
+    }
     this.players.set(uid, p);
     this._makeView(p, true);
     return p;
+  }
+
+  // ---------------- zombies ----------------
+  static zombiePalette(kind) {
+    const Z = ZOMBIES[kind];
+    return { body: Z.color, accent: 0x2f3b25, skin: 0x9fb96b };
+  }
+
+  addZombie(kind, waveN) {
+    const Z = ZOMBIES[kind];
+    const uid = 'bot_' + randId(5);
+    const p = this._base(uid, `${t('zombie_' + kind)}-${(Math.random() * 90 + 10) | 0}`, Game.zombiePalette(kind), 'b');
+    p.maxHp = p.hp = Z.hp + waveN * 2;
+    p.weapon = kind === 'spitter' ? 'spit' : 'zmelee';
+    p.ammo = Infinity;
+    p.zscale = Z.scale;
+    p.bot = { zombie: kind, zdef: Z, level: { speed: Z.speed, hp: Z.hp }, brain: null, wish: { x: 0, z: 0 } };
+    // spawn at a random arena edge
+    const S = this.world.size / 2 - 3;
+    const edge = (Math.random() * 4) | 0;
+    const r = (Math.random() - 0.5) * 2 * S;
+    const pos = [[r, -S], [r, S], [-S, r], [S, r]][edge];
+    this._place(p, { x: pos[0], y: 0, z: pos[1] });
+    p.invulnT = 0.5;
+    this.players.set(uid, p);
+    this._makeView(p, true);
+    return p;
+  }
+
+  _zombieWaves(dt) {
+    if (this.over) return;
+    const anyZombie = [...this.players.values()].some((q) => q.bot && q.alive);
+    if (anyZombie) return;
+    this.waveDelay -= dt;
+    if (this.waveDelay > 0) return;
+    this.waveDelay = 4;
+    this.wave++;
+    const list = zombieWave(this.wave);
+    for (const kind of list) this.addZombie(kind, this.wave);
+    attachBrains(this);
+    this.feed.push({ text: t(list.includes('brute') ? 'zbruteIncoming' : 'zwaveIncoming', { n: this.wave }), t: 4 });
+    this.hudFlags.tierBanner = t('zwave', { n: this.wave });
+    SFX.tierUp();
+    if (this.onWave) this.onWave(this.wave);
+  }
+
+  // ---------------- battle royale: shrinking zone ----------------
+  _initZone() {
+    const S = this.world.size;
+    this.zone = { r: S * 0.75, r0: S * 0.75 };
+    const geo = new THREE.CylinderGeometry(1, 1, 44, 48, 1, true);
+    const mat_ = new THREE.MeshBasicMaterial({
+      color: 0x39a0ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false,
+    });
+    this.zone.mesh = new THREE.Mesh(geo, mat_);
+    this.zone.mesh.position.y = 22;
+    this.scene.add(this.zone.mesh);
+    this._zoneWarned = 0;
+  }
+
+  // radius is a pure function of match time → identical on every client
+  _zoneRadius(tSec) {
+    const S = this.world.size;
+    let r = S * 0.75, elapsed = tSec;
+    for (const [wait, shrink, factor] of BR.zonePhases) {
+      const target = S * factor;
+      if (elapsed < wait) return r;
+      elapsed -= wait;
+      if (elapsed < shrink) return lerp(r, target, elapsed / shrink);
+      elapsed -= shrink;
+      r = target;
+    }
+    return r;
+  }
+
+  _updateZone(dt) {
+    if (!this.zone) return;
+    const tSec = Math.max(0, (this.timeFn() - this.startAt) / 1000);
+    const prev = this.zone.r;
+    this.zone.r = this._zoneRadius(tSec);
+    this.zone.mesh.scale.set(this.zone.r, 1, this.zone.r);
+    if (this.zone.r < prev - 0.001 && this.elapsed - this._zoneWarned > 8) {
+      this._zoneWarned = this.elapsed;
+      this.hudFlags.tierBanner = t('zoneShrinking');
+      SFX.wave?.();
+    }
+    // damage everyone I simulate that is outside the circle
+    this._zoneTick = (this._zoneTick || 0) + dt;
+    if (this._zoneTick >= 0.5) {
+      this._zoneTick = 0;
+      for (const q of this.players.values()) {
+        if (!q.alive || q.remote) continue;
+        if (Math.hypot(q.x, q.z) > this.zone.r) {
+          q.invulnT = 0;
+          this._damagePlayer(q, BR.zoneDps * 0.5, 'zone', {});
+          if (q === this.me) this.hudFlags.hurt = 0.4;
+        }
+      }
+    }
+    // last one standing — every client can see this via state sync
+    if (!this.over && this.elapsed > 5) {
+      const alive = [...this.players.values()].filter((q) => q.alive);
+      if (alive.length === 1) {
+        const w = alive[0];
+        this.forceGameOver({ winnerUid: w.uid, winnerName: w.name, brPlace: w === this.me ? 1 : this._brMyPlace });
+      }
+    }
+    // my personal elimination → short delay, then my results
+    if (this._brEndT !== undefined && !this.over) {
+      this._brEndT -= dt;
+      if (this._brEndT <= 0) this.forceGameOver({ brPlace: this._brMyPlace });
+    }
+  }
+
+  spawnBrLoot() {
+    if (this.mode !== 'br') return;
+    for (let i = 0; i < BR.lootCount; i++) this._spawnRandomPickup();
+  }
+
+  brAliveCount() {
+    return [...this.players.values()].filter((q) => q.alive).length;
+  }
+
+  // ---------------- capture the flag ----------------
+  _initCtf() {
+    // two bases: the farthest-apart spawn pair
+    const sp = this.world.spawns;
+    let a = sp[0], b = sp[1], best = 0;
+    for (let i = 0; i < sp.length; i++) for (let j = i + 1; j < sp.length; j++) {
+      const d = (sp[i].x - sp[j].x) ** 2 + (sp[i].z - sp[j].z) ** 2;
+      if (d > best) { best = d; a = sp[i]; b = sp[j]; }
+    }
+    this.ctf = {
+      score: { r: 0, b: 0 },
+      bases: { r: a, b: b },
+      flags: {
+        r: { state: 'base', carrier: null, x: a.x, y: a.y, z: a.z, dropT: 0 },
+        b: { state: 'base', carrier: null, x: b.x, y: b.y, z: b.z, dropT: 0 },
+      },
+    };
+    for (const teamId of ['r', 'b']) {
+      const color = teamId === 'r' ? 0xff4444 : 0x448cff;
+      const g = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), mat(0xcccccc));
+      pole.position.y = 1.3;
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), mat(color, { emissive: color }));
+      cloth.position.set(-0.45, 2.2, 0);
+      g.add(pole, cloth);
+      this.scene.add(g);
+      this.ctf.flags[teamId].mesh = g;
+      // base pad
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.12, 24), mat(color));
+      const base = this.ctf.bases[teamId];
+      pad.position.set(base.x, 0.06 + base.y, base.z);
+      this.scene.add(pad);
+    }
+  }
+
+  myTeam() { return this.me?.team || 'r'; }
+
+  _updateCtf(dt) {
+    if (!this.ctf) return;
+    const authoritative = !this.online || this.isHost;
+    for (const teamId of ['r', 'b']) {
+      const f = this.ctf.flags[teamId];
+      // visual placement
+      if (f.state === 'carried') {
+        const c = this.players.get(f.carrier);
+        if (c && c.alive) {
+          f.x = c.x; f.y = c.y; f.z = c.z;
+        } else if (authoritative) {
+          // carrier died/left → drop
+          f.state = 'dropped'; f.carrier = null; f.dropT = CTF.returnSec;
+          this._ctfEvent('fdrop', teamId);
+        }
+      }
+      f.mesh.position.set(f.x, f.y + (f.state === 'carried' ? 1.2 : 0), f.z);
+      f.mesh.rotation.y += dt;
+
+      if (!authoritative) continue;
+
+      if (f.state === 'dropped') {
+        f.dropT -= dt;
+        if (f.dropT <= 0) this._ctfReturn(teamId);
+      }
+      // touches (humans only, enemy flag → grab; own flag dropped → return)
+      for (const q of this.players.values()) {
+        if (!q.alive || q.bot) continue;
+        const d2 = (q.x - f.x) ** 2 + (q.z - f.z) ** 2;
+        if (d2 > 2.6) continue;
+        if (q.team !== teamId && f.state !== 'carried') {
+          f.state = 'carried'; f.carrier = q.uid; f.dropT = 0;
+          this._ctfEvent('ftaken', teamId, q.name);
+        } else if (q.team === teamId && f.state === 'dropped') {
+          this._ctfReturn(teamId);
+        }
+      }
+      // capture: enemy carrier reaches their own base while their flag is home
+      if (f.state === 'carried') {
+        const c = this.players.get(f.carrier);
+        if (c) {
+          const myBase = this.ctf.bases[c.team];
+          const myFlag = this.ctf.flags[c.team];
+          if (myFlag.state === 'base'
+            && (c.x - myBase.x) ** 2 + (c.z - myBase.z) ** 2 < 4.5) {
+            this.ctf.score[c.team]++;
+            this._ctfReturn(teamId);
+            this._ctfEvent('fcap', teamId, c.name, this.ctf.score);
+            if (this.ctf.score[c.team] >= CTF.captures) {
+              this.forceGameOver({ teamWin: c.team === this.myTeam(), ctfWinner: c.team });
+            }
+          }
+        }
+      }
+    }
+    if (authoritative && this.onCtfState) this._ctfSyncT = (this._ctfSyncT || 0) + dt;
+    if (authoritative && this.onCtfState && this._ctfSyncT > 0.25) {
+      this._ctfSyncT = 0;
+      this.onCtfState(this.getCtfState());
+    }
+    if (authoritative && this.endAt && this.timeFn() >= this.endAt && !this.over) {
+      const s = this.ctf.score;
+      const winner = s.r === s.b ? null : s.r > s.b ? 'r' : 'b';
+      this.forceGameOver({ teamWin: winner ? winner === this.myTeam() : false, ctfWinner: winner });
+    }
+  }
+
+  _ctfReturn(teamId) {
+    const f = this.ctf.flags[teamId];
+    const base = this.ctf.bases[teamId];
+    f.state = 'base'; f.carrier = null;
+    f.x = base.x; f.y = base.y; f.z = base.z;
+    this._ctfEvent('fret', teamId);
+  }
+
+  _ctfEvent(kind, teamId, name = '', score = null) {
+    const msgs = { ftaken: t('flagTaken', { name }), fdrop: t('flagDropped'), fret: t('flagReturned'), fcap: t('flagCaptured', { name }) };
+    this.feed.push({ text: msgs[kind], t: 4 });
+    if (kind === 'fcap') SFX.tierUp();
+    if (this.onCtfEvent && (!this.online || this.isHost)) this.onCtfEvent({ kind, teamId, name });
+  }
+
+  getCtfState() {
+    const out = { score: this.ctf.score };
+    for (const teamId of ['r', 'b']) {
+      const f = this.ctf.flags[teamId];
+      out[teamId] = { s: f.state, c: f.carrier, x: +f.x.toFixed(1), y: +f.y.toFixed(1), z: +f.z.toFixed(1), dt: +f.dropT.toFixed(1) };
+    }
+    return out;
+  }
+
+  setCtfState(st) {
+    if (!this.ctf || !st) return;
+    this.ctf.score = st.score || this.ctf.score;
+    for (const teamId of ['r', 'b']) {
+      const f = this.ctf.flags[teamId], v = st[teamId];
+      if (!v) continue;
+      f.state = v.s; f.carrier = v.c || null; f.dropT = v.dt || 0;
+      if (f.state !== 'carried') { f.x = v.x; f.y = v.y; f.z = v.z; }
+    }
+  }
+
+  // zombie melee swipe (host/offline); spitters go through _tryFire
+  zombieAttack(p, target) {
+    const Z = p.bot.zdef;
+    if (p.weapon === 'spit') { this._tryFire(p); return; }
+    this.fx.impact(V1.set(target.x, target.y + 1.2, target.z), 0x7fbf4a, 8, 3);
+    if (this._near(target, 40)) SFX.hit();
+    this._damagePlayer(target, Z.dmg, p.uid, {});
   }
 
   upsertRemote(uid, st) {
@@ -196,6 +489,7 @@ export class Game {
     p.hp = st.hp; p.maxHp = st.maxHp || 100;
     p.armor = st.ar || 0;
     p.stance = st.st || 0;
+    if (st.tm) p.team = st.tm;
     p.tier = st.tier || 0;
     if (st.w && st.w !== p.weapon) {
       p.weapon = st.w;
@@ -245,7 +539,7 @@ export class Game {
           if (p === this.me) SFX.reloadDone();
         }
       }
-      if (!p.alive && !p.remote) {
+      if (!p.alive && !p.remote && this.mode !== 'br') {
         p.respawnT -= dt;
         if (p.respawnT <= 0 && !this.over) this._respawn(p);
       }
@@ -256,6 +550,9 @@ export class Game {
       else if (p.local) this._localStep(p, dt);
     }
 
+    if (this.mode === 'zombies' && (!this.online || this.isHost)) this._zombieWaves(dt);
+    if (this.mode === 'br') this._updateZone(dt);
+    if (this.mode === 'ctf') this._updateCtf(dt);
     this._updateProjectiles(dt);
     this._updateGrenades(dt);
     this._updatePickups(dt);
@@ -322,6 +619,7 @@ export class Game {
       this._wasSprinting = sprinting;
       if (p.ads) speed *= GAME.adsMoveMult;
       if (p.buffSpeedT > 0) speed *= 1.14;
+      if (this.ctf && (this.ctf.flags.r.carrier === p.uid || this.ctf.flags.b.carrier === p.uid)) speed *= CTF.carrierSlow;
 
       if (input.consumeJump() && p.grounded) {
         if (p.stance !== 0 && p.slideT <= 0) { p.stance = 0; input.crouchHeld = input.touchMode ? false : input.crouchHeld; }
@@ -359,7 +657,7 @@ export class Game {
     const w = WEAPONS[p.weapon];
     for (const q of this.players.values()) {
       if (q === p || !q.alive || q.invulnT > 0) continue;
-      if (this.mode === 'team' && q.team === p.team) continue;
+      if (this.teamplay && q.team === p.team) continue;
       const dx = q.x - p.x, dy = (q.y + 1.1) - (p.y + GAME.eyeHeight), dz = q.z - p.z;
       const d = Math.hypot(dx, dy, dz);
       if (d > w.range || d < 0.5) continue;
@@ -579,7 +877,7 @@ export class Game {
     let hitP = null, hitT = tWall, headshot = false;
     for (const q of this.players.values()) {
       if (q === p || !q.alive || q.invulnT > 0) continue;
-      if (this.mode === 'team' && q.team === p.team) continue;
+      if (this.teamplay && q.team === p.team) continue;
       // three-sphere body approximation, squashed when crouching/sliding
       const hs2 = 1 - Math.min(1, q.crouchK) * 0.3;
       const spheres = [
@@ -612,7 +910,7 @@ export class Game {
     let best = null, bestD = w.range;
     for (const q of this.players.values()) {
       if (q === p || !q.alive || q.invulnT > 0) continue;
-      if (this.mode === 'team' && q.team === p.team) continue;
+      if (this.teamplay && q.team === p.team) continue;
       const dx = q.x - p.x, dz = q.z - p.z;
       const d = Math.hypot(dx, dz);
       if (d > w.range || Math.abs(q.y - p.y) > 1.6) continue;
@@ -642,7 +940,7 @@ export class Game {
         if (!exploded) {
           for (const q of this.players.values()) {
             if (q.uid === pr.owner || !q.alive) continue;
-            if (this.mode === 'team' && q.team === pr.team) continue;
+            if (this.teamplay && q.team === pr.team) continue;
             if ((q.x - pr.x) ** 2 + (q.y + 0.9 - pr.y) ** 2 + (q.z - pr.z) ** 2 < 0.8) { exploded = true; break; }
           }
         }
@@ -664,7 +962,7 @@ export class Game {
     const owner = this.players.get(pr.owner);
     for (const q of this.players.values()) {
       if (!q.alive || q.uid === pr.owner || q.invulnT > 0) continue;
-      if (this.mode === 'team' && owner && q.team === owner.team) continue;
+      if (this.teamplay && owner && q.team === owner.team) continue;
       const d = Math.hypot(q.x - pr.x, q.y + 0.9 - pr.y, q.z - pr.z);
       if (d < splash) {
         const dmg = pr.w.dmg * (1 - (d / splash) * 0.7);
@@ -951,6 +1249,13 @@ export class Game {
     const killer = this.players.get(fromUid);
     const killerName = killer ? killer.name : '?';
 
+    // battle royale: my elimination is final — queue my personal results
+    if (this.mode === 'br' && q === this.me && !this.over) {
+      this._brMyPlace = this.brAliveCount() + 1;
+      this._brEndT = 2.2;
+      this.hudFlags.winBanner = t('brDead', { n: this._brMyPlace });
+    }
+
     if (!this.online) {
       this.feed.push({ text: t(mel ? 'killKnife' : 'kill', { a: killerName, b: q.name }), t: 5 });
       if (killer && killer !== q) this._creditLocal(killer, q, mel);
@@ -1004,7 +1309,7 @@ export class Game {
 
   _advanceTier(p) {
     p.tier++;
-    if (this.mode === 'gungame' && p.tier >= WEAPON_LADDER.length) {
+    if ((this.mode === 'gungame' || this.mode === 'duel') && p.tier >= WEAPON_LADDER.length) {
       if (p === this.me && this.onWin) this.onWin();
       this.forceGameOver({ winnerUid: p.uid, winnerName: p.name });
       return;
@@ -1070,7 +1375,8 @@ export class Game {
       if (!p.bot) continue;
       out[p.uid] = {
         n: p.name, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
-        yaw: +p.yaw.toFixed(2), hp: Math.round(p.hp), m: p.maxHp, a: p.alive ? 1 : 0, s: p.skin,
+        yaw: +p.yaw.toFixed(2), hp: Math.round(p.hp), m: p.maxHp, a: p.alive ? 1 : 0,
+        s: typeof p.skin === 'string' ? p.skin : null, zk: p.bot.zombie || null,
       };
     }
     return out;
@@ -1085,9 +1391,11 @@ export class Game {
     for (const [uid, s] of Object.entries(snap)) {
       let p = this.players.get(uid);
       if (!p) {
-        p = this._base(uid, s.n, s.s || 'ember', 'b');
-        p.bot = { level: BOT_LEVELS[this.botLevel], brain: null };
-        p.weapon = 'botgun';
+        const skin = s.zk ? Game.zombiePalette(s.zk) : (s.s || 'ember');
+        p = this._base(uid, s.n, skin, 'b');
+        p.bot = { zombie: s.zk || null, zdef: s.zk ? ZOMBIES[s.zk] : null, level: BOT_LEVELS[this.botLevel], brain: null };
+        p.weapon = s.zk ? 'zmelee' : 'botgun';
+        if (s.zk) p.zscale = ZOMBIES[s.zk].scale;
         p.remote = false;
         p.x = p.netX = s.x; p.y = p.netY = s.y; p.z = p.netZ = s.z;
         this.players.set(uid, p);
@@ -1122,7 +1430,8 @@ export class Game {
       if (!p.alive) continue;
       // crouch/slide squash follows the synced stance
       p.crouchK = lerp(p.crouchK, p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0, 0.2);
-      char.group.scale.y = 1 - Math.min(1, p.crouchK) * 0.3;
+      const zs = p.zscale || 1;
+      char.group.scale.set(zs, zs * (1 - Math.min(1, p.crouchK) * 0.3), zs);
       char.group.position.set(p.x, p.y, p.z);
       char.group.rotation.y = p.yaw + Math.PI;
       const sp = p.remote || (p.bot && this.online && !this.isHost)
@@ -1154,10 +1463,17 @@ export class Game {
 
   _checkEnd() {
     if (this.over) return;
-    if (this.mode === 'team' && (!this.online || this.isHost)) {
+    const authoritative = !this.online || this.isHost;
+    if (this.mode === 'team' && authoritative) {
       if (this.teamScore >= this.targetKills || this.botScore >= this.targetKills
         || (this.endAt && this.timeFn() >= this.endAt)) {
         this.forceGameOver({ teamWin: this.teamScore >= this.botScore });
+      }
+    }
+    if (this.mode === 'zombies' && authoritative && this.wave > 0) {
+      const humans = [...this.players.values()].filter((q) => !q.bot);
+      if (humans.length && humans.every((q) => !q.alive)) {
+        this.forceGameOver({ teamWin: false });
       }
     }
   }
@@ -1171,8 +1487,11 @@ export class Game {
     this.over = {
       mode: this.mode,
       placements,
+      wave: this.wave,
       teamScore: this.teamScore,
       botScore: this.botScore,
+      ctfScoreR: this.ctf?.score.r, ctfScoreB: this.ctf?.score.b,
+      brOf: this.mode === 'br' ? Math.max(BR.combatants, this.players.size) : undefined,
       winnerName: extra.winnerName || (placements[0] && placements[0].name),
       win: extra.winnerUid ? extra.winnerUid === this.me?.uid
         : extra.teamWin !== undefined ? extra.teamWin
@@ -1189,7 +1508,7 @@ export class Game {
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2),
       hp: Math.round(p.hp), maxHp: p.maxHp, alive: p.alive, ar: Math.round(p.armor),
-      tier: p.tier, w: p.weapon, st: p.stance,
+      tier: p.tier, w: p.weapon, st: p.stance, tm: p.team,
       kills: p.kills, deaths: p.deaths, score: p.score,
     };
   }
