@@ -236,12 +236,16 @@ export function updateHUD(game, input) {
   $('hud-score').textContent = me.score;
   $('hud-kills').textContent = me.kills;
 
-  // hp
+  // hp + armor
   const frac = clamp(me.hp / me.maxHp, 0, 1);
   const fill = $('hud-hp-fill');
   fill.style.width = `${frac * 100}%`;
   fill.classList.toggle('low', frac < 0.3);
+  $('hud-armor-fill').style.width = `${clamp(me.armor / 100, 0, 1) * 100}%`;
   $('hud-hp-text').textContent = Math.max(0, Math.round(me.hp));
+  $('hud-nades').textContent = `💣 ×${me.nades}`;
+
+  drawMinimap(game);
 
   // weapon
   $('hud-weapon-name').textContent = t('weapon_' + me.weapon);
@@ -295,6 +299,72 @@ export function updateHUD(game, input) {
   if (showSb) renderScoreboard(game);
 }
 
+// ---------------- minimap / radar ----------------
+let mmBaked = null;
+let mmBakedFor = '';
+
+function bakeMinimap(game) {
+  const S = game.world.size;
+  const c = document.createElement('canvas');
+  c.width = c.height = 120;
+  const x = c.getContext('2d');
+  x.fillStyle = 'rgba(12, 6, 36, 0.85)';
+  x.fillRect(0, 0, 120, 120);
+  x.fillStyle = 'rgba(160, 150, 220, 0.4)';
+  const k = 120 / S;
+  for (const b of game.world.colliders) {
+    const w = (b.x1 - b.x0) * k, h = (b.z1 - b.z0) * k;
+    if (w > 100 || h > 100) continue; // skip border walls
+    x.fillRect((b.x0 + S / 2) * k, (b.z0 + S / 2) * k, Math.max(1.5, w), Math.max(1.5, h));
+  }
+  x.strokeStyle = 'rgba(0, 213, 255, 0.7)';
+  x.lineWidth = 2;
+  x.strokeRect(1, 1, 118, 118);
+  mmBaked = c;
+  mmBakedFor = game.mapId + game.world.size;
+}
+
+function drawMinimap(game) {
+  const cv = $('minimap');
+  const x = cv.getContext('2d');
+  if (!mmBaked || mmBakedFor !== game.mapId + game.world.size) bakeMinimap(game);
+  x.clearRect(0, 0, 120, 120);
+  x.drawImage(mmBaked, 0, 0);
+  const S = game.world.size, k = 120 / S;
+  const px = (v) => (v + S / 2) * k;
+
+  // pickups
+  x.fillStyle = 'rgba(255, 210, 0, 0.8)';
+  for (const pk of game.pickups.values()) x.fillRect(px(pk.x) - 1.5, px(pk.z) - 1.5, 3, 3);
+
+  for (const p of game.players.values()) {
+    if (!p.alive || p === game.me) continue;
+    const sameTeam = game.mode !== 'gungame' && game.mode !== 'duel' && game.mode !== 'br' && p.team === game.me?.team;
+    const isEnemyBot = !!p.bot;
+    // enemies show on the radar only when they fired recently (or PvE bots always)
+    const ping = game.elapsed - (p.lastShotAt || -99) < 3;
+    if (!sameTeam && !isEnemyBot && !ping) continue;
+    x.fillStyle = sameTeam ? '#3dff8b' : '#ff5252';
+    x.beginPath();
+    x.arc(px(p.x), px(p.z), sameTeam ? 2.6 : 3, 0, Math.PI * 2);
+    x.fill();
+  }
+
+  // me: white arrow rotated by yaw
+  const me = game.me;
+  if (me) {
+    x.save();
+    x.translate(px(me.x), px(me.z));
+    x.rotate(-me.yaw);
+    x.fillStyle = '#ffffff';
+    x.beginPath();
+    x.moveTo(0, -5); x.lineTo(3.4, 4); x.lineTo(-3.4, 4);
+    x.closePath();
+    x.fill();
+    x.restore();
+  }
+}
+
 function renderScoreboard(game) {
   const rows = [...game.players.values()]
     .sort((a, b) => b.tier - a.tier || b.kills - a.kills);
@@ -332,6 +402,8 @@ export function bindHUD(input, { onExit, onChat }) {
     input.aiming = !input.aiming;
     $('btn-aim').classList.toggle('on', input.aiming);
   });
+  hold($('btn-nade'), () => { input.wantNade = true; });
+  hold($('btn-emote'), () => { input.wantEmote = true; });
   hold($('btn-score'), () => { sbToggle = !sbToggle; });
   hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
   for (const b of $('chat-panel').querySelectorAll('button')) {

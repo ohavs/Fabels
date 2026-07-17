@@ -225,6 +225,8 @@ export class Room {
       pushTransient('events', { k: 'kill', a: fromUid, an: killerName, b: botUid, bn: botName, mel: !!mel, vb: true });
     game.onChat = (idx) => pushTransient('events', { k: 'chat', u: FB.uid, c: idx });
     game.onWin = () => pushTransient('events', { k: 'win', u: FB.uid, name: game.me.name });
+    game.onNadeThrow = (spec) => pushTransient('events', { k: 'nade', u: FB.uid, ...spec });
+    game.onEmote = () => pushTransient('events', { k: 'emote', u: FB.uid });
 
     this._unsubs.push(d.onChildAdded(this._ref('events'), (s) => {
       const v = s.val();
@@ -238,6 +240,12 @@ export class Room {
           break;
         case 'chat':
           game.showChat(v.u, QUICK_CHAT[v.c] || 'gg');
+          break;
+        case 'nade':
+          if (v.u !== FB.uid) game.applyRemoteNade(v);
+          break;
+        case 'emote':
+          if (v.u !== FB.uid) game.applyEmote(v.u);
           break;
         case 'win':
           game.hudFlags.winBanner = t('winner', { name: v.name });
@@ -277,6 +285,19 @@ export class Room {
       }
       if (this._onGameOver) this._onGameOver(results);
     };
+
+    // ---- pickups (all modes; host spawns, taker removes) ----
+    game.onPickupSpawn = (pk) => d.set(this._ref('pickups/' + pk.id), {
+      k: pk.k, x: pk.x, y: pk.y, z: pk.z, tier: pk.tier ?? 0, w: pk.w ?? null,
+    }).catch(() => {});
+    game.onPickupTaken = (id) => d.remove(this._ref('pickups/' + id)).catch(() => {});
+    this._unsubs.push(d.onChildAdded(this._ref('pickups'), (s) => {
+      const v = s.val();
+      if (v) game.addPickup({ id: s.key, ...v });
+    }));
+    this._unsubs.push(d.onChildRemoved(this._ref('pickups'), (s) => {
+      game.removePickup(s.key);
+    }));
 
     if (game.isHost) this._startHostLoops();
 

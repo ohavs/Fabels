@@ -116,6 +116,61 @@ export const STR = {
   // errors
   netError: 'שגיאת רשת — בדקו את החיבור',
   onlineNeedsFirebase: 'מצב מקוון דורש הגדרת Firebase (ראו README)',
+
+  // pickups & combat pack
+  pickup_hp: 'ערכת חיים',
+  pickup_armor: 'שריון',
+  pickup_nade: 'רימון',
+  pickup_weapon: 'תיבת נשק',
+  gotWeapon: 'נשק חדש: {w}!',
+  streak3: '🔥 רצף 3! מהירות מוגברת!',
+  streak5: '🛡️ רצף 5! שריון בונוס!',
+  streak7: '⚔️ רצף 7! נזק כפול!',
+  nades: 'רימונים',
+
+  // new modes
+  mode_duel: 'דו-קרב 1v1',
+  mode_zombies: 'מתקפת זומבים',
+  mode_ctf: 'כיבוש הדגל',
+  mode_br: 'באטל רויאל',
+  lobbyTitle_duel: 'לובי — דו-קרב',
+  lobbyTitle_zombies: 'לובי — מתקפת זומבים',
+  lobbyTitle_ctf: 'לובי — כיבוש הדגל',
+  lobbyTitle_br: 'לובי — באטל רויאל',
+  duelTarget: 'הראשון שמסיים את סולם הנשקים מנצח',
+
+  // zombies
+  zombie_walker: 'הולך',
+  zombie_runner: 'רץ',
+  zombie_spitter: 'יורק',
+  zombie_brute: 'ענק',
+  zwave: 'גל {n}',
+  zwaveIncoming: 'גל {n} מגיע!',
+  zbruteIncoming: 'ענק מתקרב!!',
+  zSurvived: 'שרדתם {n} גלים',
+
+  // ctf
+  ctfScore: '🔴 {r} — {b} 🔵',
+  flagTaken: '{name} לקח את הדגל!',
+  flagDropped: 'הדגל נפל!',
+  flagReturned: 'הדגל חזר לבסיס',
+  flagCaptured: '{name} כבש את הדגל! 🏁',
+  yourTeamRed: 'אתם בקבוצה האדומה 🔴',
+  yourTeamBlue: 'אתם בקבוצה הכחולה 🔵',
+  ctfWin: 'הקבוצה שלכם ניצחה! 🏁',
+  ctfLose: 'הקבוצה היריבה ניצחה…',
+
+  // battle royale
+  zoneShrinking: '⚠️ האזור מתכווץ!',
+  zoneDamage: 'אתם מחוץ לאזור!',
+  brAlive: '{n} שורדים',
+  brWin: '🏆 ניצחון מלכותי!',
+  brPlace: 'מקום {n} מתוך {of}',
+  brDead: 'חוסלתם — מקום {n}',
+
+  // emotes
+  emote: 'ריקוד',
+  emoted: '{name} רוקד! 🕺',
 };
 
 export function t(key, params) {

@@ -22,6 +22,8 @@ export class Input {
     this.crouchHeld = false;        // desktop hold; mobile toggle writes this too
     this.wantJump = false;
     this.wantReload = false;
+    this.wantNade = false;
+    this.wantEmote = false;
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;
@@ -43,6 +45,8 @@ export class Input {
   }
   consumeJump()   { const v = this.wantJump;   this.wantJump = false;   return v; }
   consumeReload() { const v = this.wantReload; this.wantReload = false; return v; }
+  consumeNade()   { const v = this.wantNade;   this.wantNade = false;   return v; }
+  consumeEmote()  { const v = this.wantEmote;  this.wantEmote = false;  return v; }
   consumeChat()   { const v = this.wantChat;   this.wantChat = -1;      return v; }
 
   requestLock() {
@@ -68,6 +72,8 @@ export class Input {
       this._keys.add(e.code);
       if (e.code === 'Space') { e.preventDefault(); this.wantJump = true; }
       if (e.code === 'KeyR') this.wantReload = true;
+      if (e.code === 'KeyG') this.wantNade = true;
+      if (e.code === 'KeyB') this.wantEmote = true;
       const n = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
       if (n !== undefined) this.wantChat = n;
     });

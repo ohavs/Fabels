@@ -73,6 +73,119 @@ const GUNS = {
   botgun:  () => { noise({ dur: 0.07, vol: 0.3, f: 2000 }); tone({ type: 'triangle', f0: 300, f1: 130, dur: 0.06, vol: 0.2 }); },
 };
 
+// ============================================================
+// Generative music — chord pads + arps (menu) / kick-bass pulse
+// (battle). Fully synthesized, seamless loop via beat scheduler.
+// ============================================================
+let musicOn = true;
+let musicGain = null;
+let musicTimer = null;
+let beat = 0;
+
+export function setMusicEnabled(v) {
+  musicOn = v;
+  if (!v) stopMusic();
+}
+export function musicEnabled() { return musicOn; }
+
+function mNote(f, t0, dur, type = 'sawtooth', vol = 0.09, glideTo = 0) {
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  const flt = ctx.createBiquadFilter();
+  flt.type = 'lowpass';
+  flt.frequency.value = 1400;
+  o.type = type;
+  o.frequency.setValueAtTime(f, t0);
+  if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(flt).connect(g).connect(musicGain);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+
+function mKick(t0) {
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(140, t0);
+  o.frequency.exponentialRampToValueAtTime(38, t0 + 0.12);
+  g.gain.setValueAtTime(0.5, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+  o.connect(g).connect(musicGain);
+  o.start(t0); o.stop(t0 + 0.2);
+}
+
+function mHat(t0, vol = 0.07) {
+  const len = Math.floor(ctx.sampleRate * 0.05);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const f = ctx.createBiquadFilter();
+  f.type = 'highpass'; f.frequency.value = 7000;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+  src.connect(f).connect(g).connect(musicGain);
+  src.start(t0);
+}
+
+// A-minor-ish progression: Am F C G (semitone offsets from A2 = 110Hz)
+const PROG = [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]];
+const hz = (semi, oct = 0) => 110 * Math.pow(2, (semi + oct * 12) / 12);
+
+export function startMusic(kind = 'menu') {
+  if (!musicOn || !ensureCtx()) return;
+  stopMusic();
+  musicGain = ctx.createGain();
+  musicGain.gain.value = kind === 'menu' ? 0.5 : 0.42;
+  musicGain.connect(master);
+  beat = 0;
+  const bpm = kind === 'menu' ? 92 : 128;
+  const beatSec = 60 / bpm;
+
+  musicTimer = setInterval(() => {
+    if (!ctx || !musicGain) return;
+    const t0 = ctx.currentTime + 0.06;
+    const bar = Math.floor(beat / 4) % 4;
+    const chord = PROG[bar];
+    const inBar = beat % 4;
+
+    if (kind === 'menu') {
+      if (inBar === 0) for (const s of chord) mNote(hz(s, 1), t0, beatSec * 3.6, 'triangle', 0.06);
+      const arp = chord[(beat * 2) % 3];
+      mNote(hz(arp, 2), t0, beatSec * 0.5, 'sine', 0.05);
+      mNote(hz(arp, 2), t0 + beatSec * 0.5, beatSec * 0.4, 'sine', 0.035);
+      if (inBar === 0) mNote(hz(chord[0], -1), t0, beatSec * 3.8, 'sine', 0.09);
+    } else {
+      mKick(t0);
+      if (inBar % 2 === 1) mKick(t0 + beatSec * 0.5);
+      mHat(t0 + beatSec * 0.5);
+      mHat(t0 + beatSec * 0.75, 0.04);
+      mNote(hz(chord[0], -1), t0, beatSec * 0.45, 'sawtooth', 0.1);
+      mNote(hz(chord[0], -1), t0 + beatSec * 0.5, beatSec * 0.3, 'sawtooth', 0.07);
+      if (inBar === 2) mNote(hz(chord[2], 1), t0, beatSec * 0.8, 'square', 0.03);
+      if (bar === 3 && inBar === 3) mNote(hz(chord[0], 2), t0, beatSec * 0.9, 'sawtooth', 0.045, hz(chord[0], 1));
+    }
+    beat++;
+  }, beatSec * 1000);
+}
+
+export function stopMusic() {
+  clearInterval(musicTimer);
+  musicTimer = null;
+  if (musicGain) {
+    try {
+      musicGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      const g = musicGain;
+      setTimeout(() => g.disconnect(), 500);
+    } catch { /* ignore */ }
+    musicGain = null;
+  }
+}
+
 export const SFX = {
   shoot(w) { (GUNS[w] || GUNS.pistol)(); },
   reload()   { tone({ type: 'square', f0: 500, f1: 300, dur: 0.05, vol: 0.2 }); tone({ type: 'square', f0: 350, f1: 550, dur: 0.06, vol: 0.2, delay: 0.14 }); },

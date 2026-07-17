@@ -383,6 +383,18 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
   left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px;
 }
+.hp-col { display: flex; flex-direction: column; gap: 3px; }
+.armor-track {
+  width: min(36vw, 210px); height: 7px; background: rgba(0, 0, 0, 0.65);
+  border: 2px solid var(--line); border-radius: 4px; overflow: hidden; transform: skewX(var(--skew));
+}
+#hud-armor-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #7dd3fc); transition: width 0.15s; }
+.hud-nades { font-weight: 900; font-size: 0.8rem; color: var(--muted); direction: ltr; }
+#minimap {
+  position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 52px); left: 66px;
+  width: 120px; height: 120px; border-radius: 10px; opacity: 0.92; pointer-events: none;
+}
+.tb-nade { right: 42px; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 260px); }
 .hp-track {
   width: min(36vw, 210px); height: 14px; background: rgba(0, 0, 0, 0.65);
   border: 2px solid var(--line); border-radius: 4px; overflow: hidden; transform: skewX(var(--skew));

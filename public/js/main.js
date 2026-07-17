@@ -16,7 +16,10 @@ import { Game } from './game.js';
 import { createRenderer } from './world.js';
 import { Room } from './net.js';
 import { attachBrains, botName } from './bots.js';
-import { SFX, unlockAudio, setSoundEnabled, soundEnabled } from './audio.js';
+import {
+  SFX, unlockAudio, setSoundEnabled, soundEnabled,
+  startMusic, stopMusic, setMusicEnabled, musicEnabled,
+} from './audio.js';
 import * as UI from './ui.js';
 
 const $ = UI.$;
@@ -38,7 +41,10 @@ const state = {
 // ---------------- boot ----------------
 async function boot() {
   loadSettings();
-  document.addEventListener('pointerdown', unlockAudio, { once: true });
+  document.addEventListener('pointerdown', () => {
+    unlockAudio();
+    if (!state.game) startMusic('menu');   // browsers need a gesture before audio
+  }, { once: true });
 
   UI.setLoadStatus(t('connecting'));
   const online = await initFirebase();
@@ -140,16 +146,24 @@ function wireMenu() {
     saveSettings();
     SFX.click();
   });
+  $('btn-music').addEventListener('click', () => {
+    setMusicEnabled(!musicEnabled());
+    $('btn-music').classList.toggle('off', !musicEnabled());
+    if (musicEnabled()) startMusic(state.game ? 'battle' : 'menu');
+    saveSettings();
+    SFX.click();
+  });
 }
 
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (s.sound === false) { setSoundEnabled(false); $('btn-sound').textContent = '🔇'; $('btn-sound').classList.add('off'); }
+    if (s.music === false) { setMusicEnabled(false); $('btn-music').classList.add('off'); }
   } catch { /* defaults */ }
 }
 function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ sound: soundEnabled() })); } catch { /* ignore */ }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ sound: soundEnabled(), music: musicEnabled() })); } catch { /* ignore */ }
 }
 
 const lobbyInfo = () => ({ name: profile.name, skin: profile.skin, lvl: playerLevel() });
@@ -314,6 +328,7 @@ function startLoop(game) {
     }).catch(() => {});
   }
   state.lastTs = performance.now();
+  startMusic('battle');
 
   const frame = (ts) => {
     const dt = Math.min(0.1, (ts - state.lastTs) / 1000) || 0.016;
@@ -336,6 +351,7 @@ function stopLoop() {
 async function exitMatch() {
   SFX.click();
   stopLoop();
+  startMusic('menu');
   if (state.room) { await state.room.leave(); state.room = null; }
   state.game?.dispose();
   state.game = null;
@@ -375,6 +391,7 @@ function finishMatch(results) {
 
     UI.renderResults(results, rw);
     UI.showScreen('results');
+    startMusic('menu');
     results.win ? SFX.win() : SFX.lose();
     if (fx.levelUp) UI.toast(t('levelUp', { n: fx.levelUp }), 'gold');
     if (fx.rankUp) UI.toast(t('rankUp', { rank: t('rank_' + fx.rankUp) }), 'gold');

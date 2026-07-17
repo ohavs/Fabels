@@ -113,3 +113,77 @@ export const rewardsTeam = (kills, won) => ({
 });
 
 export const QUICK_CHAT = ['gg', 'help', 'attack', 'nice'];
+
+// ---- Grenades ---------------------------------------------------------------
+export const GRENADE = { dmg: 82, radius: 5, fuse: 1.15, speed: 17, upVel: 5, cd: 0.9, start: 1, max: 3 };
+
+// ---- Armor ------------------------------------------------------------------
+export const ARMOR_MAX = 100;
+
+// ---- Pickups ----------------------------------------------------------------
+// weight = relative spawn chance; weapon crates only in loadout modes
+export const PICKUPS = {
+  everyMs: 7000,
+  max: 8,
+  kinds: {
+    hp:     { weight: 3, amount: 40 },
+    armor:  { weight: 2, amount: 50 },
+    nade:   { weight: 2, amount: 1 },
+    weapon: { weight: 3 },
+  },
+};
+// modes where you start with a pistol and loot weapons from crates
+export const LOADOUT_MODES = ['zombies', 'br', 'ctf'];
+export const CRATE_TIERS = [
+  { weapons: ['smg', 'shotgun'], color: 0x9db4c8, weight: 5 },   // common
+  { weapons: ['rifle', 'lmg'],   color: 0x57c4e5, weight: 3 },   // rare
+  { weapons: ['sniper', 'plasma'], color: 0xc084fc, weight: 2 }, // epic
+];
+
+// ---- Killstreaks ------------------------------------------------------------
+export const KILLSTREAKS = [
+  { at: 3, k: 'speed', dur: 20, mult: 1.14 },
+  { at: 5, k: 'armor', amount: 50 },
+  { at: 7, k: 'dmg', dur: 15, mult: 1.4 },
+];
+
+// ---- Zombies ----------------------------------------------------------------
+export const ZOMBIES = {
+  walker: { hp: 60,  speed: 2.6, dmg: 14, range: 1.5, rate: 0.9, score: 10, scale: 1,    color: 0x69a24a },
+  runner: { hp: 35,  speed: 5.4, dmg: 10, range: 1.4, rate: 0.7, score: 15, scale: 0.85, color: 0x9bc95a },
+  spitter:{ hp: 45,  speed: 3.0, dmg: 12, range: 11,  rate: 1.8, score: 20, scale: 0.95, color: 0x4aa284 },
+  brute:  { hp: 320, speed: 1.9, dmg: 30, range: 1.9, rate: 1.3, score: 60, scale: 1.45, color: 0x3e6b34 },
+};
+export const zombieWave = (n) => {
+  const list = [];
+  let budget = 5 + n * 3;
+  const pool = n < 2 ? ['walker'] : n < 4 ? ['walker', 'runner'] : ['walker', 'runner', 'spitter'];
+  while (budget > 0) {
+    const k = pool[(Math.random() * pool.length) | 0];
+    list.push(k);
+    budget -= k === 'walker' ? 2 : 3;
+  }
+  if (n % 4 === 0 && n > 0) list.push('brute');
+  return list.slice(0, 14); // cap concurrent horde size
+};
+export const rewardsZombies = (wave, kills) => ({ xp: wave * 15 + kills * 3, shards: wave * 8 + kills });
+
+// ---- Duel -------------------------------------------------------------------
+export const DUEL = { maxPlayers: 2 };
+
+// ---- CTF --------------------------------------------------------------------
+export const CTF = { captures: 3, timeSec: 360, teamSize: 3, returnSec: 20, carrierSlow: 0.9 };
+
+// ---- Battle Royale ----------------------------------------------------------
+export const BR = {
+  combatants: 8,             // humans + bot fill
+  zonePhases: [              // [delay s, shrink s, radius factor of map size]
+    [20, 20, 0.38], [15, 18, 0.26], [12, 15, 0.16], [10, 12, 0.08], [8, 10, 0.02],
+  ],
+  zoneDps: 6,
+  lootCount: 14,
+};
+export const rewardsBr = (place, kills, of) => ({
+  xp: 30 + kills * 12 + Math.max(0, (of - place)) * 10 + (place === 1 ? 70 : 0),
+  shards: 10 + kills * 6 + (place === 1 ? 60 : place <= 3 ? 25 : 0),
+});

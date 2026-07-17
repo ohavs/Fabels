@@ -74,10 +74,27 @@ export function setCharacterWeapon(char, weaponId) {
   char.gunAnchor.add(gun);
 }
 
-// limb swing while moving, arms aim-ish pose, hit flash decay
-export function animateCharacter(char, dt, speed, grounded) {
-  const moving = speed > 0.6;
+// limb swing while moving, arms aim-ish pose, dance emote, hit flash decay
+export function animateCharacter(char, dt, speed, grounded, dancing = false) {
   char.animT += dt * (4 + speed * 1.6);
+  if (dancing) {
+    // flossy arm-wave dance
+    const d = char.animT * 2.2;
+    char.shL.rotation.x = -2.6 + Math.sin(d) * 0.8;
+    char.shR.rotation.x = -2.6 + Math.sin(d + Math.PI) * 0.8;
+    char.shL.rotation.z = Math.sin(d) * 0.6;
+    char.shR.rotation.z = -Math.sin(d) * 0.6;
+    char.hipL.rotation.x = Math.sin(d) * 0.35;
+    char.hipR.rotation.x = -Math.sin(d) * 0.35;
+    char.head.rotation.z = Math.sin(d * 2) * 0.18;
+    char.group.rotation.z = Math.sin(d) * 0.06;
+    return;
+  }
+  char.group.rotation.z = 0;
+  char.head.rotation.z = 0;
+  char.shL.rotation.z = 0;
+  char.shR.rotation.z = 0;
+  const moving = speed > 0.6;
   const amp = moving && grounded ? Math.min(0.75, speed * 0.12) : 0;
   const sw = Math.sin(char.animT) * amp;
   char.hipL.rotation.x = sw;

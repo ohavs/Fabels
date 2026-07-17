@@ -39,6 +39,12 @@
         },
         "events": {
           "$evid": { ".write": "auth != null" }
+        },
+        "pickups": {
+          ".write": "auth != null"
+        },
+        "flags": {
+          ".write": "auth != null"
         }
       }
     }

@@ -13,6 +13,7 @@
 import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
+  GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World } from './world.js';
@@ -58,6 +59,10 @@ export class Game {
     // sim
     this.players = new Map();
     this.projectiles = [];
+    this.grenades = [];
+    this.pickups = new Map();          // id → {k, x, y, z, tier?, mesh}
+    this.pickupT = PICKUPS.everyMs / 1000;
+    this.isLoadout = LOADOUT_MODES.includes(o.mode);
     this.me = null;
     this.feed = [];
     this.over = null;
@@ -77,6 +82,10 @@ export class Game {
     this.onWin = null;          // gungame: I completed the ladder
     this.onOver = null;         // (results)
     this.onChat = null;
+    this.onPickupSpawn = null;  // host → net
+    this.onPickupTaken = null;
+    this.onNadeThrow = null;    // my grenade → remote visual
+    this.onEmote = null;
   }
 
   // ---------------- entities ----------------
@@ -92,6 +101,8 @@ export class Game {
       // stance: 0 stand · 1 crouch · 2 slide (synced); crouchK = smoothed 0..1
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
       ads: false, bloom: 0,
+      armor: 0, nades: GRENADE.start, nadeCd: 0,
+      streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
       view: null, speedSm: 0, chatT: 0, deadT: 0,
@@ -183,6 +194,7 @@ export class Game {
     p.netX = st.x; p.netY = st.y; p.netZ = st.z;
     p.netYaw = st.yaw || 0; p.netPitch = st.pitch || 0;
     p.hp = st.hp; p.maxHp = st.maxHp || 100;
+    p.armor = st.ar || 0;
     p.stance = st.st || 0;
     p.tier = st.tier || 0;
     if (st.w && st.w !== p.weapon) {
@@ -221,6 +233,10 @@ export class Game {
       p.fireCd = Math.max(0, p.fireCd - dt);
       p.invulnT = Math.max(0, p.invulnT - dt);
       p.chatT = Math.max(0, p.chatT - dt);
+      p.nadeCd = Math.max(0, p.nadeCd - dt);
+      p.buffSpeedT = Math.max(0, p.buffSpeedT - dt);
+      p.buffDmgT = Math.max(0, p.buffDmgT - dt);
+      p.danceT = Math.max(0, p.danceT - dt);
       if (p.reloadT > 0) {
         p.reloadT -= dt;
         if (p.reloadT <= 0) {
@@ -241,6 +257,8 @@ export class Game {
     }
 
     this._updateProjectiles(dt);
+    this._updateGrenades(dt);
+    this._updatePickups(dt);
     this._updateViews(dt);
     this.fx.update(dt);
     this._decayHud(dt);
@@ -303,6 +321,7 @@ export class Game {
       }
       this._wasSprinting = sprinting;
       if (p.ads) speed *= GAME.adsMoveMult;
+      if (p.buffSpeedT > 0) speed *= 1.14;
 
       if (input.consumeJump() && p.grounded) {
         if (p.stance !== 0 && p.slideT <= 0) { p.stance = 0; input.crouchHeld = input.touchMode ? false : input.crouchHeld; }
@@ -313,6 +332,8 @@ export class Game {
         }
       }
       if (input.consumeReload()) this._startReload(p);
+      if (input.consumeNade()) this.throwNade(p);
+      if (input.consumeEmote()) this.doEmote();
       const chat = input.consumeChat();
       if (chat >= 0 && this.onChat) this.onChat(chat);
 
@@ -499,6 +520,7 @@ export class Game {
   // performs the actual shot; visual=true → tracer only, no damage
   fireWeapon(p, visual, originOverride, dirOverride) {
     const w = WEAPONS[p.weapon];
+    p.lastShotAt = this.elapsed;   // minimap radar ping
     const eye = originOverride || { x: p.x, y: p.y + GAME.eyeHeight, z: p.z };
     const baseDir = dirOverride || forwardOf(p.yaw, p.pitch);
     if (this._near(p, 55) || p === this.me) SFX.shoot(p.weapon);
@@ -577,7 +599,7 @@ export class Game {
       this.fx.impact(end, 0xff5964, 5, 2.5);
       if (hitP.view) flashCharacter(hitP.view.char);
       if (!visual) {
-        const dmg = w.dmg * (headshot ? w.hsMult : 1);
+        const dmg = w.dmg * (headshot ? w.hsMult : 1) * (p.buffDmgT > 0 ? 1.4 : 1);
         this._damagePlayer(hitP, dmg, p.uid, { hs: headshot, mel: false });
       }
     } else if (hitT < w.range) {
@@ -599,7 +621,7 @@ export class Game {
     }
     if (best) {
       this.fx.impact(V1.set(best.x, best.y + 1.2, best.z), 0xffd166, 10, 4);
-      this._damagePlayer(best, w.dmg, p.uid, { hs: false, mel: true });
+      this._damagePlayer(best, w.dmg * (p.buffDmgT > 0 ? 1.4 : 1), p.uid, { hs: false, mel: true });
     }
   }
 
@@ -656,6 +678,209 @@ export class Game {
     return (x - this.me.x) ** 2 + (z - this.me.z) ** 2 < d * d;
   }
 
+  // ---------------- grenades ----------------
+  throwNade(p) {
+    if (!p.alive || p.nades <= 0 || p.nadeCd > 0) return;
+    p.nades--;
+    p.nadeCd = GRENADE.cd;
+    const f = forwardOf(p.yaw, p.pitch);
+    const spec = {
+      x: p.x + f.x, y: p.y + GAME.eyeHeight + f.y, z: p.z + f.z,
+      vx: f.x * GRENADE.speed + p.vx * 0.5, vy: f.y * GRENADE.speed + GRENADE.upVel, vz: f.z * GRENADE.speed + p.vz * 0.5,
+    };
+    this._spawnNade(spec, p.uid, false);
+    if (p === this.me && this.onNadeThrow) {
+      this.onNadeThrow({ x: +spec.x.toFixed(2), y: +spec.y.toFixed(2), z: +spec.z.toFixed(2), vx: +spec.vx.toFixed(2), vy: +spec.vy.toFixed(2), vz: +spec.vz.toFixed(2) });
+    }
+    SFX.jump();
+  }
+
+  _spawnNade(spec, owner, visual) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshBasicMaterial({ color: 0x2f4a2f }));
+    m.position.set(spec.x, spec.y, spec.z);
+    this.scene.add(m);
+    this.grenades.push({ mesh: m, owner, visual, fuse: GRENADE.fuse, ...spec });
+  }
+
+  applyRemoteNade(spec) { this._spawnNade(spec, spec.o || 'x', true); }
+
+  _updateGrenades(dt) {
+    for (let i = this.grenades.length - 1; i >= 0; i--) {
+      const g = this.grenades[i];
+      g.fuse -= dt;
+      g.vy += GAME.gravity * dt;
+      g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt;
+      if (g.y < 0.14) { g.y = 0.14; g.vy = Math.abs(g.vy) * 0.35; g.vx *= 0.6; g.vz *= 0.6; }
+      for (const c of this.world.colliders) {
+        if (g.x > c.x0 && g.x < c.x1 && g.y > c.y0 && g.y < c.y1 && g.z > c.z0 && g.z < c.z1) {
+          // simple bounce back
+          g.vx *= -0.4; g.vz *= -0.4;
+          g.x += g.vx * dt * 2; g.z += g.vz * dt * 2;
+          break;
+        }
+      }
+      g.mesh.position.set(g.x, g.y, g.z);
+      g.mesh.material.color.setHex(Math.sin(g.fuse * 20) > 0 ? 0xff4444 : 0x2f4a2f);
+      if (g.fuse <= 0) {
+        this.scene.remove(g.mesh);
+        this.grenades.splice(i, 1);
+        this._nadeExplode(g);
+      }
+    }
+  }
+
+  _nadeExplode(g) {
+    this.fx.explosion(V1.set(g.x, g.y + 0.3, g.z), 0xffaa33);
+    if (this._nearPoint(g.x, g.z, 60)) SFX.explode();
+    if (g.visual) return;
+    const dmgMul = this.players.get(g.owner)?.buffDmgT > 0 ? 1.4 : 1;
+    for (const q of this.players.values()) {
+      if (!q.alive || q.invulnT > 0) continue;
+      const owner = this.players.get(g.owner);
+      if (this.mode !== 'gungame' && this.mode !== 'duel' && owner && q.team === owner.team && q !== owner) continue;
+      if (q.uid === g.owner && false) continue; // self-damage allowed
+      const d = Math.hypot(q.x - g.x, q.y + 0.9 - g.y, q.z - g.z);
+      if (d < GRENADE.radius) {
+        const dmg = GRENADE.dmg * dmgMul * (1 - (d / GRENADE.radius) * 0.75);
+        this._damagePlayer(q, dmg, g.owner, {});
+      }
+    }
+  }
+
+  // ---------------- pickups ----------------
+  _updatePickups(dt) {
+    const authoritative = !this.online || this.isHost;
+    if (authoritative && !this.over) {
+      this.pickupT -= dt;
+      if (this.pickupT <= 0 && this.pickups.size < PICKUPS.max) {
+        this.pickupT = PICKUPS.everyMs / 1000;
+        this._spawnRandomPickup();
+      }
+    }
+    // rotate + bob visuals; collect for locally-simulated humans
+    for (const [id, pk] of this.pickups) {
+      pk.mesh.rotation.y += dt * 2;
+      pk.mesh.position.y = pk.y + 0.65 + Math.sin(this.elapsed * 3 + pk.x) * 0.12;
+      for (const q of this.players.values()) {
+        if (q.remote || q.bot || !q.alive) continue;
+        if ((q.x - pk.x) ** 2 + (q.z - pk.z) ** 2 > 1.3 || Math.abs(q.y - pk.y) > 2) continue;
+        this._applyPickup(q, pk);
+        this._removePickupLocal(id);
+        if (this.online && this.onPickupTaken) this.onPickupTaken(id);
+        break;
+      }
+    }
+  }
+
+  _spawnRandomPickup() {
+    const nav = this.world.navPoints;
+    const s = nav[(Math.random() * nav.length) | 0];
+    const kinds = Object.entries(PICKUPS.kinds)
+      .filter(([k]) => k !== 'weapon' || this.isLoadout);
+    const total = kinds.reduce((a, [, v]) => a + v.weight, 0);
+    let r = Math.random() * total, kind = kinds[0][0];
+    for (const [k, v] of kinds) { r -= v.weight; if (r <= 0) { kind = k; break; } }
+    const pk = {
+      id: 'k' + randId(5), k: kind,
+      x: s.x + (Math.random() - 0.5) * 3, y: s.y, z: s.z + (Math.random() - 0.5) * 3,
+    };
+    if (kind === 'weapon') {
+      const total2 = CRATE_TIERS.reduce((a, t) => a + t.weight, 0);
+      let r2 = Math.random() * total2;
+      pk.tier = 0;
+      CRATE_TIERS.forEach((t, i) => { r2 -= t.weight; if (r2 <= 0 && pk.tier === 0 && i > 0) pk.tier = i; });
+      pk.w = CRATE_TIERS[pk.tier].weapons[(Math.random() * CRATE_TIERS[pk.tier].weapons.length) | 0];
+    }
+    this.addPickup(pk);
+    if (this.online && this.onPickupSpawn) this.onPickupSpawn(pk);
+  }
+
+  addPickup(pk) {
+    if (this.pickups.has(pk.id)) return;
+    const group = new THREE.Group();
+    let color = 0x3dff8b;
+    if (pk.k === 'hp') {
+      const g1 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.16), new THREE.MeshBasicMaterial({ color: 0x3dff8b }));
+      const g2 = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), new THREE.MeshBasicMaterial({ color: 0x3dff8b }));
+      group.add(g1, g2);
+    } else if (pk.k === 'armor') {
+      color = 0x57c4e5;
+      group.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.32), new THREE.MeshBasicMaterial({ color })));
+    } else if (pk.k === 'nade') {
+      color = 0xffaa33;
+      group.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0x4a6b3a })));
+    } else { // weapon crate
+      color = CRATE_TIERS[pk.tier || 0].color;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.42), new THREE.MeshBasicMaterial({ color }));
+      group.add(box);
+    }
+    const glow = new THREE.PointLight(color, 3, 4);
+    glow.position.y = 0.4;
+    group.add(glow);
+    group.position.set(pk.x, pk.y + 0.65, pk.z);
+    this.scene.add(group);
+    pk.mesh = group;
+    this.pickups.set(pk.id, pk);
+  }
+
+  _removePickupLocal(id) {
+    const pk = this.pickups.get(id);
+    if (!pk) return;
+    this.scene.remove(pk.mesh);
+    this.pickups.delete(id);
+  }
+
+  removePickup(id) { this._removePickupLocal(id); }
+
+  _applyPickup(q, pk) {
+    if (pk.k === 'hp') {
+      q.hp = Math.min(q.maxHp, q.hp + PICKUPS.kinds.hp.amount);
+      this.feed.push({ text: `+${PICKUPS.kinds.hp.amount} ❤️`, t: 2.5 });
+    } else if (pk.k === 'armor') {
+      q.armor = Math.min(ARMOR_MAX, q.armor + PICKUPS.kinds.armor.amount);
+      this.feed.push({ text: `+${PICKUPS.kinds.armor.amount} 🛡️`, t: 2.5 });
+    } else if (pk.k === 'nade') {
+      q.nades = Math.min(GRENADE.max, q.nades + 1);
+      this.feed.push({ text: '+💣', t: 2.5 });
+    } else if (pk.k === 'weapon' && this.isLoadout) {
+      q.weapon = pk.w;
+      q.ammo = WEAPONS[pk.w].mag;
+      q.reloadT = 0;
+      if (q === this.me) {
+        this.viewModel.setWeapon(pk.w);
+        this.hudFlags.tierBanner = t('gotWeapon', { w: t('weapon_' + pk.w) });
+      }
+    }
+    if (q === this.me) SFX.pickup();
+  }
+
+  // ---------------- killstreaks & emotes ----------------
+  _myKillFx() {
+    const me = this.me;
+    me.streak++;
+    for (const ks of KILLSTREAKS) {
+      if (me.streak !== ks.at) continue;
+      if (ks.k === 'speed') { me.buffSpeedT = ks.dur; this.hudFlags.tierBanner = t('streak3'); }
+      if (ks.k === 'armor') { me.armor = Math.min(ARMOR_MAX, me.armor + ks.amount); this.hudFlags.tierBanner = t('streak5'); }
+      if (ks.k === 'dmg') { me.buffDmgT = ks.dur; this.hudFlags.tierBanner = t('streak7'); }
+      SFX.tierUp();
+    }
+  }
+
+  doEmote() {
+    if (!this.me?.alive) return;
+    if (this.onEmote) this.onEmote();
+    this.feed.push({ text: t('emoted', { name: this.me.name }), t: 3 });
+    SFX.pickup();
+  }
+
+  applyEmote(uid) {
+    const p = this.players.get(uid);
+    if (!p) return;
+    p.danceT = 2.6;
+    this.feed.push({ text: t('emoted', { name: p.name }), t: 3 });
+  }
+
   // remote player fired — tracer/projectile visual only
   applyRemoteShot(uid, s) {
     const p = this.players.get(uid);
@@ -683,6 +908,12 @@ export class Game {
       if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
       return;
     }
+    // armor (shield) absorbs damage first
+    if (q.armor > 0) {
+      const absorbed = Math.min(q.armor, dmg);
+      q.armor -= absorbed;
+      dmg -= absorbed;
+    }
     q.hp -= dmg;
     if (q === this.me) {
       this.hudFlags.hurt = 0.5;
@@ -709,8 +940,10 @@ export class Game {
 
   _killPlayer(q, fromUid, mel) {
     q.hp = 0;
+    q.armor = 0;
     q.alive = false;
     q.deaths++;
+    if (q === this.me) q.streak = 0;
     q.respawnT = GAME.respawnTime;
     this.fx.impact(V1.set(q.x, q.y + 1, q.z), 0xff8866, 18, 6);
     if (q === this.me || this._near(q, 45)) SFX.die();
@@ -739,9 +972,8 @@ export class Game {
     killer.score += 100;
     if (killer === this.me) {
       this.feed.push({ text: t('youKilled', { name: victim.name }), t: 4 });
-      this._advanceTier(killer);
-    } else if (killer.bot && this.mode === 'gungame') {
-      // practice bots don't climb the ladder — keeps offline winnable
+      this._myKillFx();
+      if (!this.isLoadout) this._advanceTier(killer);
     }
   }
 
@@ -751,7 +983,8 @@ export class Game {
     this.me.kills++;
     this.me.score += 100;
     this.feed.push({ text: t('youKilled', { name: victimName }), t: 4 });
-    this._advanceTier(this.me);
+    this._myKillFx();
+    if (!this.isLoadout) this._advanceTier(this.me);
   }
 
   tallyRemoteKill(killerUid, victimUid) {
@@ -806,6 +1039,8 @@ export class Game {
     const s = this._spawnPos(p);
     this._place(p, s);
     p.hp = p.maxHp;
+    p.armor = 0;
+    p.nades = GRENADE.start;
     p.alive = true;
     p.invulnT = GAME.invulnTime;
     p.ammo = WEAPONS[p.weapon].mag;
@@ -894,7 +1129,7 @@ export class Game {
         ? Math.hypot(p.netX - p.x, p.netZ - p.z) * 12
         : Math.hypot(p.vx, p.vz);
       p.speedSm = lerp(p.speedSm, sp, 0.2);
-      animateCharacter(char, dt, p.speedSm, true);
+      animateCharacter(char, dt, p.speedSm, true, p.danceT > 0);
       updateHpBar(bar, p.hp / p.maxHp);
       // spawn-protection shimmer
       char.group.traverse((o) => {
@@ -953,7 +1188,7 @@ export class Game {
       name: p.name, skin: p.skin,
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2),
-      hp: Math.round(p.hp), maxHp: p.maxHp, alive: p.alive,
+      hp: Math.round(p.hp), maxHp: p.maxHp, alive: p.alive, ar: Math.round(p.armor),
       tier: p.tier, w: p.weapon, st: p.stance,
       kills: p.kills, deaths: p.deaths, score: p.score,
     };

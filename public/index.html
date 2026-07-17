@@ -78,7 +78,8 @@
 
     <footer class="menu-footer">
       <button id="btn-sound" class="icon-btn" title="צליל">🔊</button>
-      <span class="credits">גרסה 2.0 · תלת־ממד · כל הנכסים נוצרו בקוד</span>
+      <button id="btn-music" class="icon-btn" title="מוזיקה">🎵</button>
+      <span class="credits">גרסה 3.0 · תלת־ממד · כל הנכסים נוצרו בקוד</span>
     </footer>
   </section>
 
@@ -158,19 +159,26 @@
       <div class="hud-weapon">
         <div id="hud-weapon-name">אקדח</div>
         <div id="hud-ammo">12</div>
+        <div id="hud-nades" class="hud-nades">💣 ×1</div>
         <div id="hud-tier" class="tier-pips"></div>
       </div>
 
-      <!-- hp -->
+      <!-- hp + armor -->
       <div class="hud-hp">
-        <div class="hp-track"><div id="hud-hp-fill"></div></div>
+        <div class="hp-col">
+          <div class="armor-track"><div id="hud-armor-fill"></div></div>
+          <div class="hp-track"><div id="hud-hp-fill"></div></div>
+        </div>
         <span id="hud-hp-text">100</span>
       </div>
+
+      <!-- minimap radar -->
+      <canvas id="minimap" width="120" height="120"></canvas>
 
       <ul id="hud-feed"></ul>
       <div id="hud-banner"></div>
       <div id="hud-respawn"></div>
-      <div id="lock-hint">לחצו על המסך לנעילת העכבר · WASD תנועה · רווח קפיצה · R טעינה · ESC משחרר את הסמן</div>
+      <div id="lock-hint">לחצו על המסך לנעילת העכבר · WASD תנועה · Shift ריצה · C כריעה/סלייד · G רימון · B ריקוד · ESC משחרר</div>
 
       <!-- scoreboard -->
       <div id="scoreboard" class="hidden">
@@ -185,10 +193,12 @@
       <button id="btn-jump" class="tb tb-jump">⤒</button>
       <button id="btn-aim" class="tb tb-aim">◎</button>
       <button id="btn-crouch" class="tb tb-crouch">🡓</button>
+      <button id="btn-nade" class="tb tb-nade">💣</button>
       <div class="action-btns">
         <button id="btn-reload" class="action-btn small"><span class="ab-icon">⟳</span></button>
         <button id="btn-score" class="action-btn small"><span class="ab-icon">📋</span></button>
         <button id="btn-chat" class="action-btn small"><span class="ab-icon">💬</span></button>
+        <button id="btn-emote" class="action-btn small"><span class="ab-icon">🕺</span></button>
       </div>
       <div id="chat-panel" class="chat-panel hidden">
         <button data-chat="0">קרב מעולה!</button>
