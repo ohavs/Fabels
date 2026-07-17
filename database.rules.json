@@ -1,0 +1,49 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "index": {
+      "$mode": {
+        ".read": "auth != null",
+        "$roomId": {
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['state','count','at'])"
+        }
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        "meta": {
+          ".write": "auth != null"
+        },
+        "players": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid == $uid || !newData.exists())"
+          }
+        },
+        "shots": {
+          "$sid": { ".write": "auth != null && !data.exists()" }
+        },
+        "hits": {
+          "$hid": { ".write": "auth != null" }
+        },
+        "enemies": {
+          ".write": "auth != null"
+        },
+        "edmg": {
+          "$eid": { ".write": "auth != null" }
+        },
+        "eshots": {
+          "$eid": { ".write": "auth != null" }
+        },
+        "pickups": {
+          ".write": "auth != null"
+        },
+        "events": {
+          "$evid": { ".write": "auth != null && !data.exists()" }
+        }
+      }
+    }
+  }
+}

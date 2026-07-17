@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#070914" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="שברי כוכב — משחק יריות חלל מרובה משתתפים" />
+  <title>שברי כוכב ⭐ STARSHARDS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><polygon points='16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12' fill='%237dd3fc'/></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ═══════════ טעינה ═══════════ -->
+  <section id="scr-load" class="screen active">
+    <div class="load-box">
+      <div class="logo-star">✦</div>
+      <h1 class="game-title">שברי כוכב</h1>
+      <div class="game-subtitle">STARSHARDS</div>
+      <div class="spinner"></div>
+      <p id="load-status">טוען את שדה הגבישים…</p>
+    </div>
+  </section>
+
+  <!-- ═══════════ תפריט ראשי ═══════════ -->
+  <section id="scr-menu" class="screen">
+    <header class="menu-header">
+      <div class="pilot-card">
+        <input id="menu-name-input" maxlength="20" placeholder="כינוי טייס" aria-label="כינוי טייס" />
+        <div class="pilot-meta">
+          <span id="menu-level" class="chip">רמה 1</span>
+          <span id="menu-rank" class="chip rank">ארד</span>
+          <span id="menu-shards" class="chip shards">💠 0</span>
+        </div>
+        <div class="xpbar"><div id="menu-xpbar" class="xpbar-fill"></div></div>
+      </div>
+      <div id="menu-conn" class="conn-badge">מתחבר…</div>
+    </header>
+
+    <div class="menu-hero">
+      <h1 class="game-title small">שברי כוכב</h1>
+      <p class="lore">הכוכב התנפץ. הצללים מתעוררים. רק שומרי השבר יגנו על שדה הגבישים.</p>
+    </div>
+
+    <nav class="mode-cards">
+      <button id="btn-pvp" class="mode-card pvp">
+        <span class="mode-icon">⚔️</span>
+        <span class="mode-name">זירת הכבוד</span>
+        <span class="mode-desc">‏PvP · עד 6 טייסים · 3 דקות</span>
+      </button>
+      <button id="btn-coop" class="mode-card coop">
+        <span class="mode-icon">🛡️</span>
+        <span class="mode-name">מתקפת הצללים</span>
+        <span class="mode-desc">‏Co-op · עד 4 טייסים · גלים אינסופיים</span>
+      </button>
+      <button id="btn-practice" class="mode-card practice">
+        <span class="mode-icon">🎯</span>
+        <span class="mode-name">אימון חופשי</span>
+        <span class="mode-desc">מול בוטים · ללא חיבור</span>
+      </button>
+    </nav>
+
+    <div class="menu-row">
+      <button id="btn-shop" class="menu-btn">🛒 חנות</button>
+      <button id="btn-board" class="menu-btn">🏆 לוח מובילים</button>
+    </div>
+
+    <div class="join-row">
+      <input id="join-code-input" maxlength="5" placeholder="קוד חדר" aria-label="קוד חדר" />
+      <button id="btn-join-code" class="menu-btn slim">הצטרפות עם קוד</button>
+    </div>
+
+    <footer class="menu-footer">
+      <button id="btn-sound" class="icon-btn" title="צליל">🔊</button>
+      <button id="btn-quality" class="icon-btn" title="איכות גרפית">✨</button>
+      <span class="credits">גרסה 1.0 · כל הנכסים נוצרו פרוצדורלית</span>
+    </footer>
+  </section>
+
+  <!-- ═══════════ לובי ═══════════ -->
+  <section id="scr-lobby" class="screen">
+    <div class="panel">
+      <h2 id="lobby-title">לובי</h2>
+      <div id="lobby-code" class="room-code"></div>
+      <ul id="lobby-players" class="player-list"></ul>
+      <p id="lobby-status" class="lobby-status">ממתין לטייסים נוספים…</p>
+      <div class="panel-actions">
+        <button id="btn-start" class="primary-btn" disabled>🚀 התחל קרב</button>
+        <button id="btn-leave-lobby" class="ghost-btn">חזרה</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ חנות ═══════════ -->
+  <section id="scr-shop" class="screen scroll">
+    <div class="panel wide">
+      <div class="panel-head">
+        <h2>🛒 חנות השברים</h2>
+        <span id="shop-shards" class="chip shards big">💠 0</span>
+      </div>
+      <h3 class="section-title">ספינות קרב</h3>
+      <div id="shop-ships" class="ship-grid"></div>
+      <h3 class="section-title">שדרוגים</h3>
+      <div id="shop-upgrades" class="upgrade-list"></div>
+      <div class="panel-actions">
+        <button id="btn-back-shop" class="ghost-btn">חזרה</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ לוח מובילים ═══════════ -->
+  <section id="scr-board" class="screen scroll">
+    <div class="panel wide">
+      <h2>🏆 לוח המובילים הגלקטי</h2>
+      <div id="board-list" class="board-list"></div>
+      <div class="panel-actions">
+        <button id="btn-back-board" class="ghost-btn">חזרה</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ משחק ═══════════ -->
+  <section id="scr-game" class="screen game">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud" dir="rtl">
+      <div class="hud-top">
+        <div class="hud-stat"><span class="hud-label">ניקוד</span><span id="hud-score">0</span></div>
+        <div id="hud-center" class="hud-center">3:00</div>
+        <div class="hud-stat"><span class="hud-label">חיסולים</span><span id="hud-kills">0</span></div>
+        <button id="btn-exit" class="exit-btn" aria-label="יציאה">✕</button>
+      </div>
+
+      <div class="hud-hp">
+        <div class="hp-track"><div id="hud-hp-fill"></div></div>
+        <span id="hud-hp-text">100</span>
+      </div>
+
+      <ul id="hud-feed"></ul>
+      <canvas id="minimap"></canvas>
+      <div id="hud-banner"></div>
+      <div id="hud-respawn"></div>
+
+      <div id="zone-left" class="joy-zone left"></div>
+      <div id="zone-right" class="joy-zone right"></div>
+
+      <div class="action-btns">
+        <button id="btn-special" class="action-btn special"><span class="ab-icon">⚡</span><span class="ab-cd"></span></button>
+        <button id="btn-dash" class="action-btn dash"><span class="ab-icon">💨</span><span class="ab-cd"></span></button>
+      </div>
+
+      <button id="btn-chat" class="chat-btn">💬</button>
+      <div id="chat-panel" class="chat-panel hidden">
+        <button data-chat="0">קרב מעולה!</button>
+        <button data-chat="1">צריך עזרה כאן!</button>
+        <button data-chat="2">להסתער!</button>
+        <button data-chat="3">איזה יופי!</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ תוצאות ═══════════ -->
+  <section id="scr-results" class="screen">
+    <div class="panel">
+      <h2 id="res-title">המשחק נגמר</h2>
+      <p id="res-sub"></p>
+      <div id="res-table" class="res-table"></div>
+      <div id="res-rewards" class="res-rewards"></div>
+      <div class="panel-actions">
+        <button id="btn-again" class="primary-btn">🔄 עוד קרב</button>
+        <button id="btn-menu" class="ghost-btn">לתפריט הראשי</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toasts" dir="rtl"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
