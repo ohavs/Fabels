@@ -1,99 +1,161 @@
 // ============================================================
-// Bot AI — offline practice opponents & co-op teammates.
-// A bot drives a regular player entity via botMove/botAim/botFire,
-// so the simulation treats bots exactly like local players.
+// 3D bot AI. A brain drives a regular player entity through
+// p.bot.wish / wantFire / wantJump, so physics & combat are the
+// exact same code path as humans. Difficulty (aim error,
+// reaction time, burst discipline) comes from BOT_LEVELS.
 // ============================================================
 
-import { dist, clamp, TAU } from './util.js';
 import { GAME } from './config.js';
+import { clamp, lerpAngle, segmentBlocked } from './util.js';
+import { BOT_NAMES } from './i18n.js';
 
-export class BotBrain {
-  constructor(p, game, difficulty = 1) {
-    this.p = p;                 // the player entity this brain drives
+export function botName(i) {
+  return `🤖 ${BOT_NAMES[i % BOT_NAMES.length]}-${(Math.random() * 90 + 10) | 0}`;
+}
+
+export function attachBrains(game) {
+  for (const p of game.players.values()) {
+    if (p.bot && !p.bot.brain) p.bot.brain = new BotBrain(p, game);
+  }
+}
+
+class BotBrain {
+  constructor(p, game) {
+    this.p = p;
     this.game = game;
-    this.aimErr = 0.3 / difficulty;
+    this.L = p.bot.level;
+    this.target = null;
+    this.seenAt = -1;         // when the current target was first seen
+    this.lastSeenPos = null;
     this.retargetT = 0;
+    this.wanderPt = null;
     this.strafeDir = Math.random() < 0.5 ? -1 : 1;
     this.strafeT = 0;
-    this.target = null;
-    this.wander = Math.random() * TAU;
+    this.burstLeft = 0;
+    this.pauseT = 0;
+    this.stuckT = 0;
+    this.lastX = p.x; this.lastZ = p.z;
+    p.bot.wish = { x: 0, z: 0 };
   }
 
   update(dt) {
-    const p = this.p;
-    if (!p.alive) { p.botFire = false; return; }
-
+    const p = this.p, g = this.game;
     this.retargetT -= dt;
     this.strafeT -= dt;
-    if (this.strafeT <= 0) {
-      this.strafeT = 1 + Math.random() * 2;
-      this.strafeDir = -this.strafeDir;
-    }
+    this.pauseT -= dt;
+    if (this.strafeT <= 0) { this.strafeT = 1 + Math.random() * 1.6; this.strafeDir *= -1; }
+
     if (this.retargetT <= 0) {
-      this.retargetT = 0.6 + Math.random() * 0.6;
-      this.target = this._pickTarget();
+      this.retargetT = 0.35 + Math.random() * 0.3;
+      this._pickTarget();
     }
 
     const t = this.target;
-    if (!t || t.hp <= 0 || (t.alive === false)) {
-      // wander toward arena center-ish
-      this.wander += (Math.random() - 0.5) * 1.5 * dt;
-      p.botMove = { x: Math.cos(this.wander) * 0.5, y: Math.sin(this.wander) * 0.5 };
-      p.botFire = false;
-      return;
+    const visible = t && t.alive && this._canSee(t);
+    if (visible) {
+      this.lastSeenPos = { x: t.x, y: t.y, z: t.z };
+      if (this.seenAt < 0) this.seenAt = g.elapsed;
+    } else {
+      this.seenAt = -1;
     }
 
-    const d = dist(p.x, p.y, t.x, t.y);
-    const dirX = (t.x - p.x) / (d || 1);
-    const dirY = (t.y - p.y) / (d || 1);
+    if (visible) this._combat(t, dt);
+    else this._roam(dt);
 
-    // keep a comfortable combat range, orbit-strafe around the target
-    const desired = this.game.mode === 'pvp' ? 300 : 240;
-    const approach = clamp((d - desired) / 220, -1, 1);
-    const perpX = -dirY * this.strafeDir;
-    const perpY = dirX * this.strafeDir;
-    let mx = dirX * approach + perpX * 0.75;
-    let my = dirY * approach + perpY * 0.75;
-
-    // soft wall avoidance
-    const A = GAME.arena, pad = 180;
-    if (p.x < pad) mx += 1; if (p.x > A - pad) mx -= 1;
-    if (p.y < pad) my += 1; if (p.y > A - pad) my -= 1;
-
-    const ml = Math.hypot(mx, my) || 1;
-    p.botMove = { x: mx / ml, y: my / ml };
-
-    // aim with human-ish error + light lead
-    const lead = clamp(d / 640, 0, 0.5);
-    const ax = t.x + (t.vx || 0) * lead - p.x;
-    const ay = t.y + (t.vy || 0) * lead - p.y;
-    const aa = Math.atan2(ay, ax) + (Math.random() - 0.5) * this.aimErr;
-    p.botAim = { x: Math.cos(aa), y: Math.sin(aa) };
-    p.botFire = d < 700;
-
-    // occasional dash when hurt or too close
-    if ((p.hp < p.maxHp * 0.3 || d < 120) && p.dashCd <= 0 && Math.random() < 0.02) {
-      p.botDash = true;
-    }
-    if (p.specialCd <= 0 && d < 350 && Math.random() < 0.008) p.botSpecial = true;
+    // stuck detection → jump or new wander point
+    const moved = Math.hypot(p.x - this.lastX, p.z - this.lastZ);
+    this.lastX = p.x; this.lastZ = p.z;
+    const wantsMove = Math.hypot(p.bot.wish.x, p.bot.wish.z) > 0.3;
+    if (wantsMove && moved < 0.35 * dt * this.L.speed) {
+      this.stuckT += dt;
+      if (this.stuckT > 0.5) {
+        if (Math.random() < 0.5 && p.grounded) p.bot.wantJump = true;
+        else this.wanderPt = this._randomNav();
+        this.stuckT = 0;
+      }
+    } else this.stuckT = 0;
   }
 
   _pickTarget() {
-    const g = this.game, p = this.p;
-    let best = null, bestD = Infinity;
-    if (g.mode === 'coop') {
-      for (const e of g.enemies.values()) {
-        if (e.hp <= 0) continue;
-        const d = dist(p.x, p.y, e.x, e.y);
-        if (d < bestD) { bestD = d; best = e; }
-      }
-    } else {
-      for (const q of g.players.values()) {
-        if (q === p || !q.alive) continue;
-        const d = dist(p.x, p.y, q.x, q.y);
-        if (d < bestD) { bestD = d; best = q; }
+    const p = this.p, g = this.game;
+    let best = null, bestScore = Infinity;
+    for (const q of g.players.values()) {
+      if (q === p || !q.alive) continue;
+      if (g.mode === 'team' && q.team === p.team) continue;
+      if (g.mode !== 'team' && q.bot && Math.random() < 0.6) continue; // FFA bots prefer humans
+      const d = Math.hypot(q.x - p.x, q.z - p.z);
+      const score = d + (this._canSee(q) ? 0 : 25);
+      if (score < bestScore) { bestScore = score; best = q; }
+    }
+    this.target = best;
+  }
+
+  _canSee(q) {
+    const p = this.p;
+    const d = Math.hypot(q.x - p.x, q.z - p.z);
+    if (d > 55) return false;
+    return !segmentBlocked(
+      p.x, p.y + GAME.eyeHeight, p.z,
+      q.x, q.y + 1.3, q.z,
+      this.game.world.colliders,
+    );
+  }
+
+  _combat(t, dt) {
+    const p = this.p, L = this.L;
+    const dx = t.x - p.x, dz = t.z - p.z;
+    const d = Math.hypot(dx, dz) || 1;
+
+    // aim with human-ish error, smoothed turn
+    const err = L.aimErr * (1 + d / 40);
+    const wantYaw = Math.atan2(-dx, -dz) + (Math.random() - 0.5) * err * 6;
+    p.yaw = lerpAngle(p.yaw, wantYaw, clamp(dt * 7, 0, 1));
+    const dy = (t.y + 1.2) - (p.y + GAME.eyeHeight);
+    p.pitch = clamp(-Math.atan2(dy, d) + (Math.random() - 0.5) * err * 3, -1.2, 1.2);
+
+    // hold an 8–18m band, orbit-strafe
+    const band = clamp((d - 12) / 8, -1, 1);
+    const nx = dx / d, nz = dz / d;
+    const px = -nz * this.strafeDir, pz = nx * this.strafeDir;
+    let wx = nx * band + px * 0.8;
+    let wz = nz * band + pz * 0.8;
+    const wl = Math.hypot(wx, wz) || 1;
+    p.bot.wish.x = wx / wl;
+    p.bot.wish.z = wz / wl;
+
+    // burst fire after reaction delay
+    const reacted = this.seenAt >= 0 && (this.game.elapsed - this.seenAt) * 1000 >= L.reactMs;
+    if (reacted && this.pauseT <= 0) {
+      if (this.burstLeft <= 0) this.burstLeft = L.burst;
+      const aimErrNow = Math.abs(lerpAngle(p.yaw, wantYaw, 1) - p.yaw);
+      if (aimErrNow < 0.25 && d < 50) {
+        p.bot.wantFire = true;
+        this.burstLeft--;
+        if (this.burstLeft <= 0) this.pauseT = L.pause * (0.7 + Math.random() * 0.6);
       }
     }
-    return best;
+    if (Math.random() < 0.004 && p.grounded) p.bot.wantJump = true;
+  }
+
+  _roam(dt) {
+    const p = this.p;
+    const goal = this.lastSeenPos || this.wanderPt || (this.wanderPt = this._randomNav());
+    const dx = goal.x - p.x, dz = goal.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 2.2) {
+      if (this.lastSeenPos) this.lastSeenPos = null;
+      this.wanderPt = this._randomNav();
+      return;
+    }
+    const wantYaw = Math.atan2(-dx, -dz);
+    p.yaw = lerpAngle(p.yaw, wantYaw, clamp(dt * 5, 0, 1));
+    p.pitch = lerpAngle(p.pitch, 0, dt * 3);
+    p.bot.wish.x = dx / d;
+    p.bot.wish.z = dz / d;
+  }
+
+  _randomNav() {
+    const nav = this.game.world.navPoints;
+    return nav[(Math.random() * nav.length) | 0];
   }
 }

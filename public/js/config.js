@@ -1,121 +1,110 @@
 // ============================================================
-// שברי כוכב · STARSHARDS — configuration & balance data
-// Everything gameplay-related is data-driven from this file.
+// שברי כוכב: זירת האש · STARSHARDS ARENA — configuration
+// All gameplay balance is data-driven from this file.
 // ============================================================
 
-// ---- Firebase --------------------------------------------------------
-// Replace with your own project's config (Firebase console → Project
-// settings → Your apps → Web app). While the placeholders are left in
-// place the game automatically runs in OFFLINE mode (practice vs bots,
-// progression stored in localStorage).
+// ---- Firebase (project: fabels-70545) --------------------------------
 export const FIREBASE_CONFIG = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT.firebaseapp.com',
-  databaseURL: 'https://YOUR_PROJECT-default-rtdb.firebaseio.com',
-  projectId: 'YOUR_PROJECT',
-  storageBucket: 'YOUR_PROJECT.appspot.com',
-  messagingSenderId: '0',
-  appId: 'YOUR_APP_ID',
+  apiKey: 'AIzaSyBQ6yYkRK02388cOZehXivoq_0T4aM_Gz4',
+  authDomain: 'fabels-70545.firebaseapp.com',
+  databaseURL: 'https://fabels-70545-default-rtdb.firebaseio.com',
+  projectId: 'fabels-70545',
+  storageBucket: 'fabels-70545.firebasestorage.app',
+  messagingSenderId: '485284615942',
+  appId: '1:485284615942:web:ec22a2407c430e272d3087',
 };
 
 export const firebaseConfigured = () =>
   !/^YOUR_/.test(FIREBASE_CONFIG.apiKey) && !/^YOUR_/.test(FIREBASE_CONFIG.projectId);
 
-// ---- Core constants --------------------------------------------------
+// ---- Core constants ----------------------------------------------------
 export const GAME = {
-  arena: 2200,            // world is arena x arena
-  wallPad: 60,            // soft wall margin
-  syncMs: 90,             // network state broadcast interval (~11Hz)
-  enemySyncMs: 120,       // host → guests enemy snapshot interval
-  pvpTime: 180,           // seconds per PvP match
-  respawnPvp: 3,
-  respawnCoop: 8,
-  invulnTime: 2,          // seconds of spawn protection
-  maxPlayersPvp: 6,
-  maxPlayersCoop: 4,
-  dashCd: 4,
-  dashPower: 620,
-  specialCd: 12,
-  pickupMax: 6,
-  pickupEveryMs: 9000,
-  lobbyCountdown: 4,      // seconds from "starting" to "playing"
-  roomTTL: 2 * 60 * 60 * 1000, // ignore rooms older than 2h
+  syncMs: 90,               // player state broadcast (~11Hz)
+  botSyncMs: 110,           // host → guests bot snapshot
+  respawnTime: 4,
+  invulnTime: 2.5,
+  maxPlayers: 6,
+  matchTimeTeam: 300,       // team-vs-bots: 5 minutes
+  teamTargetKills: 40,      // or first team to 40
+  lobbyCountdown: 4,
+  roomTTL: 2 * 60 * 60 * 1000,
+  // movement (metres, seconds)
+  moveSpeed: 6.2,
+  sprintMult: 1.0,
+  accel: 60,
+  friction: 10,
+  gravity: -24,
+  jumpVel: 8.5,
+  eyeHeight: 1.6,
+  playerRadius: 0.42,
+  playerHeight: 1.8,
+  headY: 1.38,              // hits above this local height = headshot
+  fallY: -25,               // below this = death
 };
 
-// ---- Weapons ----------------------------------------------------------
+// ---- Gun-Game weapon ladder (index = tier) ------------------------------
+// hitscan unless projectile; melee = short-range swing
+export const WEAPON_LADDER = ['pistol', 'smg', 'shotgun', 'rifle', 'lmg', 'sniper', 'plasma', 'knife'];
+
 export const WEAPONS = {
-  blaster: { dmg: 12, rate: 0.18, speed: 640, life: 0.85, pellets: 1, spread: 0,    r: 4 },
-  spread:  { dmg: 7,  rate: 0.32, speed: 560, life: 0.60, pellets: 3, spread: 0.26, r: 3.5 },
-  laser:   { dmg: 22, rate: 0.48, speed: 980, life: 0.90, pellets: 1, spread: 0,    r: 3, pierce: true },
-  missile: { dmg: 30, rate: 0.85, speed: 430, life: 2.0,  pellets: 1, spread: 0,    r: 5, homing: true },
-  // enemy weapon
-  sting:   { dmg: 10, rate: 1.4,  speed: 300, life: 2.2,  pellets: 1, spread: 0,    r: 4 },
+  pistol:  { dmg: 26, rate: 0.34, mag: 12, reload: 1.1, spread: 0.012, auto: false, pellets: 1, range: 60, hsMult: 2.0, color: 0x9db4c8 },
+  smg:     { dmg: 14, rate: 0.09, mag: 30, reload: 1.5, spread: 0.035, auto: true,  pellets: 1, range: 45, hsMult: 1.6, color: 0xf4a259 },
+  shotgun: { dmg: 9,  rate: 0.85, mag: 6,  reload: 1.9, spread: 0.075, auto: false, pellets: 8, range: 26, hsMult: 1.4, color: 0xc25b4e },
+  rifle:   { dmg: 22, rate: 0.125, mag: 25, reload: 1.7, spread: 0.02, auto: true,  pellets: 1, range: 75, hsMult: 1.8, color: 0x5fa8d3 },
+  lmg:     { dmg: 16, rate: 0.08, mag: 60, reload: 2.6, spread: 0.05, auto: true,  pellets: 1, range: 60, hsMult: 1.5, color: 0x7a8b5c },
+  sniper:  { dmg: 95, rate: 1.5,  mag: 5,  reload: 2.2, spread: 0.002, auto: false, pellets: 1, range: 150, hsMult: 2.0, color: 0x8d6cab },
+  plasma:  { dmg: 46, rate: 0.7,  mag: 8,  reload: 1.8, spread: 0.008, auto: false, pellets: 1, range: 100, hsMult: 1.0, color: 0x39e6c8, projectile: { speed: 38, radius: 0.22, splash: 3.2 } },
+  knife:   { dmg: 100, rate: 0.5, mag: Infinity, reload: 0, spread: 0, auto: false, pellets: 1, range: 2.4, hsMult: 1.0, color: 0xffd166, melee: true },
+  // bots' fixed weapon
+  botgun:  { dmg: 11, rate: 0.42, mag: Infinity, reload: 0, spread: 0.05, auto: true, pellets: 1, range: 55, hsMult: 1.0, color: 0xff5964 },
 };
 
-// ---- Ships ------------------------------------------------------------
-// special: overdrive (x2 fire rate 3s) | blink (teleport) | shield (2.5s) | nova (AoE)
-export const SHIPS = {
-  storm:  { hp: 100, speed: 260, weapon: 'blaster', special: 'overdrive', cost: 0,    hue: 190 },
-  shadow: { hp: 70,  speed: 330, weapon: 'spread',  special: 'blink',     cost: 800,  hue: 285 },
-  aegis:  { hp: 150, speed: 200, weapon: 'missile', special: 'shield',    cost: 1500, hue: 130 },
-  nova:   { hp: 80,  speed: 240, weapon: 'laser',   special: 'nova',      cost: 2500, hue: 25 },
-};
-export const SHIP_ORDER = ['storm', 'shadow', 'aegis', 'nova'];
-
-export const SPECIALS = {
-  overdrive: { dur: 3 },
-  blink: { dist: 260 },
-  shield: { dur: 2.5 },
-  nova: { dmg: 55, radius: 240 },
+// ---- Maps ----------------------------------------------------------------
+export const MAP_ORDER = ['town', 'mine', 'port', 'canyon'];
+export const MAPS = {
+  town:   { size: 72, sky: 0x87ceeb, fog: 0xbfe3f2, sun: 0xfff2cc, ground: 0x7ec850, accent: '#e0b23e' },
+  mine:   { size: 64, sky: 0x1a1033, fog: 0x241645, sun: 0xb28dff, ground: 0x3d2f57, accent: '#b478ff' },
+  port:   { size: 70, sky: 0x0b1e3d, fog: 0x14294d, sun: 0xcfe8ff, ground: 0x4a5568, accent: '#57c4e5' },
+  canyon: { size: 76, sky: 0xffb347, fog: 0xf7c873, sun: 0xffe0b3, ground: 0xd9a066, accent: '#e07a5f' },
 };
 
-// ---- Upgrades (4 tracks × 5 tiers) -------------------------------------
-export const UPGRADE_TRACKS = ['dmg', 'rate', 'speed', 'hp'];
-export const UPGRADE_COST = [200, 450, 800, 1300, 2000];
-export const UPGRADE_BONUS = { dmg: 0.06, rate: 0.06, speed: 0.05, hp: 0.08 }; // per tier
-
-// ---- Enemies (co-op) ----------------------------------------------------
-export const ENEMIES = {
-  crawler: { hp: 30,  speed: 150, dmg: 12, score: 10,  shards: 2,  r: 16, cost: 2 },
-  stinger: { hp: 45,  speed: 110, dmg: 10, score: 20,  shards: 4,  r: 18, cost: 4, range: 380 },
-  crusher: { hp: 140, speed: 70,  dmg: 25, score: 40,  shards: 8,  r: 28, cost: 8 },
-  boss:    { hp: 900, speed: 60,  dmg: 30, score: 300, shards: 60, r: 52, cost: 0 },
+// ---- Bot difficulty --------------------------------------------------------
+export const BOT_LEVELS = {
+  easy:   { aimErr: 0.09, reactMs: 900, burst: 2, pause: 1.2, speed: 4.2, hp: 80 },
+  normal: { aimErr: 0.05, reactMs: 550, burst: 4, pause: 0.8, speed: 5.2, hp: 100 },
+  hard:   { aimErr: 0.022, reactMs: 280, burst: 6, pause: 0.45, speed: 6.0, hp: 120 },
 };
-export const waveBudget = (n) => 4 + n * 3;
-export const bossWave = (n) => n % 5 === 0;
-export const bossHp = (n) => ENEMIES.boss.hp + (n - 5) * 120;
+export const BOT_LEVEL_ORDER = ['easy', 'normal', 'hard'];
 
-// ---- Progression ---------------------------------------------------------
+// ---- Character skins (economy) ----------------------------------------------
+export const SKINS = {
+  scout:   { body: 0x3b82f6, accent: 0xfbbf24, skin: 0xf1c27d, cost: 0 },
+  ember:   { body: 0xdc2626, accent: 0x1f2937, skin: 0xe0ac69, cost: 400 },
+  jungle:  { body: 0x16a34a, accent: 0x854d0e, skin: 0x8d5524, cost: 400 },
+  shadow:  { body: 0x312e81, accent: 0xa855f7, skin: 0xf1c27d, cost: 900 },
+  sunset:  { body: 0xf97316, accent: 0xfde68a, skin: 0xc68642, cost: 900 },
+  legend:  { body: 0xfacc15, accent: 0x0ea5e9, skin: 0xf1c27d, cost: 2000 },
+};
+export const SKIN_ORDER = ['scout', 'ember', 'jungle', 'shadow', 'sunset', 'legend'];
+
+// ---- Progression --------------------------------------------------------------
 export const RANKS = [
-  { id: 'bronze',   rp: 0 },
-  { id: 'silver',   rp: 500 },
-  { id: 'gold',     rp: 1200 },
-  { id: 'platinum', rp: 2200 },
-  { id: 'diamond',  rp: 3500 },
-  { id: 'legend',   rp: 5000 },
+  { id: 'bronze', rp: 0 }, { id: 'silver', rp: 500 }, { id: 'gold', rp: 1200 },
+  { id: 'platinum', rp: 2200 }, { id: 'diamond', rp: 3500 }, { id: 'legend', rp: 5000 },
 ];
-export const rankFor = (rp) => {
-  let r = RANKS[0];
-  for (const k of RANKS) if (rp >= k.rp) r = k;
-  return r;
-};
+export const rankFor = (rp) => { let r = RANKS[0]; for (const k of RANKS) if (rp >= k.rp) r = k; return r; };
 export const levelFor = (xp) => Math.min(60, Math.floor(Math.sqrt(Math.max(0, xp) / 60)) + 1);
 export const xpForLevel = (lvl) => 60 * (lvl - 1) * (lvl - 1);
-
-// RP delta by final placement in PvP (index 0 = 1st place)
 export const RP_BY_PLACE = [30, 18, 8, 0, -6, -12];
-
 export const DAILY_SHARDS = 100;
 
-// ---- Match rewards --------------------------------------------------------
-export const rewardsPvp = (kills, place) => ({
-  xp: 40 + kills * 15 + Math.max(0, 30 - place * 10),
-  shards: 15 + kills * 8 + Math.max(0, 20 - place * 6),
+export const rewardsGunGame = (kills, place, won) => ({
+  xp: 40 + kills * 12 + (won ? 60 : Math.max(0, 30 - place * 10)),
+  shards: 15 + kills * 6 + (won ? 40 : 0),
 });
-export const rewardsCoop = (wave, kills) => ({
-  xp: wave * 12 + kills * 4,
-  shards: wave * 6 + kills * 2,
+export const rewardsTeam = (kills, won) => ({
+  xp: 30 + kills * 10 + (won ? 80 : 0),
+  shards: 12 + kills * 5 + (won ? 50 : 0),
 });
 
-// ---- Quick chat ------------------------------------------------------------
 export const QUICK_CHAT = ['gg', 'help', 'attack', 'nice'];

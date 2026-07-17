@@ -1,83 +1,114 @@
 // ============================================================
-// Input: virtual twin-stick joysticks (touch) + WASD/mouse.
-// Left stick = movement, right stick = aim + auto-fire.
-// UI buttons feed wantDash / wantSpecial / wantChat flags.
+// FPS input.
+//  Desktop: pointer-lock mouse look, WASD, Space jump, R reload,
+//           left mouse fire, 1-4 quick chat, Tab scoreboard.
+//  Mobile:  left-zone virtual stick = move, right-zone drag = look,
+//           on-screen fire / jump / reload buttons.
 // ============================================================
 
-const JOY_RADIUS = 58;
-const FIRE_THRESHOLD = 0.3;
+const JOY_RADIUS = 55;
 
 export class Input {
   constructor() {
-    this.move = { x: 0, y: 0 };       // -1..1
-    this.aim = { x: 1, y: 0 };        // unit vector, last known
+    this.move = { x: 0, y: 0 };     // x = strafe (+right), y = forward (+ahead)
+    this.lookDX = 0;                // accumulated radians-ish, consumed per frame
+    this.lookDY = 0;
     this.firing = false;
-    this.wantDash = false;
-    this.wantSpecial = false;
+    this.wantJump = false;
+    this.wantReload = false;
     this.wantChat = -1;
+    this.scoreHeld = false;
     this.touchMode = false;
+    this.sensitivity = 1;
 
     this._keys = new Set();
-    this._mouse = { x: 0, y: 0, down: false };
-    this._sticks = { L: null, R: null }; // active touch state per stick
+    this._stick = null;             // left joystick touch
+    this._look = null;              // right look touch
+    this._mouseDown = false;
+    this._locked = false;
+    this.enabled = false;           // only capture while in-game
   }
 
-  consumeDash()    { const v = this.wantDash;    this.wantDash = false;    return v; }
-  consumeSpecial() { const v = this.wantSpecial; this.wantSpecial = false; return v; }
-  consumeChat()    { const v = this.wantChat;    this.wantChat = -1;       return v; }
+  consumeLook() {
+    const d = { dx: this.lookDX, dy: this.lookDY };
+    this.lookDX = 0; this.lookDY = 0;
+    return d;
+  }
+  consumeJump()   { const v = this.wantJump;   this.wantJump = false;   return v; }
+  consumeReload() { const v = this.wantReload; this.wantReload = false; return v; }
+  consumeChat()   { const v = this.wantChat;   this.wantChat = -1;      return v; }
 
-  attach({ zoneL, zoneR, canvas }) {
+  requestLock() {
+    if (!this.touchMode && this.enabled && !this._locked) {
+      this._canvas.requestPointerLock?.();
+    }
+  }
+  exitLock() { document.exitPointerLock?.(); }
+
+  attach({ canvas, zoneL, zoneR }) {
     this._canvas = canvas;
-    this._makeStickVisual(zoneL, 'L');
-    this._makeStickVisual(zoneR, 'R');
-    this._bindZone(zoneL, 'L');
-    this._bindZone(zoneR, 'R');
+    this._makeStickVisual(zoneL);
+    this._bindMoveZone(zoneL);
+    this._bindLookZone(zoneR);
 
+    // ---- keyboard ----
     window.addEventListener('keydown', (e) => {
+      if (!this.enabled) return;
+      if (e.code === 'Tab') { e.preventDefault(); this.scoreHeld = true; return; }
       if (e.repeat) return;
       this._keys.add(e.code);
-      if (e.code === 'Space' || e.code === 'ShiftLeft') this.wantDash = true;
-      if (e.code === 'KeyE') this.wantSpecial = true;
+      if (e.code === 'Space') { e.preventDefault(); this.wantJump = true; }
+      if (e.code === 'KeyR') this.wantReload = true;
       const n = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
       if (n !== undefined) this.wantChat = n;
     });
-    window.addEventListener('keyup', (e) => this._keys.delete(e.code));
-    window.addEventListener('blur', () => { this._keys.clear(); this._mouse.down = false; });
-
-    canvas.addEventListener('mousemove', (e) => {
-      const r = canvas.getBoundingClientRect();
-      this._mouse.x = e.clientX - (r.left + r.width / 2);
-      this._mouse.y = e.clientY - (r.top + r.height / 2);
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Tab') this.scoreHeld = false;
+      this._keys.delete(e.code);
     });
-    canvas.addEventListener('mousedown', (e) => { if (e.button === 0) this._mouse.down = true; });
-    window.addEventListener('mouseup', () => { this._mouse.down = false; });
+    window.addEventListener('blur', () => { this._keys.clear(); this._mouseDown = false; });
+
+    // ---- pointer lock mouse ----
+    document.addEventListener('pointerlockchange', () => {
+      this._locked = document.pointerLockElement === canvas;
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      if (!this._locked || !this.enabled) return;
+      this.lookDX += e.movementX * 0.0022 * this.sensitivity;
+      this.lookDY += e.movementY * 0.0022 * this.sensitivity;
+    });
+    canvas.addEventListener('mousedown', (e) => {
+      if (!this.enabled || this.touchMode) return;
+      if (!this._locked) { this.requestLock(); return; }
+      if (e.button === 0) this._mouseDown = true;
+    });
+    window.addEventListener('mouseup', () => { this._mouseDown = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
-  _makeStickVisual(zone, key) {
+  _makeStickVisual(zone) {
     const base = document.createElement('div');
     base.className = 'joy-base';
     const knob = document.createElement('div');
     knob.className = 'joy-knob';
     base.appendChild(knob);
     zone.appendChild(base);
-    this['_vis' + key] = { base, knob };
+    this._vis = { base, knob };
   }
 
-  _bindZone(zone, key) {
+  _bindMoveZone(zone) {
     const start = (e) => {
       e.preventDefault();
       this.touchMode = true;
       const t = e.changedTouches[0];
-      this._sticks[key] = { id: t.identifier, ox: t.clientX, oy: t.clientY, dx: 0, dy: 0 };
-      const vis = this['_vis' + key];
-      vis.base.style.display = 'block';
-      vis.base.style.left = t.clientX + 'px';
-      vis.base.style.top = t.clientY + 'px';
-      vis.knob.style.transform = 'translate(-50%,-50%)';
+      this._stick = { id: t.identifier, ox: t.clientX, oy: t.clientY, dx: 0, dy: 0 };
+      this._vis.base.style.display = 'block';
+      this._vis.base.style.left = t.clientX + 'px';
+      this._vis.base.style.top = t.clientY + 'px';
+      this._vis.knob.style.transform = 'translate(-50%,-50%)';
     };
     const move = (e) => {
-      const s = this._sticks[key];
+      const s = this._stick;
       if (!s) return;
       for (const t of e.changedTouches) {
         if (t.identifier !== s.id) continue;
@@ -86,16 +117,16 @@ export class Input {
         const len = Math.hypot(dx, dy);
         if (len > JOY_RADIUS) { dx *= JOY_RADIUS / len; dy *= JOY_RADIUS / len; }
         s.dx = dx / JOY_RADIUS; s.dy = dy / JOY_RADIUS;
-        this['_vis' + key].knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        this._vis.knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
       }
     };
     const end = (e) => {
-      const s = this._sticks[key];
+      const s = this._stick;
       if (!s) return;
       for (const t of e.changedTouches) {
         if (t.identifier !== s.id) continue;
-        this._sticks[key] = null;
-        this['_vis' + key].base.style.display = 'none';
+        this._stick = null;
+        this._vis.base.style.display = 'none';
       }
     };
     zone.addEventListener('touchstart', start, { passive: false });
@@ -104,36 +135,52 @@ export class Input {
     zone.addEventListener('touchcancel', end);
   }
 
-  // called once per frame before the simulation step
+  _bindLookZone(zone) {
+    const start = (e) => {
+      e.preventDefault();
+      this.touchMode = true;
+      const t = e.changedTouches[0];
+      this._look = { id: t.identifier, px: t.clientX, py: t.clientY };
+    };
+    const move = (e) => {
+      const s = this._look;
+      if (!s) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier !== s.id) continue;
+        e.preventDefault();
+        this.lookDX += (t.clientX - s.px) * 0.0045 * this.sensitivity;
+        this.lookDY += (t.clientY - s.py) * 0.0045 * this.sensitivity;
+        s.px = t.clientX; s.py = t.clientY;
+      }
+    };
+    const end = (e) => {
+      const s = this._look;
+      if (!s) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === s.id) this._look = null;
+      }
+    };
+    zone.addEventListener('touchstart', start, { passive: false });
+    zone.addEventListener('touchmove', move, { passive: false });
+    zone.addEventListener('touchend', end);
+    zone.addEventListener('touchcancel', end);
+  }
+
+  // per-frame poll
   update() {
-    // --- movement ---
-    const L = this._sticks.L;
-    if (L) {
-      this.move.x = L.dx; this.move.y = L.dy;
+    if (this._stick) {
+      this.move.x = this._stick.dx;
+      this.move.y = -this._stick.dy;   // up on the stick = forward
     } else {
       let x = 0, y = 0;
-      if (this._keys.has('KeyW') || this._keys.has('ArrowUp')) y -= 1;
-      if (this._keys.has('KeyS') || this._keys.has('ArrowDown')) y += 1;
-      // note: physical D = screen-right regardless of RTL text direction
+      if (this._keys.has('KeyW') || this._keys.has('ArrowUp')) y += 1;
+      if (this._keys.has('KeyS') || this._keys.has('ArrowDown')) y -= 1;
       if (this._keys.has('KeyD') || this._keys.has('ArrowRight')) x += 1;
       if (this._keys.has('KeyA') || this._keys.has('ArrowLeft')) x -= 1;
-      const len = Math.hypot(x, y) || 1;
-      this.move.x = x / (len > 1 ? len : 1);
-      this.move.y = y / (len > 1 ? len : 1);
+      const len = Math.hypot(x, y);
+      this.move.x = len > 1 ? x / len : x;
+      this.move.y = len > 1 ? y / len : y;
     }
-
-    // --- aim + fire ---
-    const R = this._sticks.R;
-    if (R) {
-      const mag = Math.hypot(R.dx, R.dy);
-      if (mag > 0.12) { this.aim.x = R.dx / mag; this.aim.y = R.dy / mag; }
-      this.firing = mag > FIRE_THRESHOLD;
-    } else if (!this.touchMode) {
-      const mag = Math.hypot(this._mouse.x, this._mouse.y);
-      if (mag > 4) { this.aim.x = this._mouse.x / mag; this.aim.y = this._mouse.y / mag; }
-      this.firing = this._mouse.down;
-    } else {
-      this.firing = false;
-    }
+    if (!this.touchMode) this.firing = this._mouseDown;
   }
 }

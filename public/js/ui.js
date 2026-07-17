@@ -1,22 +1,17 @@
 // ============================================================
-// UI layer — screen manager, HUD, shop, leaderboard, results.
+// UI layer — screens, FPS HUD, skins shop, leaderboard, results.
 // All visible text is Hebrew; layout is native RTL (dir="rtl").
 // ============================================================
 
 import { t } from './i18n.js';
 import {
-  SHIPS, SHIP_ORDER, WEAPONS, UPGRADE_TRACKS, UPGRADE_COST, UPGRADE_BONUS,
-  RANKS, xpForLevel, GAME,
+  SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel,
 } from './config.js';
-import {
-  profile, playerLevel, playerRank, buyShip, equipShip, buyUpgrade,
-} from './profile.js';
-import { SHIP_SHAPES } from './render.js';
+import { profile, playerLevel, playerRank, buySkin, equipSkin } from './profile.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
-const SHIP_EMOJI = { storm: '🚀', shadow: '🛸', aegis: '🛡️', nova: '☄️' };
 
 // ---------------- screens ----------------
 const SCREENS = ['load', 'menu', 'lobby', 'shop', 'board', 'game', 'results'];
@@ -53,25 +48,46 @@ export function refreshMenu() {
   $('menu-xpbar').style.width = `${clamp(((profile.xp - lo) / Math.max(1, hi - lo)) * 100, 0, 100)}%`;
 }
 
-// ---------------- lobby ----------------
+// ---------------- lobby (online + offline practice) ----------------
+function pillRow(el, items, selected, canPick, onPick, labelFn) {
+  el.innerHTML = '';
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.className = 'opt-pill' + (it === selected ? ' sel' : '');
+    b.textContent = labelFn(it);
+    b.disabled = !canPick;
+    if (canPick) b.addEventListener('click', () => { SFX.click(); onPick(it); });
+    el.appendChild(b);
+  }
+}
+
+export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick }) {
+  pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
+  $('bots-opts').style.display = showBots ? '' : 'none';
+  if (showBots) {
+    pillRow($('bot-picker'), BOT_LEVEL_ORDER, botLevel, canPick, (b) => onPick({ botLevel: b }), (b) => t('bots_' + b));
+    pillRow($('botcount-picker'), [2, 3, 4, 5, 6], botCount, canPick, (n) => onPick({ botCount: n }), (n) => String(n));
+  }
+}
+
 export function renderLobby(players, meta, myUid, roomId) {
   if (!meta) return;
   $('lobby-title').textContent = t('lobbyTitle_' + meta.mode);
-  $('lobby-code').textContent = t('roomCode', { code: roomId });
+  $('lobby-code').textContent = roomId ? t('roomCode', { code: roomId }) : '';
 
   const ul = $('lobby-players');
   ul.innerHTML = '';
   for (const p of players) {
     const li = document.createElement('li');
     li.innerHTML =
-      `<span class="p-ship">${SHIP_EMOJI[p.ship] || '🚀'}</span>` +
+      `<span class="p-ship">🪖</span>` +
       `<span class="p-name">${escapeHtml(p.name || '?')}${p.me ? ' (אתם)' : ''}</span>` +
       `<span class="p-lvl">${t('level', { n: p.lvl || 1 })}</span>` +
       (p.uid === meta.host ? `<span class="p-host">★ מארח</span>` : '');
     ul.appendChild(li);
   }
   const max = meta.maxPlayers || 6;
-  for (let i = players.length; i < max; i++) {
+  for (let i = players.length; i < Math.min(max, players.length + 2); i++) {
     const li = document.createElement('li');
     li.className = 'empty';
     li.textContent = '· מקום פנוי ·';
@@ -84,9 +100,7 @@ export function renderLobby(players, meta, myUid, roomId) {
   btn.disabled = !(isHost && players.length >= 1);
   if (meta.state === 'waiting') {
     $('lobby-status').className = 'lobby-status';
-    $('lobby-status').textContent = isHost
-      ? (players.length < 2 ? t('waitingForPlayers') + ' · ' + t('youAreHost') : t('youAreHost'))
-      : t('waitingForPlayers');
+    $('lobby-status').textContent = isHost ? t('youAreHost') : t('waitingForPlayers');
   }
 }
 
@@ -97,55 +111,51 @@ export function setLobbyCountdown(sec) {
   $('btn-start').style.display = 'none';
 }
 
-// ---------------- shop ----------------
-function drawShipPreview(canvas, shipId) {
-  const ctx = canvas.getContext('2d');
-  const s = 74 * (window.devicePixelRatio || 1);
-  canvas.width = canvas.height = s;
-  ctx.setTransform(s / 74, 0, 0, s / 74, 0, 0);
-  ctx.clearRect(0, 0, 74, 74);
-  ctx.save();
-  ctx.translate(37, 37);
-  ctx.rotate(-Math.PI / 2);
-  ctx.scale(1.6, 1.6);
-  const hue = SHIPS[shipId].hue;
-  const shape = SHIP_SHAPES[shipId];
-  ctx.beginPath();
-  shape.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-  ctx.closePath();
-  const g = ctx.createLinearGradient(-16, 0, 18, 0);
-  g.addColorStop(0, `hsl(${hue}, 45%, 16%)`);
-  g.addColorStop(1, `hsl(${hue}, 60%, 34%)`);
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.strokeStyle = `hsl(${hue}, 95%, 62%)`;
-  ctx.lineWidth = 2;
-  ctx.shadowColor = `hsl(${hue}, 95%, 60%)`;
-  ctx.shadowBlur = 10;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = `hsla(${hue}, 100%, 82%, 0.95)`;
-  ctx.beginPath(); ctx.arc(4, 0, 3.4, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+// ---------------- skins shop ----------------
+function drawSkinPreview(canvas, skinId) {
+  const s = SKINS[skinId];
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = 84 * dpr; canvas.height = 104 * dpr;
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+  c.clearRect(0, 0, 84, 104);
+  // legs
+  c.fillStyle = '#2d3142';
+  c.fillRect(30, 62, 9, 30); c.fillRect(45, 62, 9, 30);
+  c.fillStyle = hex(s.accent);
+  c.fillRect(28, 88, 13, 8); c.fillRect(43, 88, 13, 8);
+  // torso
+  c.fillStyle = hex(s.body);
+  c.fillRect(24, 34, 36, 30);
+  c.fillStyle = hex(s.accent);
+  c.fillRect(24, 58, 36, 5);
+  c.fillRect(24, 40, 36, 4);
+  // arms
+  c.fillStyle = hex(s.body);
+  c.fillRect(14, 36, 9, 24); c.fillRect(61, 36, 9, 24);
+  c.fillStyle = hex(s.skin);
+  c.fillRect(14, 58, 9, 7); c.fillRect(61, 58, 9, 7);
+  // head + visor + helmet
+  c.fillStyle = hex(s.skin);
+  c.fillRect(28, 8, 28, 26);
+  c.fillStyle = '#1f2430';
+  c.fillRect(31, 17, 22, 6);
+  c.fillStyle = hex(s.accent);
+  c.fillRect(26, 4, 32, 8);
 }
 
 export function renderShop() {
   $('shop-shards').textContent = `💠 ${profile.shards}`;
-
-  // ships
-  const grid = $('shop-ships');
+  const grid = $('shop-skins');
   grid.innerHTML = '';
-  for (const id of SHIP_ORDER) {
-    const s = SHIPS[id];
-    const owned = !!profile.ships[id];
-    const equipped = profile.ship === id;
+  for (const id of SKIN_ORDER) {
+    const s = SKINS[id];
+    const owned = !!profile.skins[id];
+    const equipped = profile.skin === id;
     const card = document.createElement('div');
     card.className = 'ship-card' + (equipped ? ' equipped' : '');
-    card.innerHTML =
-      `<canvas></canvas>` +
-      `<div class="s-name">${t('ship_' + id)}</div>` +
-      `<div class="s-desc">${t('shipDesc_' + id)}</div>` +
-      `<div class="s-stats"><span>❤️ ${s.hp}</span><span>🏃 ${s.speed}</span><span>🔫 ${t('weapon_' + s.weapon)}</span></div>`;
+    card.innerHTML = `<canvas></canvas><div class="s-name">${t('skin_' + id)}</div>`;
     const btn = document.createElement('button');
     btn.className = 'shop-buy' + (owned ? ' own' : '');
     if (equipped) { btn.textContent = '✓ ' + t('equipped'); btn.disabled = true; }
@@ -153,40 +163,13 @@ export function renderShop() {
     else { btn.textContent = s.cost === 0 ? t('free') : `💠 ${s.cost}`; btn.disabled = profile.shards < s.cost; }
     btn.addEventListener('click', () => {
       SFX.click();
-      const ok = owned ? equipShip(id) : buyShip(id);
+      const ok = owned ? equipSkin(id) : buySkin(id);
       if (!ok) { toast(t('notEnough'), 'red'); return; }
       renderShop(); refreshMenu();
     });
     card.appendChild(btn);
     grid.appendChild(card);
-    drawShipPreview(card.querySelector('canvas'), id);
-  }
-
-  // upgrades
-  const list = $('shop-upgrades');
-  list.innerHTML = '';
-  for (const track of UPGRADE_TRACKS) {
-    const tier = profile.up[track];
-    const maxed = tier >= UPGRADE_COST.length;
-    const row = document.createElement('div');
-    row.className = 'upgrade-row';
-    const pips = Array.from({ length: UPGRADE_COST.length }, (_, i) =>
-      `<span class="u-pip${i < tier ? ' on' : ''}"></span>`).join('');
-    row.innerHTML =
-      `<span class="u-name">${t('up_' + track)}</span>` +
-      `<span class="u-pips">${pips}</span>` +
-      `<span class="u-bonus">+${Math.round(UPGRADE_BONUS[track] * 100)}%</span>`;
-    const btn = document.createElement('button');
-    btn.className = 'shop-buy';
-    if (maxed) { btn.textContent = t('upMax'); btn.disabled = true; }
-    else { btn.textContent = `💠 ${UPGRADE_COST[tier]}`; btn.disabled = profile.shards < UPGRADE_COST[tier]; }
-    btn.addEventListener('click', () => {
-      SFX.click();
-      if (!buyUpgrade(track)) { toast(t('notEnough'), 'red'); return; }
-      renderShop(); refreshMenu();
-    });
-    row.appendChild(btn);
-    list.appendChild(row);
+    drawSkinPreview(card.querySelector('canvas'), id);
   }
 }
 
@@ -216,10 +199,10 @@ export function renderBoard(rows, myUid) {
 
 // ---------------- HUD ----------------
 let lastFeedKey = '';
-let lastWaveSeen = 0;
 let bannerTimer = null;
+let sbToggle = false;
 
-export function banner(text, ms = 1800) {
+export function banner(text, ms = 2000) {
   const el = $('hud-banner');
   el.textContent = text;
   el.classList.add('show');
@@ -229,89 +212,127 @@ export function banner(text, ms = 1800) {
 
 export function resetHUD() {
   lastFeedKey = '';
-  lastWaveSeen = 0;
+  sbToggle = false;
   $('hud-feed').innerHTML = '';
   $('hud-respawn').textContent = '';
   $('hud-banner').classList.remove('show');
   $('chat-panel').classList.add('hidden');
+  $('scoreboard').classList.add('hidden');
 }
 
-export function updateHUD(game) {
+export function updateHUD(game, input) {
   const me = game.me;
   if (!me) return;
 
-  $('hud-center').textContent = game.mode === 'pvp'
-    ? fmtTime(game.timeLeft())
-    : t('wave', { n: Math.max(1, game.wave) });
+  // center: mode status
+  if (game.mode === 'team') {
+    $('hud-center').textContent = `${fmtTime(game.timeLeft())} · ${t('teamScore', { a: game.teamScore, b: game.botScore })}`;
+  } else {
+    $('hud-center').textContent = `נשק ${Math.min(me.tier + 1, WEAPON_LADDER.length)}/${WEAPON_LADDER.length}`;
+  }
   $('hud-score').textContent = me.score;
   $('hud-kills').textContent = me.kills;
 
+  // hp
   const frac = clamp(me.hp / me.maxHp, 0, 1);
   const fill = $('hud-hp-fill');
   fill.style.width = `${frac * 100}%`;
   fill.classList.toggle('low', frac < 0.3);
   $('hud-hp-text').textContent = Math.max(0, Math.round(me.hp));
 
-  // killfeed (rebuild only when it changes)
+  // weapon
+  $('hud-weapon-name').textContent = t('weapon_' + me.weapon);
+  const ammoEl = $('hud-ammo');
+  if (me.reloadT > 0) { ammoEl.textContent = '⟳'; ammoEl.className = 'reloading'; }
+  else { ammoEl.textContent = isFinite(me.ammo) ? String(me.ammo) : '∞'; ammoEl.className = ''; }
+  const pips = $('hud-tier');
+  if (pips.children.length !== WEAPON_LADDER.length) {
+    pips.innerHTML = WEAPON_LADDER.map(() => '<span></span>').join('');
+  }
+  [...pips.children].forEach((el, i) => el.classList.toggle('on', i <= me.tier));
+
+  // flags
+  const h = game.hudFlags;
+  const hm = $('hitmarker');
+  hm.classList.toggle('show', h.hitmarker > 0);
+  hm.classList.toggle('hs', h.headshot > 0);
+  $('hurt-vignette').classList.toggle('show', h.hurt > 0);
+  if (h.tierBanner) { banner(h.tierBanner); h.tierBanner = ''; }
+  if (h.winBanner) { banner(h.winBanner, 4000); h.winBanner = ''; }
+
+  // feed
   const key = game.feed.map((f) => f.text).join('|');
   if (key !== lastFeedKey) {
     lastFeedKey = key;
     $('hud-feed').innerHTML = game.feed.slice(-5).map((f) => `<li>${escapeHtml(f.text)}</li>`).join('');
   }
 
-  // wave banner (co-op)
-  if (game.mode === 'coop' && game.wave > lastWaveSeen) {
-    lastWaveSeen = game.wave;
-    banner(t('wave', { n: game.wave }));
-  }
-
   $('hud-respawn').textContent = (!me.alive && !game.over)
     ? t('respawnIn', { n: Math.max(1, Math.ceil(me.respawnT)) })
     : '';
 
-  updateCooldownBtn($('btn-dash'), me.dashCd, GAME.dashCd);
-  updateCooldownBtn($('btn-special'), me.specialCd, GAME.specialCd);
+  // desktop pointer-lock hint
+  $('lock-hint').classList.toggle('show', !input.touchMode && !document.pointerLockElement);
+
+  // scoreboard
+  const showSb = input.scoreHeld || sbToggle;
+  $('scoreboard').classList.toggle('hidden', !showSb);
+  if (showSb) renderScoreboard(game);
 }
 
-function updateCooldownBtn(btn, cd, maxCd) {
-  const cooling = cd > 0.05;
-  btn.classList.toggle('cooling', cooling);
-  btn.querySelector('.ab-cd').textContent = cooling ? Math.ceil(cd) : '';
+function renderScoreboard(game) {
+  const rows = [...game.players.values()]
+    .sort((a, b) => b.tier - a.tier || b.kills - a.kills);
+  $('scoreboard-rows').innerHTML =
+    `<div class="sb-row head"><span></span><span>שם</span><span>נשק</span><span>ח/מ</span><span>ניקוד</span></div>` +
+    rows.map((p, i) =>
+      `<div class="sb-row${p === game.me ? ' me' : ''}">` +
+      `<span>${i + 1}</span>` +
+      `<span>${escapeHtml(p.name)}</span>` +
+      `<span>${p.bot ? '🤖' : t('weapon_' + (WEAPON_LADDER[p.tier] || p.weapon))}</span>` +
+      `<span class="sb-kd">${p.kills}/${p.deaths}</span>` +
+      `<span>${p.score}</span></div>`,
+    ).join('');
 }
 
-// bind HUD action buttons to the input layer
+// bind HUD buttons to the input layer
 export function bindHUD(input, { onExit, onChat }) {
-  const press = (el, fn) => {
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
-    el.addEventListener('mousedown', (e) => { e.stopPropagation(); fn(); });
+  // reveal touch buttons on first touch anywhere
+  window.addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
+
+  const hold = (el, down, up) => {
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); down(); }, { passive: false });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); up && up(); }, { passive: false });
+    el.addEventListener('touchcancel', () => up && up());
   };
-  press($('btn-dash'), () => { input.wantDash = true; });
-  press($('btn-special'), () => { input.wantSpecial = true; });
-  press($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
+  hold($('btn-fire'), () => { input.firing = true; }, () => { input.firing = false; });
+  hold($('btn-jump'), () => { input.wantJump = true; });
+  hold($('btn-reload'), () => { input.wantReload = true; });
+  hold($('btn-score'), () => { sbToggle = !sbToggle; });
+  hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
   for (const b of $('chat-panel').querySelectorAll('button')) {
-    press(b, () => {
-      onChat(+b.dataset.chat);
-      $('chat-panel').classList.add('hidden');
-    });
+    const fn = () => { onChat(+b.dataset.chat); $('chat-panel').classList.add('hidden'); };
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
+    b.addEventListener('click', fn);
   }
-  $('btn-exit').onclick = onExit;
+  $('btn-exit').addEventListener('click', onExit);
+  $('btn-exit').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); onExit(); }, { passive: false });
 }
 
 // ---------------- results ----------------
-export function renderResults(results, rewards, myName) {
+export function renderResults(results, rewards) {
   const title = $('res-title');
-  const isPvp = results.mode === 'pvp';
   const myRow = results.placements.find((p) => p.me);
   const myPlace = results.placements.indexOf(myRow) + 1;
 
-  if (isPvp) {
+  if (results.mode === 'team') {
+    title.textContent = results.win ? t('teamWin', { n: results.teamScore }) : t('teamLose');
+    title.className = results.win ? 'win' : 'lose';
+    $('res-sub').textContent = t('mode_team');
+  } else {
     title.textContent = results.win ? t('victory') : t('place', { n: myPlace });
     title.className = results.win ? 'win' : (myPlace <= 2 ? '' : 'lose');
-    $('res-sub').textContent = t('mode_pvp');
-  } else {
-    title.textContent = t('gameOver');
-    title.className = 'lose';
-    $('res-sub').textContent = t('resultWaves', { n: results.wave });
+    $('res-sub').textContent = results.winnerName ? t('winner', { name: results.winnerName }) : t('mode_gungame');
   }
 
   const table = $('res-table');

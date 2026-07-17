@@ -1,32 +1,30 @@
 // ============================================================
-// Multiplayer over Firebase Realtime Database.
+// Multiplayer over Firebase Realtime Database (3D FPS edition).
 //
 //   Room lifecycle: waiting → starting (countdown) → playing → ended
-//   • quick match via /index/{mode} (count is a hint, verified on join)
-//   • join by 5-char room code
-//   • presence via onDisconnect().remove()
-//   • host migration: earliest joinedAt among survivors takes over
-//   • transient nodes (shots/hits/…) are pruned by their pusher
+//   • quick match via /index/{mode}; join by 5-char room code
+//   • host picks map / bot difficulty / bot count in the lobby
+//   • presence via onDisconnect().remove(); host migration by joinedAt
+//   • victim-authoritative hits; host-authoritative bots
 // ============================================================
 
 import { FB } from './fb.js';
 import { GAME, QUICK_CHAT } from './config.js';
 import { roomCode } from './util.js';
 import { t } from './i18n.js';
-import { SFX } from './audio.js';
 
-const maxFor = (mode) => (mode === 'coop' ? GAME.maxPlayersCoop : GAME.maxPlayersPvp);
+const maxFor = () => GAME.maxPlayers;
 
 export class Room {
   constructor(id, mode) {
     this.id = id;
-    this.mode = mode;
+    this.mode = mode;               // 'gungame' | 'team'
     this.meta = null;
-    this.playersCache = {};      // uid → last known state (lobby + game)
+    this.playersCache = {};
     this.myJoinedAt = 0;
     this.game = null;
-    this.onLobby = null;         // (playersArr, meta)
-    this.onMeta = null;          // (meta)
+    this.onLobby = null;
+    this.onMeta = null;
     this._unsubs = [];
     this._timers = [];
     this._t0 = 0;
@@ -45,28 +43,29 @@ export class Room {
   }
 
   // ---------------- matchmaking ----------------
-  static async quickMatch(mode, lobbyInfo) {
+  static async quickMatch(mode, lobbyInfo, options) {
     const idxSnap = await FB.d.get(FB.d.ref(FB.db, `index/${mode}`));
     const now = FB.serverNow();
     const cands = Object.entries(idxSnap.val() || {})
       .filter(([, v]) => v.state === 'waiting' && now - (v.at || 0) < GAME.roomTTL)
       .sort((a, b) => (b[1].count || 0) - (a[1].count || 0));
-
     for (const [id] of cands) {
       const room = new Room(id, mode);
       if (await room._tryJoin(lobbyInfo)) return room;
     }
-    return Room.create(mode, lobbyInfo);
+    return Room.create(mode, lobbyInfo, options);
   }
 
-  static async create(mode, lobbyInfo) {
+  static async create(mode, lobbyInfo, options = {}) {
     const id = roomCode();
     const room = new Room(id, mode);
     const meta = {
       mode, state: 'waiting', host: FB.uid,
-      seed: (Math.random() * 1e9) | 0,
-      startAt: 0, wave: 0,
-      createdAt: FB.serverNow(), maxPlayers: maxFor(mode),
+      map: options.map || 'town',
+      botLevel: options.botLevel || 'normal',
+      botCount: options.botCount || 4,
+      startAt: 0,
+      createdAt: FB.serverNow(), maxPlayers: maxFor(),
     };
     await FB.d.set(room._ref('meta'), meta);
     room.meta = meta;
@@ -97,7 +96,7 @@ export class Room {
       const okState = meta.state === 'waiting' || (allowStarting && meta.state === 'starting');
       if (!okState) return false;
       const count = Object.keys(playersSnap.val() || {}).length;
-      if (count >= (meta.maxPlayers || maxFor(this.mode))) return false;
+      if (count >= (meta.maxPlayers || maxFor())) return false;
       this.meta = meta;
       this.mode = meta.mode;
       await this._enter(lobbyInfo);
@@ -118,7 +117,6 @@ export class Room {
     this._attachCore();
   }
 
-  // meta + players listeners live for the whole room lifetime
   _attachCore() {
     this._unsubs.push(FB.d.onValue(this._ref('meta'), (s) => {
       const prev = this.meta;
@@ -126,14 +124,7 @@ export class Room {
       if (!this.meta) return;
       if (this.onMeta) this.onMeta(this.meta, prev);
       this._emitLobby();
-      // co-op wave banner for guests
-      if (this.game && prev && this.meta.wave > (prev.wave || 0) && !this.game.isHost) {
-        this.game.wave = this.meta.wave;
-        this.game.feed.push({ text: t('waveIncoming', { n: this.meta.wave }), t: 4 });
-        SFX.wave();
-      }
     }));
-
     this._unsubs.push(FB.d.onChildAdded(this._ref('players'), (s) => {
       this.playersCache[s.key] = s.val();
       if (this.game && s.key !== FB.uid) this.game.upsertRemote(s.key, s.val());
@@ -162,8 +153,7 @@ export class Room {
     if (!this.meta || this.meta.host !== leftUid) return;
     const order = this.playerOrder();
     if (!order.length) return;
-    const newHost = order[0];
-    if (newHost !== FB.uid) return;      // deterministic: only the heir writes
+    if (order[0] !== FB.uid) return;
     FB.d.update(this._ref('meta'), { host: FB.uid }).catch(() => {});
     if (this.game && !this.game.isHost) {
       this.game.becomeHost();
@@ -172,7 +162,12 @@ export class Room {
     }
   }
 
-  // ---------------- lobby → match ----------------
+  // host-only lobby options
+  setOptions(patch) {
+    if (!this.isHost) return;
+    FB.d.update(this._ref('meta'), patch).catch(() => {});
+  }
+
   async startMatch() {
     if (!this.isHost || !this.meta || this.meta.state !== 'waiting') return;
     const startAt = FB.serverNow() + GAME.lobbyCountdown * 1000;
@@ -186,14 +181,12 @@ export class Room {
     this._t0 = FB.serverNow();
     const d = FB.d;
 
-    // hydrate remote players already in cache
     for (const [uid, st] of Object.entries(this.playersCache)) {
       if (uid !== FB.uid && st.x !== undefined) game.upsertRemote(uid, st);
     }
 
-    // ---- outbound: my state ~11Hz ----
     const meRef = this._ref('players/' + FB.uid);
-    FB.d.set(meRef, { ...game.getSelfState(), joinedAt: this.myJoinedAt });
+    d.set(meRef, { ...game.getSelfState(), joinedAt: this.myJoinedAt });
     this._timers.push(setInterval(() => {
       if (game.me) d.update(meRef, game.getSelfState()).catch(() => {});
     }, GAME.syncMs));
@@ -204,7 +197,7 @@ export class Room {
     };
     const fresh = (v) => !v.t || v.t > this._t0 - 3000;
 
-    // ---- shots ----
+    // ---- my tracers for others ----
     game.onShot = (shot) => pushTransient('shots', { o: FB.uid, ...shot });
     this._unsubs.push(d.onChildAdded(this._ref('shots'), (s) => {
       const v = s.val();
@@ -213,90 +206,80 @@ export class Room {
     }));
 
     // ---- hits (victim-authoritative) ----
-    game.onHitRemote = (toUid, dmg) => pushTransient('hits', { to: toUid, from: FB.uid, dmg });
+    game.onHitRemote = (toUid, dmg, info = {}) =>
+      pushTransient('hits', { to: toUid, from: info.from || FB.uid, dmg, hs: !!info.hs, mel: !!info.mel });
     this._unsubs.push(d.onChildAdded(this._ref('hits'), (s) => {
       const v = s.val();
       if (!v || v.to !== FB.uid || !fresh(v)) return;
-      game.applyHitOnMe(v.dmg, v.from);
+      game.applyHitOnMe(v.dmg, v.from, v.hs, v.mel);
     }));
 
-    // ---- kill events (announced by the victim) ----
-    game.onSelfDeath = (fromUid) => {
-      const killerName = this.playersCache[fromUid]?.name || t('enemy_crawler');
-      pushTransient('events', { k: 'kill', a: fromUid, an: killerName, b: FB.uid, bn: game.me.name });
+    // ---- kills / chat / win / over ----
+    game.onSelfDeath = (fromUid, mel) => {
+      const killerName = this.playersCache[fromUid]?.name
+        || [...game.players.values()].find((q) => q.uid === fromUid)?.name || '🤖';
+      pushTransient('events', { k: 'kill', a: fromUid, an: killerName, b: FB.uid, bn: game.me.name, mel: !!mel, vb: false });
       d.update(meRef, game.getSelfState()).catch(() => {});
     };
+    game.onKillBroadcast = (fromUid, killerName, botUid, botName, mel) =>
+      pushTransient('events', { k: 'kill', a: fromUid, an: killerName, b: botUid, bn: botName, mel: !!mel, vb: true });
     game.onChat = (idx) => pushTransient('events', { k: 'chat', u: FB.uid, c: idx });
+    game.onWin = () => pushTransient('events', { k: 'win', u: FB.uid, name: game.me.name });
 
     this._unsubs.push(d.onChildAdded(this._ref('events'), (s) => {
       const v = s.val();
       if (!v || !fresh(v)) return;
       switch (v.k) {
         case 'kill':
-          game.feed.push({ text: t('kill', { a: v.an, b: v.bn }), t: 5 });
-          if (v.a === FB.uid) game.creditKill(FB.uid, v.bn);
+          game.feed.push({ text: t(v.mel ? 'killKnife' : 'kill', { a: v.an, b: v.bn }), t: 5 });
+          game.tallyRemoteKill(v.a, v.b);
+          // credit myself unless I'm the host who already credited locally (bot victims)
+          if (v.a === FB.uid && !(v.vb && game.isHost)) game.creditKill(v.bn, v.mel, v.vb);
           break;
         case 'chat':
-          if (v.u !== FB.uid) game.showChat(v.u, QUICK_CHAT[v.c] || 'gg');
-          else game.showChat(FB.uid, QUICK_CHAT[v.c] || 'gg');
+          game.showChat(v.u, QUICK_CHAT[v.c] || 'gg');
+          break;
+        case 'win':
+          game.hudFlags.winBanner = t('winner', { name: v.name });
+          game.forceGameOver({ winnerUid: v.u, winnerName: v.name });
           break;
         case 'over':
-          if (this.mode === 'coop') game.forceGameOver();
+          game.forceGameOver({ teamWin: !!v.teamWin });
           break;
       }
     }));
 
-    // ---- co-op enemy sync ----
-    if (this.mode === 'coop') {
-      game.onEnemyDamage = (id, dmg) => pushTransient('edmg', { id, dmg, from: FB.uid });
-      this._unsubs.push(d.onChildAdded(this._ref('edmg'), (s) => {
+    // ---- bots (team mode) ----
+    if (this.mode === 'team') {
+      game.onBotDamage = (id, dmg) => pushTransient('bdmg', { id, dmg, from: FB.uid });
+      this._unsubs.push(d.onChildAdded(this._ref('bdmg'), (s) => {
         const v = s.val();
         if (!v || !fresh(v) || !game.isHost || v.from === FB.uid) return;
-        game.applyEnemyDamageEvent(v.id, v.dmg, v.from);
+        game.applyBotDamageEvent(v.id, v.dmg, v.from);
       }));
-
-      this._unsubs.push(d.onValue(this._ref('enemies'), (s) => {
-        if (!game.isHost) game.setEnemySnapshot(s.val());
+      this._unsubs.push(d.onValue(this._ref('bots'), (s) => {
+        if (!game.isHost) game.setBotSnapshot(s.val());
       }));
-
-      this._unsubs.push(d.onChildAdded(this._ref('eshots'), (s) => {
+      this._unsubs.push(d.onChildAdded(this._ref('bshots'), (s) => {
         const v = s.val();
         if (!v || !fresh(v) || game.isHost) return;
-        game.spawnEnemyShot(v);
+        game.applyRemoteShot(v.o, v);
       }));
-
-      game.onOver = (results) => {
-        if (game.isHost && !results.win) {
-          pushTransient('events', { k: 'over' });
-          d.update(this._ref('meta'), { state: 'ended' }).catch(() => {});
-          d.update(this._idxRef(), { state: 'ended' }).catch(() => {});
-        }
-        if (this._onGameOver) this._onGameOver(results);
-      };
-    } else {
-      game.onOver = (results) => {
-        if (game.isHost) {
-          d.update(this._ref('meta'), { state: 'ended' }).catch(() => {});
-          d.update(this._idxRef(), { state: 'ended' }).catch(() => {});
-        }
-        if (this._onGameOver) this._onGameOver(results);
-      };
     }
 
-    // ---- pickups ----
-    game.onPickupSpawn = (pk) => d.set(this._ref('pickups/' + pk.id), pk).catch(() => {});
-    game.onPickupTaken = (id) => d.remove(this._ref('pickups/' + id)).catch(() => {});
-    this._unsubs.push(d.onChildAdded(this._ref('pickups'), (s) => {
-      const v = s.val();
-      if (v) game.addPickup(v);
-    }));
-    this._unsubs.push(d.onChildRemoved(this._ref('pickups'), (s) => {
-      game.removePickup(s.key);
-    }));
+    game.onOver = (results) => {
+      if (game.isHost) {
+        if (this.mode === 'team' && results.teamWin !== undefined) {
+          pushTransient('events', { k: 'over', teamWin: !!results.teamWin });
+        }
+        d.update(this._ref('meta'), { state: 'ended' }).catch(() => {});
+        d.update(this._idxRef(), { state: 'ended', at: FB.serverNow() }).catch(() => {});
+      }
+      if (this._onGameOver) this._onGameOver(results);
+    };
 
     if (game.isHost) this._startHostLoops();
 
-    // host flips the room to "playing" once the countdown elapses
     if (this.isHost) {
       const wait = Math.max(0, (this.meta?.startAt || 0) - FB.serverNow());
       this._timers.push(setTimeout(() => {
@@ -310,17 +293,16 @@ export class Room {
 
   _startHostLoops() {
     const game = this.game;
-    if (!game || this.mode !== 'coop') return;
-    game.onWave = (n) => FB.d.update(this._ref('meta'), { wave: n }).catch(() => {});
-    game.onEnemyShot = (spec) => {
-      const r = FB.d.push(this._ref('eshots'), { ...spec, t: FB.serverNow() });
+    if (!game || this.mode !== 'team') return;
+    game.onBotShot = (spec) => {
+      const r = FB.d.push(this._ref('bshots'), { ...spec, t: FB.serverNow() });
       setTimeout(() => FB.d.remove(r).catch(() => {}), 5000);
     };
     this._timers.push(setInterval(() => {
       if (game.isHost && !game.over) {
-        FB.d.set(this._ref('enemies'), game.getEnemySnapshot()).catch(() => {});
+        FB.d.set(this._ref('bots'), game.getBotSnapshot()).catch(() => {});
       }
-    }, GAME.enemySyncMs));
+    }, GAME.botSyncMs));
   }
 
   // ---------------- teardown ----------------
@@ -342,7 +324,7 @@ export class Room {
         await d.remove(this._ref());
         await d.remove(this._idxRef());
       }
-    } catch { /* network teardown is best-effort */ }
+    } catch { /* best-effort teardown */ }
     this.game = null;
   }
 }

@@ -23,25 +23,22 @@
           }
         },
         "shots": {
-          "$sid": { ".write": "auth != null && !data.exists()" }
+          "$sid": { ".write": "auth != null" }
         },
         "hits": {
           "$hid": { ".write": "auth != null" }
         },
-        "enemies": {
+        "bots": {
           ".write": "auth != null"
         },
-        "edmg": {
-          "$eid": { ".write": "auth != null" }
+        "bshots": {
+          "$bsid": { ".write": "auth != null" }
         },
-        "eshots": {
-          "$eid": { ".write": "auth != null" }
-        },
-        "pickups": {
-          ".write": "auth != null"
+        "bdmg": {
+          "$bdid": { ".write": "auth != null" }
         },
         "events": {
-          "$evid": { ".write": "auth != null && !data.exists()" }
+          "$evid": { ".write": "auth != null" }
         }
       }
     }

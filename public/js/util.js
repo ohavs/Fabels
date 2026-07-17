@@ -50,6 +50,49 @@ export function pushOut(x, y, r, ox, oy, or_) {
   return [ox + nx * min, oy + ny * min];
 }
 
+// ---- 3D helpers (plain math — keeps hit detection identical on all clients) ----
+
+// ray vs AABB slab test; returns entry distance t or Infinity
+export function rayAABB(ox, oy, oz, dx, dy, dz, b) {
+  let tmin = 0, tmax = Infinity;
+  const axes = [[ox, dx, b.x0, b.x1], [oy, dy, b.y0, b.y1], [oz, dz, b.z0, b.z1]];
+  for (const [o, d, lo, hi] of axes) {
+    if (Math.abs(d) < 1e-9) {
+      if (o < lo || o > hi) return Infinity;
+    } else {
+      let t1 = (lo - o) / d, t2 = (hi - o) / d;
+      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+      if (tmin > tmax) return Infinity;
+    }
+  }
+  return tmin;
+}
+
+// ray vs sphere; returns t or Infinity
+export function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
+  const lx = cx - ox, ly = cy - oy, lz = cz - oz;
+  const tca = lx * dx + ly * dy + lz * dz;
+  if (tca < 0) return Infinity;
+  const d2 = lx * lx + ly * ly + lz * lz - tca * tca;
+  const r2 = r * r;
+  if (d2 > r2) return Infinity;
+  return tca - Math.sqrt(r2 - d2);
+}
+
+// is the straight segment a→b blocked by any collider?
+export function segmentBlocked(ax, ay, az, bx, by, bz, colliders) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const nx = dx / len, ny = dy / len, nz = dz / len;
+  for (const c of colliders) {
+    const t = rayAABB(ax, ay, az, nx, ny, nz, c);
+    if (t < len) return true;
+  }
+  return false;
+}
+
 export const fmtTime = (sec) => {
   sec = Math.max(0, Math.ceil(sec));
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;

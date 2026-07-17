@@ -1,55 +1,54 @@
 // ============================================================
 // Hebrew string table — every dynamic UI string lives here.
 // Static screen text lives directly in index.html (also Hebrew).
-// t(key, params) interpolates {name}-style placeholders.
 // ============================================================
 
 export const STR = {
-  // generic
-  loading: 'טוען את שדה הגבישים…',
-  offlineMode: 'מצב לא־מקוון: Firebase לא הוגדר — זמין אימון מול בוטים בלבד',
+  loading: 'טוען את הזירה…',
+  offlineMode: 'מצב לא־מקוון: זמין אימון מול בוטים בלבד',
   connecting: 'מתחבר…',
   connected: 'מחובר',
-  back: 'חזרה',
-  ok: 'אישור',
-  cancel: 'ביטול',
   free: 'חינם',
   owned: 'ברשותך',
-  equipped: 'נבחרה',
+  equipped: 'נבחר',
   equip: 'בחר',
-  buy: 'קנייה',
   notEnough: 'אין מספיק רסיסים',
-  saved: 'נשמר',
 
-  // ships
-  ship_storm: 'סער',
-  ship_shadow: 'צל',
-  ship_aegis: 'מגן',
-  ship_nova: 'נובה',
-  shipDesc_storm: 'לוחמת מאוזנת. בלסטר אמין ויכולת מטח-על.',
-  shipDesc_shadow: 'סיירת מהירה. מפזר תלת-קני והבזק טלפורט.',
-  shipDesc_aegis: 'טנק כבד. טילים ביתיים ומגן אנרגיה.',
-  shipDesc_nova: 'תותח זכוכית. לייזר חודר ופיצוץ נובה.',
+  // modes
+  mode_gungame: 'משחק רובים',
+  mode_team: 'נגד בוטים',
+  mode_practice: 'אימון חופשי',
 
-  // specials
-  special_overdrive: 'מטח-על',
-  special_blink: 'הבזק',
-  special_shield: 'מגן אנרגיה',
-  special_nova: 'פיצוץ נובה',
+  // maps
+  map_town: 'העיירה',
+  map_mine: 'מכרה הגבישים',
+  map_port: 'נמל החלל',
+  map_canyon: 'קניון האש',
 
-  // weapons
-  weapon_blaster: 'בלסטר',
-  weapon_spread: 'מפזר',
-  weapon_laser: 'לייזר',
-  weapon_missile: 'טיל ביתי',
+  // weapons (gun-game ladder)
+  weapon_pistol: 'אקדח',
+  weapon_smg: 'תת־מקלע',
+  weapon_shotgun: 'רובה ציד',
+  weapon_rifle: 'רובה סער',
+  weapon_lmg: 'מקלע כבד',
+  weapon_sniper: 'רובה צלפים',
+  weapon_plasma: 'קרן פלזמה',
+  weapon_knife: 'סכין הזהב',
+  weapon_botgun: 'נשק בוט',
 
-  // upgrades
-  up_dmg: 'נזק',
-  up_rate: 'קצב ירי',
-  up_speed: 'מהירות',
-  up_hp: 'שריון',
-  upMax: 'מקסימום',
-  tier: 'דרגה {n}',
+  // skins
+  skin_scout: 'סייר',
+  skin_ember: 'גחלת',
+  skin_jungle: "ג'ונגל",
+  skin_shadow: 'צללים',
+  skin_sunset: 'שקיעה',
+  skin_legend: 'אגדה',
+
+  // bots
+  bots_easy: 'קל',
+  bots_normal: 'רגיל',
+  bots_hard: 'קשה',
+  botCount: 'מספר בוטים: {n}',
 
   // ranks
   rank_bronze: 'ארד',
@@ -59,47 +58,37 @@ export const STR = {
   rank_diamond: 'יהלום',
   rank_legend: 'אגדה',
 
-  // enemies
-  enemy_crawler: 'זחלן',
-  enemy_stinger: 'עוקצן',
-  enemy_crusher: 'מרסק',
-  enemy_boss: 'לבת האופל',
-
-  // modes
-  mode_pvp: 'זירת הכבוד',
-  mode_coop: 'מתקפת הצללים',
-  mode_practice: 'אימון חופשי',
-
   // lobby
-  lobbyTitle_pvp: 'לובי — זירת הכבוד',
-  lobbyTitle_coop: 'לובי — מתקפת הצללים',
-  players: 'טייסים ({n}/{max})',
-  waitingForPlayers: 'ממתין לטייסים נוספים…',
+  lobbyTitle_gungame: 'לובי — משחק רובים',
+  lobbyTitle_team: 'לובי — נגד בוטים',
+  waitingForPlayers: 'ממתין ללוחמים נוספים…',
   youAreHost: 'אתם מארחי הקרב',
   startsIn: 'הקרב מתחיל בעוד {n}…',
   roomCode: 'קוד חדר: {code}',
   joinFailed: 'ההצטרפות נכשלה — נסו שוב',
   roomNotFound: 'חדר לא נמצא',
   hostLeft: 'המארח עזב — מארח חדש נבחר',
+  chooseMap: 'בחירת מפה',
+  chooseBots: 'רמת בוטים',
 
   // HUD / battle
-  wave: 'גל {n}',
-  waveIncoming: 'גל {n} מתקרב!',
-  bossIncoming: 'לבת האופל מתעוררת!',
   kill: '{a} חיסל את {b}',
-  killedBy: 'חוסלתם על ידי {name}',
+  killKnife: '{a} השפיל את {b} עם הסכין! 🔪',
   youKilled: 'חיסלתם את {name}!',
   respawnIn: 'חוזרים לקרב בעוד {n}…',
-  timeLeft: 'זמן',
-  score: 'ניקוד',
-  kills: 'חיסולים',
-  deaths: 'מוות',
+  tierUp: 'נשק חדש: {w}!',
+  tierDown: 'הסכין הורידה אתכם דרגה…',
+  lastWeapon: 'הנשק האחרון! חיסול אחד לניצחון!',
+  winner: '{name} ניצח במשחק הרובים!',
+  teamScore: 'אנחנו {a} — {b} בוטים',
+  teamWin: 'ניצחון! הקבוצה חיסלה {n} בוטים',
+  teamLose: 'הבוטים ניצחו הפעם…',
   gameOver: 'המשחק נגמר',
   victory: 'ניצחון!',
-  defeat: 'הפסד',
-  allDown: 'כל הטייסים נפלו…',
+  place: 'מקום {n}',
   playerJoined: '{name} הצטרף לקרב',
   playerLeft: '{name} עזב את הקרב',
+  headshot: 'פגיעת ראש!',
 
   // quick chat
   chat_gg: 'קרב מעולה!',
@@ -108,22 +97,20 @@ export const STR = {
   chat_nice: 'איזה יופי!',
 
   // results
-  place: 'מקום {n}',
-  resultWaves: 'שרדתם {n} גלים',
   rewardXp: '+{n} ניסיון',
   rewardShards: '+{n} רסיסים',
   rewardRp: 'RP {n}',
   levelUp: 'עליתם לרמה {n}!',
   rankUp: 'דרגה חדשה: {rank}!',
+  resKills: '{n} חיסולים',
 
   // profile / meta
   level: 'רמה {n}',
   daily: 'בונוס יומי: +{n} רסיסים!',
   nameSaved: 'הכינוי נשמר',
-  namePlaceholder: 'כינוי טייס',
 
   // leaderboard
-  boardEmpty: 'אין עדיין טייסים בלוח — היו הראשונים!',
+  boardEmpty: 'אין עדיין לוחמים בלוח — היו הראשונים!',
   boardOffline: 'לוח המובילים זמין רק במצב מקוון',
 
   // errors
@@ -137,7 +124,7 @@ export function t(key, params) {
   return s;
 }
 
-// Random Hebrew pilot callsign for first launch
 const CALLSIGNS = ['נץ', 'ברק', 'שחף', 'עיט', 'כידון', 'סופה', 'להב', 'זיק', 'רעם', 'חץ'];
 export const randomName = () =>
   `${CALLSIGNS[Math.floor(Math.random() * CALLSIGNS.length)]}-${100 + Math.floor(Math.random() * 900)}`;
+export const BOT_NAMES = ['רובוטרון', 'טרמינל', 'סייבורג', 'מכונית', 'בולט', 'גיר', 'צירים', 'ברגים', 'אנדרואיד', 'חשמל'];

@@ -1,18 +1,21 @@
 // ============================================================
-// שברי כוכב · STARSHARDS — application orchestration
-// boot → menu → (lobby) → match loop → results → rewards
+// זירת האש · STARSHARDS ARENA — application orchestration
+// boot → menu → lobby (map/bots options) → 3D match → results
 // ============================================================
 
-import { GAME, SHIPS, SHIP_ORDER, RP_BY_PLACE, rewardsPvp, rewardsCoop, QUICK_CHAT } from './config.js';
-import { t, randomName } from './i18n.js';
+import {
+  GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
+} from './config.js';
+import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
 import {
-  profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, effectiveStats, fetchLeaderboard,
+  profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, fetchLeaderboard,
 } from './profile.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
-import { Renderer, setQuality, getQuality } from './render.js';
+import { createRenderer } from './world.js';
 import { Room } from './net.js';
+import { attachBrains, botName } from './bots.js';
 import { SFX, unlockAudio, setSoundEnabled, soundEnabled } from './audio.js';
 import * as UI from './ui.js';
 
@@ -21,14 +24,15 @@ const SETTINGS_KEY = 'starshards.settings';
 
 const state = {
   input: null,
-  game: null,
   renderer: null,
+  game: null,
   room: null,
   raf: 0,
   lastTs: 0,
-  lastMode: null,       // for "play again"
+  lastEntry: null,          // {mode, online}
   lobbyTimer: 0,
   matchStarted: false,
+  practice: { mode: 'gungame', map: 'town', botLevel: 'normal', botCount: 3 },
 };
 
 // ---------------- boot ----------------
@@ -45,14 +49,17 @@ async function boot() {
 
   state.input = new Input();
   state.input.attach({
+    canvas: $('game-canvas'),
     zoneL: $('zone-left'),
     zoneR: $('zone-right'),
-    canvas: $('game-canvas'),
   });
   UI.bindHUD(state.input, {
     onExit: exitMatch,
     onChat: (idx) => { state.input.wantChat = idx; },
   });
+
+  state.renderer = createRenderer($('game-canvas'));
+  window.addEventListener('resize', fitRenderer);
 
   wireMenu();
   UI.refreshMenu();
@@ -62,10 +69,19 @@ async function boot() {
   if (daily) UI.toast(t('daily', { n: daily }), 'gold');
 }
 
+function fitRenderer() {
+  const c = $('game-canvas');
+  state.renderer.setSize(c.clientWidth, c.clientHeight, false);
+  if (state.game) {
+    state.game.camera.aspect = c.clientWidth / c.clientHeight;
+    state.game.camera.updateProjectionMatrix();
+  }
+}
+
 function wireMenu() {
-  $('btn-pvp').addEventListener('click', () => { SFX.click(); enterMode('pvp'); });
-  $('btn-coop').addEventListener('click', () => { SFX.click(); enterMode('coop'); });
-  $('btn-practice').addEventListener('click', () => { SFX.click(); startOffline('pvp'); });
+  $('btn-gungame').addEventListener('click', () => { SFX.click(); enterMode('gungame'); });
+  $('btn-team').addEventListener('click', () => { SFX.click(); enterMode('team'); });
+  $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby('gungame'); });
 
   $('btn-shop').addEventListener('click', () => { SFX.click(); UI.renderShop(); UI.showScreen('shop'); });
   $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); UI.showScreen('menu'); });
@@ -90,18 +106,21 @@ function wireMenu() {
     if (!FB.online) { UI.toast(t('onlineNeedsFirebase'), 'red'); return; }
     try {
       const room = await Room.joinByCode(code, lobbyInfo());
-      enterLobby(room);
+      enterOnlineLobby(room);
     } catch (e) {
       UI.toast(t(e.message === 'roomNotFound' ? 'roomNotFound' : 'joinFailed'), 'red');
     }
   });
 
-  $('btn-start').addEventListener('click', () => { SFX.click(); state.room?.startMatch(); });
+  $('btn-start').addEventListener('click', () => {
+    SFX.click();
+    if (state.room) state.room.startMatch();
+    else startOffline();     // practice lobby
+  });
   $('btn-leave-lobby').addEventListener('click', async () => {
     SFX.click();
     clearInterval(state.lobbyTimer);
-    await state.room?.leave();
-    state.room = null;
+    if (state.room) { await state.room.leave(); state.room = null; }
     UI.refreshMenu();
     UI.showScreen('menu');
   });
@@ -109,8 +128,9 @@ function wireMenu() {
   $('btn-menu').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); UI.showScreen('menu'); });
   $('btn-again').addEventListener('click', () => {
     SFX.click();
-    if (state.lastMode?.online) enterMode(state.lastMode.mode);
-    else startOffline(state.lastMode?.mode || 'pvp');
+    const e = state.lastEntry;
+    if (e?.online) enterMode(e.mode);
+    else enterPracticeLobby(state.practice.mode);
   });
 
   $('btn-sound').addEventListener('click', () => {
@@ -120,42 +140,57 @@ function wireMenu() {
     saveSettings();
     SFX.click();
   });
-  $('btn-quality').addEventListener('click', () => {
-    SFX.click();
-    setQuality(getQuality() === 'high' ? 'low' : 'high');
-    $('btn-quality').classList.toggle('off', getQuality() === 'low');
-    saveSettings();
-  });
 }
 
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     if (s.sound === false) { setSoundEnabled(false); $('btn-sound').textContent = '🔇'; $('btn-sound').classList.add('off'); }
-    if (s.quality === 'low') { setQuality('low'); $('btn-quality').classList.add('off'); }
   } catch { /* defaults */ }
 }
 function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ sound: soundEnabled(), quality: getQuality() })); } catch { /* ignore */ }
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ sound: soundEnabled() })); } catch { /* ignore */ }
 }
 
-const lobbyInfo = () => ({
-  name: profile.name, ship: profile.ship, lvl: playerLevel(),
-  hue: SHIPS[profile.ship].hue, weapon: SHIPS[profile.ship].weapon,
-});
+const lobbyInfo = () => ({ name: profile.name, skin: profile.skin, lvl: playerLevel() });
 
-// ---------------- mode entry ----------------
+// ---------------- offline practice lobby ----------------
+function enterPracticeLobby(mode) {
+  state.practice.mode = mode;
+  state.room = null;
+  state.lastEntry = { mode, online: false };
+  UI.showScreen('lobby');
+  renderPracticeLobby();
+}
+
+function renderPracticeLobby() {
+  const pr = state.practice;
+  const fakeMeta = { mode: pr.mode, state: 'waiting', host: 'me', maxPlayers: 1 + pr.botCount };
+  UI.renderLobby([{ uid: 'me', name: profile.name, lvl: playerLevel(), me: true }], fakeMeta, 'me', '');
+  UI.renderLobbyOptions({
+    map: pr.map, botLevel: pr.botLevel, botCount: pr.botCount,
+    showBots: true, canPick: true,
+    onPick: (patch) => { Object.assign(pr, patch); renderPracticeLobby(); },
+  });
+  $('lobby-status').textContent = t('mode_practice');
+  $('btn-start').disabled = false;
+  $('btn-start').style.display = '';
+}
+
+// ---------------- online mode entry ----------------
 async function enterMode(mode) {
   if (!FB.online) {
     UI.toast(t('offlineMode'));
-    startOffline(mode);
+    enterPracticeLobby(mode);
     return;
   }
   UI.setLoadStatus(t('connecting'));
   UI.showScreen('load');
   try {
-    const room = await Room.quickMatch(mode, lobbyInfo());
-    enterLobby(room);
+    const room = await Room.quickMatch(mode, lobbyInfo(), {
+      map: MAP_ORDER[(Math.random() * MAP_ORDER.length) | 0],
+    });
+    enterOnlineLobby(room);
   } catch (e) {
     console.warn(e);
     UI.toast(t('netError'), 'red');
@@ -163,22 +198,33 @@ async function enterMode(mode) {
   }
 }
 
-function enterLobby(room) {
+function enterOnlineLobby(room) {
   state.room = room;
   state.matchStarted = false;
-  state.lastMode = { mode: room.mode, online: true };
+  state.lastEntry = { mode: room.mode, online: true };
   UI.showScreen('lobby');
+
+  const renderOpts = () => {
+    const m = room.meta || {};
+    UI.renderLobbyOptions({
+      map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount || 4,
+      showBots: room.mode === 'team',
+      canPick: room.isHost && m.state === 'waiting',
+      onPick: (patch) => room.setOptions(patch),
+    });
+  };
 
   room.onLobby = (players, meta) => {
     if (state.matchStarted) return;
     UI.renderLobby(players, meta, FB.uid, room.id);
-    // host auto-starts a full room
+    renderOpts();
     if (room.isHost && meta.state === 'waiting' && players.length >= (meta.maxPlayers || 6)) {
       room.startMatch();
     }
   };
   room.onMeta = (meta) => {
     if (state.matchStarted || !meta) return;
+    renderOpts();
     if (meta.state === 'starting' && meta.startAt) {
       clearInterval(state.lobbyTimer);
       state.lobbyTimer = setInterval(() => {
@@ -198,12 +244,6 @@ function enterLobby(room) {
 }
 
 // ---------------- match setup ----------------
-function makeRenderer(seed) {
-  const r = new Renderer($('game-canvas'), $('minimap'));
-  r.setWorld(seed);
-  return r;
-}
-
 function beginOnlineMatch() {
   if (state.matchStarted || !state.room) return;
   state.matchStarted = true;
@@ -214,66 +254,64 @@ function beginOnlineMatch() {
     mode: room.mode,
     online: true,
     isHost: room.isHost,
-    seed: meta.seed,
+    mapId: meta.map || 'town',
+    botLevel: meta.botLevel || 'normal',
     input: state.input,
     timeFn: () => FB.serverNow(),
-    endAt: room.mode === 'pvp' ? meta.startAt + GAME.pvpTime * 1000 : 0,
+    endAt: room.mode === 'team' ? meta.startAt + GAME.matchTimeTeam * 1000 : 0,
   });
   const spawnIdx = Math.max(0, room.playerOrder().indexOf(FB.uid));
-  game.addLocal(FB.uid, profile.name, effectiveStats(), profile.ship, spawnIdx);
+  game.addLocal(FB.uid, profile.name, profile.skin, spawnIdx);
+
+  if (room.mode === 'team' && room.isHost) {
+    for (let i = 0; i < (meta.botCount || 4); i++) game.addBot(botName(i), meta.botLevel || 'normal');
+    attachBrains(game);
+  }
+
   room.onGameOver((results) => finishMatch(results));
   room.bindGame(game);
-
-  startLoop(game, meta.seed);
+  startLoop(game);
   SFX.go();
 }
 
-function startOffline(mode) {
-  state.lastMode = { mode, online: false };
-  const seed = (Math.random() * 1e9) | 0;
+function startOffline() {
+  const pr = state.practice;
   const game = new Game({
-    mode,
+    mode: pr.mode === 'team' ? 'team' : 'gungame',
     online: false,
     isHost: true,
-    seed,
+    mapId: pr.map,
+    botLevel: pr.botLevel,
     input: state.input,
     timeFn: () => Date.now(),
-    endAt: mode === 'pvp' ? Date.now() + GAME.pvpTime * 1000 : 0,
+    endAt: pr.mode === 'team' ? Date.now() + GAME.matchTimeTeam * 1000 : 0,
   });
-
-  game.addLocal('me', profile.name, effectiveStats(), profile.ship, 0);
-  const botCount = mode === 'pvp' ? 3 : 2;
-  for (let i = 0; i < botCount; i++) {
-    const ship = SHIP_ORDER[(Math.random() * SHIP_ORDER.length) | 0];
-    const s = SHIPS[ship];
-    game.addBot('🤖 ' + randomName(), {
-      hp: s.hp, speed: s.speed, dmgMul: 1, rateMul: 1,
-      weapon: s.weapon, special: s.special, hue: s.hue,
-    }, ship, 0.8 + Math.random() * 0.5);
-  }
-  game.onChat = (idx) => game.showChat(game.me.uid, QUICK_CHAT[idx]);
+  game.addLocal('me', profile.name, profile.skin, 0);
+  for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
+  attachBrains(game);
+  game.onChat = (idx) => game.showChat('me', QUICK_CHAT[idx]);
   game.onOver = (results) => finishMatch(results);
-
-  startLoop(game, seed);
+  startLoop(game);
   SFX.go();
 }
 
 // ---------------- game loop ----------------
-function startLoop(game, seed) {
+function startLoop(game) {
   stopLoop();
   state.game = game;
-  state.renderer = makeRenderer(seed);
   UI.resetHUD();
   UI.showScreen('game');
-  state.renderer.resize();
+  fitRenderer();
+  state.input.enabled = true;
+  state.input.requestLock();
   state.lastTs = performance.now();
 
   const frame = (ts) => {
     const dt = Math.min(0.1, (ts - state.lastTs) / 1000) || 0.016;
     state.lastTs = ts;
     game.update(dt);
-    state.renderer.draw(game, dt);
-    UI.updateHUD(game);
+    state.renderer.render(game.scene, game.camera);
+    UI.updateHUD(game, state.input);
     state.raf = requestAnimationFrame(frame);
   };
   state.raf = requestAnimationFrame(frame);
@@ -282,12 +320,15 @@ function startLoop(game, seed) {
 function stopLoop() {
   cancelAnimationFrame(state.raf);
   state.raf = 0;
+  state.input.enabled = false;
+  state.input.exitLock();
 }
 
 async function exitMatch() {
   SFX.click();
   stopLoop();
   if (state.room) { await state.room.leave(); state.room = null; }
+  state.game?.dispose();
   state.game = null;
   UI.refreshMenu();
   UI.showScreen('menu');
@@ -298,41 +339,39 @@ function finishMatch(results) {
   const game = state.game;
   if (!game) return;
 
-  // let the final explosion breathe before the results screen
   setTimeout(async () => {
     stopLoop();
     const wasOnline = !!state.room;
     if (state.room) { state.room.leave(); state.room = null; }
 
     const myRow = results.placements.find((p) => p.me) || { kills: 0, deaths: 0 };
-    const place = results.placements.indexOf(results.placements.find((p) => p.me));
+    const place = Math.max(0, results.placements.indexOf(results.placements.find((p) => p.me)));
     let rw;
-    if (results.mode === 'pvp') {
-      rw = rewardsPvp(myRow.kills, Math.max(0, place));
-      rw.rp = wasOnline ? (RP_BY_PLACE[Math.min(place, RP_BY_PLACE.length - 1)] ?? 0) : 0;
-    } else {
-      rw = rewardsCoop(results.wave, myRow.kills);
+    if (results.mode === 'team') {
+      rw = rewardsTeam(myRow.kills, results.win);
       rw.rp = 0;
+    } else {
+      rw = rewardsGunGame(myRow.kills, place, results.win);
+      rw.rp = wasOnline ? (RP_BY_PLACE[Math.min(place, RP_BY_PLACE.length - 1)] ?? 0) : 0;
     }
-    rw.shards += results.myShards || 0;
-    if (!wasOnline) { // practice pays half
+    if (!wasOnline) {
       rw.xp = Math.floor(rw.xp / 2);
       rw.shards = Math.floor(rw.shards / 2);
     }
 
     const fx = applyRewards({
       xp: rw.xp, shards: rw.shards, rp: rw.rp,
-      kills: myRow.kills, deaths: myRow.deaths,
-      win: results.win, waves: results.mode === 'coop' ? results.wave : 0,
+      kills: myRow.kills, deaths: myRow.deaths, win: results.win,
     });
 
-    UI.renderResults(results, rw, profile.name);
+    UI.renderResults(results, rw);
     UI.showScreen('results');
     results.win ? SFX.win() : SFX.lose();
     if (fx.levelUp) UI.toast(t('levelUp', { n: fx.levelUp }), 'gold');
     if (fx.rankUp) UI.toast(t('rankUp', { rank: t('rank_' + fx.rankUp) }), 'gold');
+    state.game?.dispose();
     state.game = null;
-  }, 1400);
+  }, 1600);
 }
 
 boot();

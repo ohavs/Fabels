@@ -5,13 +5,10 @@
 // ============================================================
 
 import { FB } from './fb.js';
-import {
-  SHIPS, UPGRADE_TRACKS, UPGRADE_COST, UPGRADE_BONUS,
-  levelFor, rankFor, DAILY_SHARDS,
-} from './config.js';
+import { SKINS, levelFor, rankFor, DAILY_SHARDS } from './config.js';
 import { randomName } from './i18n.js';
 
-const LS_KEY = 'starshards.profile';
+const LS_KEY = 'starshards.profile.v2';
 
 function defaultProfile() {
   return {
@@ -19,10 +16,9 @@ function defaultProfile() {
     xp: 0,
     rp: 0,
     shards: 250,
-    ship: 'storm',
-    ships: { storm: true },
-    up: { dmg: 0, rate: 0, speed: 0, hp: 0 },
-    stats: { kills: 0, deaths: 0, wins: 0, matches: 0, waves: 0, bestWave: 0 },
+    skin: 'scout',
+    skins: { scout: true },
+    stats: { kills: 0, deaths: 0, wins: 0, matches: 0 },
     lastDaily: 0,
     createdAt: Date.now(),
   };
@@ -33,10 +29,9 @@ export const profile = defaultProfile();
 function normalize(p) {
   const d = defaultProfile();
   const out = { ...d, ...p };
-  out.up = { ...d.up, ...(p.up || {}) };
-  out.ships = { storm: true, ...(p.ships || {}) };
+  out.skins = { scout: true, ...(p.skins || {}) };
   out.stats = { ...d.stats, ...(p.stats || {}) };
-  if (!SHIPS[out.ship] || !out.ships[out.ship]) out.ship = 'storm';
+  if (!SKINS[out.skin] || !out.skins[out.skin]) out.skin = 'scout';
   return out;
 }
 
@@ -52,7 +47,7 @@ export async function loadProfile() {
     try { data = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { /* ignore */ }
   }
   Object.assign(profile, normalize(data || {}));
-  if (FB.online && !data) await saveProfile(); // first login: create doc
+  if (FB.online && !data) await saveProfile();
   return profile;
 }
 
@@ -60,14 +55,13 @@ let saveTimer = null;
 export function saveProfile() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(profile)); } catch { /* ignore */ }
   if (!FB.online) return Promise.resolve();
-  // debounce Firestore writes
   return new Promise((res) => {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try {
         await FB.f.setDoc(FB.f.doc(FB.fs, 'users', FB.uid), {
           ...profile,
-          level: levelFor(profile.xp), // denormalized for leaderboard rows
+          level: levelFor(profile.xp),
         }, { merge: true });
       } catch (e) { console.warn('profile save failed', e); }
       res();
@@ -75,50 +69,22 @@ export function saveProfile() {
   });
 }
 
-// ---- derived ----------------------------------------------------------
 export const playerLevel = () => levelFor(profile.xp);
 export const playerRank = () => rankFor(profile.rp);
 
-// effective ship stats after upgrades
-export function effectiveStats(shipId = profile.ship) {
-  const s = SHIPS[shipId];
-  return {
-    hp: Math.round(s.hp * (1 + profile.up.hp * UPGRADE_BONUS.hp)),
-    speed: Math.round(s.speed * (1 + profile.up.speed * UPGRADE_BONUS.speed)),
-    dmgMul: 1 + profile.up.dmg * UPGRADE_BONUS.dmg,
-    rateMul: 1 / (1 + profile.up.rate * UPGRADE_BONUS.rate),
-    weapon: s.weapon,
-    special: s.special,
-    hue: s.hue,
-  };
-}
-
-// ---- economy actions ---------------------------------------------------
-export function buyShip(shipId) {
-  const s = SHIPS[shipId];
-  if (!s || profile.ships[shipId] || profile.shards < s.cost) return false;
+export function buySkin(id) {
+  const s = SKINS[id];
+  if (!s || profile.skins[id] || profile.shards < s.cost) return false;
   profile.shards -= s.cost;
-  profile.ships[shipId] = true;
-  profile.ship = shipId;
+  profile.skins[id] = true;
+  profile.skin = id;
   saveProfile();
   return true;
 }
 
-export function equipShip(shipId) {
-  if (!profile.ships[shipId]) return false;
-  profile.ship = shipId;
-  saveProfile();
-  return true;
-}
-
-export function buyUpgrade(track) {
-  if (!UPGRADE_TRACKS.includes(track)) return false;
-  const tier = profile.up[track];
-  if (tier >= UPGRADE_COST.length) return false;
-  const cost = UPGRADE_COST[tier];
-  if (profile.shards < cost) return false;
-  profile.shards -= cost;
-  profile.up[track] = tier + 1;
+export function equipSkin(id) {
+  if (!profile.skins[id]) return false;
+  profile.skin = id;
   saveProfile();
   return true;
 }
@@ -131,7 +97,6 @@ export function setName(name) {
   return true;
 }
 
-// returns shards granted (0 when already claimed today)
 export function claimDaily() {
   const day = 24 * 60 * 60 * 1000;
   if (Date.now() - profile.lastDaily < day) return 0;
@@ -141,8 +106,7 @@ export function claimDaily() {
   return DAILY_SHARDS;
 }
 
-// apply match rewards; returns {levelUp, rankUp} flags for UI fanfare
-export function applyRewards({ xp = 0, shards = 0, rp = 0, kills = 0, deaths = 0, win = false, waves = 0 }) {
+export function applyRewards({ xp = 0, shards = 0, rp = 0, kills = 0, deaths = 0, win = false }) {
   const beforeLvl = playerLevel();
   const beforeRank = playerRank().id;
   profile.xp += xp;
@@ -152,10 +116,6 @@ export function applyRewards({ xp = 0, shards = 0, rp = 0, kills = 0, deaths = 0
   profile.stats.deaths += deaths;
   profile.stats.matches += 1;
   if (win) profile.stats.wins += 1;
-  if (waves) {
-    profile.stats.waves += waves;
-    profile.stats.bestWave = Math.max(profile.stats.bestWave, waves);
-  }
   saveProfile();
   return {
     levelUp: playerLevel() > beforeLvl ? playerLevel() : 0,
@@ -163,7 +123,6 @@ export function applyRewards({ xp = 0, shards = 0, rp = 0, kills = 0, deaths = 0
   };
 }
 
-// ---- leaderboard ---------------------------------------------------------
 export async function fetchLeaderboard(topN = 50) {
   if (!FB.online) return null;
   try {

@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#070914" />
+  <meta name="theme-color" content="#0b1120" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="description" content="שברי כוכב — משחק יריות חלל מרובה משתתפים" />
-  <title>שברי כוכב ⭐ STARSHARDS</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><polygon points='16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12' fill='%237dd3fc'/></svg>" />
+  <meta name="description" content="שברי כוכב: זירת האש — משחק יריות תלת־ממד מרובה משתתפים" />
+  <title>זירת האש ⭐ STARSHARDS ARENA</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='none' stroke='%2357c4e5' stroke-width='3'/><circle cx='16' cy='16' r='4' fill='%23ffd166'/></svg>" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -17,11 +17,11 @@
   <!-- ═══════════ טעינה ═══════════ -->
   <section id="scr-load" class="screen active">
     <div class="load-box">
-      <div class="logo-star">✦</div>
-      <h1 class="game-title">שברי כוכב</h1>
-      <div class="game-subtitle">STARSHARDS</div>
+      <div class="logo-star">🎯</div>
+      <h1 class="game-title">זירת האש</h1>
+      <div class="game-subtitle">STARSHARDS ARENA</div>
       <div class="spinner"></div>
-      <p id="load-status">טוען את שדה הגבישים…</p>
+      <p id="load-status">טוען את הזירה…</p>
     </div>
   </section>
 
@@ -29,7 +29,7 @@
   <section id="scr-menu" class="screen">
     <header class="menu-header">
       <div class="pilot-card">
-        <input id="menu-name-input" maxlength="20" placeholder="כינוי טייס" aria-label="כינוי טייס" />
+        <input id="menu-name-input" maxlength="20" placeholder="כינוי לוחם" aria-label="כינוי לוחם" />
         <div class="pilot-meta">
           <span id="menu-level" class="chip">רמה 1</span>
           <span id="menu-rank" class="chip rank">ארד</span>
@@ -41,30 +41,30 @@
     </header>
 
     <div class="menu-hero">
-      <h1 class="game-title small">שברי כוכב</h1>
-      <p class="lore">הכוכב התנפץ. הצללים מתעוררים. רק שומרי השבר יגנו על שדה הגבישים.</p>
+      <h1 class="game-title small">זירת האש</h1>
+      <p class="lore">משחק רובים בגוף ראשון: כל חיסול משדרג את הנשק. הראשון שמסיים את הסולם עם סכין הזהב — מנצח.</p>
     </div>
 
     <nav class="mode-cards">
-      <button id="btn-pvp" class="mode-card pvp">
-        <span class="mode-icon">⚔️</span>
-        <span class="mode-name">זירת הכבוד</span>
-        <span class="mode-desc">‏PvP · עד 6 טייסים · 3 דקות</span>
+      <button id="btn-gungame" class="mode-card pvp">
+        <span class="mode-icon">🔫</span>
+        <span class="mode-name">משחק רובים</span>
+        <span class="mode-desc">‏PvP מקוון · עד 6 לוחמים · 8 נשקים</span>
       </button>
-      <button id="btn-coop" class="mode-card coop">
-        <span class="mode-icon">🛡️</span>
-        <span class="mode-name">מתקפת הצללים</span>
-        <span class="mode-desc">‏Co-op · עד 4 טייסים · גלים אינסופיים</span>
+      <button id="btn-team" class="mode-card coop">
+        <span class="mode-icon">🤖</span>
+        <span class="mode-name">נגד בוטים</span>
+        <span class="mode-desc">‏Co-op מקוון · עד 6 חברים נגד בוטים</span>
       </button>
       <button id="btn-practice" class="mode-card practice">
         <span class="mode-icon">🎯</span>
         <span class="mode-name">אימון חופשי</span>
-        <span class="mode-desc">מול בוטים · ללא חיבור</span>
+        <span class="mode-desc">מול בוטים · ללא חיבור · בחירת מפה</span>
       </button>
     </nav>
 
     <div class="menu-row">
-      <button id="btn-shop" class="menu-btn">🛒 חנות</button>
+      <button id="btn-shop" class="menu-btn">🎽 דמויות</button>
       <button id="btn-board" class="menu-btn">🏆 לוח מובילים</button>
     </div>
 
@@ -75,8 +75,7 @@
 
     <footer class="menu-footer">
       <button id="btn-sound" class="icon-btn" title="צליל">🔊</button>
-      <button id="btn-quality" class="icon-btn" title="איכות גרפית">✨</button>
-      <span class="credits">גרסה 1.0 · כל הנכסים נוצרו פרוצדורלית</span>
+      <span class="credits">גרסה 2.0 · תלת־ממד · כל הנכסים נוצרו בקוד</span>
     </footer>
   </section>
 
@@ -85,8 +84,22 @@
     <div class="panel">
       <h2 id="lobby-title">לובי</h2>
       <div id="lobby-code" class="room-code"></div>
+
+      <div class="lobby-opts">
+        <div class="opt-group">
+          <div class="opt-label">בחירת מפה</div>
+          <div id="map-picker" class="opt-row"></div>
+        </div>
+        <div id="bots-opts" class="opt-group">
+          <div class="opt-label">רמת בוטים</div>
+          <div id="bot-picker" class="opt-row"></div>
+          <div class="opt-label" style="margin-top:6px">מספר בוטים</div>
+          <div id="botcount-picker" class="opt-row"></div>
+        </div>
+      </div>
+
       <ul id="lobby-players" class="player-list"></ul>
-      <p id="lobby-status" class="lobby-status">ממתין לטייסים נוספים…</p>
+      <p id="lobby-status" class="lobby-status">ממתין ללוחמים נוספים…</p>
       <div class="panel-actions">
         <button id="btn-start" class="primary-btn" disabled>🚀 התחל קרב</button>
         <button id="btn-leave-lobby" class="ghost-btn">חזרה</button>
@@ -94,17 +107,14 @@
     </div>
   </section>
 
-  <!-- ═══════════ חנות ═══════════ -->
+  <!-- ═══════════ חנות דמויות ═══════════ -->
   <section id="scr-shop" class="screen scroll">
     <div class="panel wide">
       <div class="panel-head">
-        <h2>🛒 חנות השברים</h2>
+        <h2>🎽 חדר ההלבשה</h2>
         <span id="shop-shards" class="chip shards big">💠 0</span>
       </div>
-      <h3 class="section-title">ספינות קרב</h3>
-      <div id="shop-ships" class="ship-grid"></div>
-      <h3 class="section-title">שדרוגים</h3>
-      <div id="shop-upgrades" class="upgrade-list"></div>
+      <div id="shop-skins" class="ship-grid"></div>
       <div class="panel-actions">
         <button id="btn-back-shop" class="ghost-btn">חזרה</button>
       </div>
@@ -114,7 +124,7 @@
   <!-- ═══════════ לוח מובילים ═══════════ -->
   <section id="scr-board" class="screen scroll">
     <div class="panel wide">
-      <h2>🏆 לוח המובילים הגלקטי</h2>
+      <h2>🏆 לוח המובילים</h2>
       <div id="board-list" class="board-list"></div>
       <div class="panel-actions">
         <button id="btn-back-board" class="ghost-btn">חזרה</button>
@@ -127,32 +137,52 @@
     <canvas id="game-canvas"></canvas>
 
     <div id="hud" dir="rtl">
+      <!-- crosshair + hitmarker -->
+      <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+      <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+      <div id="hurt-vignette"></div>
+
       <div class="hud-top">
         <div class="hud-stat"><span class="hud-label">ניקוד</span><span id="hud-score">0</span></div>
-        <div id="hud-center" class="hud-center">3:00</div>
+        <div id="hud-center" class="hud-center">0:00</div>
         <div class="hud-stat"><span class="hud-label">חיסולים</span><span id="hud-kills">0</span></div>
         <button id="btn-exit" class="exit-btn" aria-label="יציאה">✕</button>
       </div>
 
+      <!-- weapon + ammo (bottom left-ish) -->
+      <div class="hud-weapon">
+        <div id="hud-weapon-name">אקדח</div>
+        <div id="hud-ammo">12</div>
+        <div id="hud-tier" class="tier-pips"></div>
+      </div>
+
+      <!-- hp -->
       <div class="hud-hp">
         <div class="hp-track"><div id="hud-hp-fill"></div></div>
         <span id="hud-hp-text">100</span>
       </div>
 
       <ul id="hud-feed"></ul>
-      <canvas id="minimap"></canvas>
       <div id="hud-banner"></div>
       <div id="hud-respawn"></div>
+      <div id="lock-hint">לחצו על המסך לנעילת העכבר · WASD תנועה · רווח קפיצה · R טעינה · ESC משחרר את הסמן</div>
 
-      <div id="zone-left" class="joy-zone left"></div>
-      <div id="zone-right" class="joy-zone right"></div>
-
-      <div class="action-btns">
-        <button id="btn-special" class="action-btn special"><span class="ab-icon">⚡</span><span class="ab-cd"></span></button>
-        <button id="btn-dash" class="action-btn dash"><span class="ab-icon">💨</span><span class="ab-cd"></span></button>
+      <!-- scoreboard -->
+      <div id="scoreboard" class="hidden">
+        <h3>לוח תוצאות</h3>
+        <div id="scoreboard-rows"></div>
       </div>
 
-      <button id="btn-chat" class="chat-btn">💬</button>
+      <!-- touch controls -->
+      <div id="zone-left" class="joy-zone left"></div>
+      <div id="zone-right" class="joy-zone right"></div>
+      <button id="btn-fire" class="fire-btn">⊕</button>
+      <div class="action-btns">
+        <button id="btn-jump" class="action-btn"><span class="ab-icon">⤒</span></button>
+        <button id="btn-reload" class="action-btn"><span class="ab-icon">⟳</span></button>
+        <button id="btn-score" class="action-btn small"><span class="ab-icon">📋</span></button>
+        <button id="btn-chat" class="action-btn small"><span class="ab-icon">💬</span></button>
+      </div>
       <div id="chat-panel" class="chat-panel hidden">
         <button data-chat="0">קרב מעולה!</button>
         <button data-chat="1">צריך עזרה כאן!</button>

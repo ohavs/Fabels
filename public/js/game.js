@@ -1,179 +1,190 @@
 // ============================================================
-// Core simulation — runs identically online and offline.
+// Core FPS simulation + 3D view. Runs identically online/offline.
 //
 // Authority model (online):
-//   • every client fully simulates ITS OWN ship (and nothing else's)
-//   • remote ships are interpolated from network state
-//   • damage to remote ships → onHitRemote event (victim applies it)
-//   • co-op enemies: host simulates, guests interpolate + report edmg
-// Offline (practice): everything is local, bots included.
+//   • every client fully simulates ITS OWN soldier
+//   • remote soldiers interpolate from network state
+//   • damage to remote soldiers → onHitRemote (victim applies)
+//   • team-vs-bots: host simulates bots, guests interpolate;
+//     bot damage to remote humans is relayed by the host as hits
+// Offline (practice): everything local, bots included.
 // ============================================================
 
+import * as THREE from './vendor/three.module.js';
 import {
-  GAME, WEAPONS, ENEMIES, SPECIALS,
-  waveBudget, bossWave, bossHp,
+  GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
 } from './config.js';
-import { TAU, clamp, lerp, lerpAngle, dist, rng, circleHit, pushOut, randId } from './util.js';
+import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
+import { World } from './world.js';
+import { buildCharacter, setCharacterWeapon, animateCharacter, flashCharacter, makeNameSprite, makeHpBar, updateHpBar } from './chars.js';
+import { Effects, ViewModel } from './weapons.js';
 import { SFX } from './audio.js';
-import { BotBrain } from './bots.js';
 import { t } from './i18n.js';
 
-export function genObstacles(seed) {
-  const r = rng(seed);
-  const A = GAME.arena;
-  const obs = [];
-  const spawns = spawnRing();
-  outer:
-  for (let i = 0; i < 60 && obs.length < 14; i++) {
-    const o = {
-      x: 140 + r() * (A - 280),
-      y: 140 + r() * (A - 280),
-      r: 40 + r() * 55,
-      hue: 180 + r() * 120,
-      sides: 5 + Math.floor(r() * 3),
-      rot: r() * TAU,
-    };
-    for (const s of spawns) if (dist(o.x, o.y, s.x, s.y) < o.r + 150) continue outer;
-    for (const q of obs) if (dist(o.x, o.y, q.x, q.y) < o.r + q.r + 60) continue outer;
-    obs.push(o);
-  }
-  return obs;
-}
+const V1 = new THREE.Vector3();
+const V2 = new THREE.Vector3();
 
-export function spawnRing() {
-  const A = GAME.arena, c = A / 2, R = A * 0.38;
-  const pts = [];
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * TAU;
-    pts.push({ x: c + Math.cos(a) * R, y: c + Math.sin(a) * R });
-  }
-  return pts;
-}
+const forwardOf = (yaw, pitch = 0) => ({
+  x: -Math.sin(yaw) * Math.cos(pitch),
+  y: -Math.sin(pitch),
+  z: -Math.cos(yaw) * Math.cos(pitch),
+});
 
 export class Game {
   /**
-   * @param {object} o
-   *  mode 'pvp'|'coop' · online bool · isHost bool · seed int
-   *  input Input · timeFn ()=>epoch ms · endAt epoch ms (pvp)
+   * mode 'gungame'|'team' · online bool · isHost bool · mapId string
+   * input Input · timeFn ()=>ms · endAt ms (team mode) · botLevel key
    */
   constructor(o) {
     this.mode = o.mode;
     this.online = !!o.online;
     this.isHost = o.isHost !== false;
-    this.seed = o.seed ?? (Math.random() * 1e9) | 0;
+    this.mapId = o.mapId;
     this.input = o.input || null;
     this.timeFn = o.timeFn || (() => Date.now());
     this.endAt = o.endAt || 0;
+    this.botLevel = o.botLevel || 'normal';
+    this.targetKills = o.targetKills || GAME.teamTargetKills;
 
-    this.obstacles = genObstacles(this.seed);
-    this.spawns = spawnRing();
-    this.rand = rng(this.seed ^ 0x9e3779b9);
+    // 3D
+    this.world = new World(this.mapId);
+    this.scene = this.world.scene;
+    this.camera = new THREE.PerspectiveCamera(75, 1, 0.08, 400);
+    this.camera.rotation.order = 'YXZ';
+    this.scene.add(this.camera);
+    this.fx = new Effects(this.scene);
+    this.viewModel = new ViewModel(this.camera);
 
+    // sim
     this.players = new Map();
-    this.bullets = [];
-    this.enemies = new Map();
-    this.pickups = new Map();
-    this.particles = [];
-    this.floats = [];
-    this.feed = [];              // [{text, t}] for the killfeed UI
+    this.projectiles = [];
     this.me = null;
-
-    this.wave = 0;
-    this.waveDelay = 2.5;        // seconds until next wave spawns
-    this.pickupT = GAME.pickupEveryMs / 1000;
-    this.over = null;            // set once → results object
-    this.cam = { x: GAME.arena / 2, y: GAME.arena / 2, shake: 0 };
+    this.feed = [];
+    this.over = null;
     this.elapsed = 0;
+    this.teamScore = 0;
+    this.botScore = 0;
+    this.hudFlags = { hitmarker: 0, headshot: 0, hurt: 0, tierBanner: '', winBanner: '' };
+    this._bobT = 0;
 
-    // external hooks (wired by net.js / main.js)
-    this.onShot = null;          // (shotSpec) local player fired
-    this.onHitRemote = null;     // (toUid, dmg) I hit a remote ship
-    this.onSelfDeath = null;     // (killerUid) my ship died
-    this.onSelfState = null;
-    this.onEnemyDamage = null;   // (id, dmg) guest → host
-    this.onEnemyShot = null;     // (spec) host → guests
-    this.onPickupTaken = null;   // (id)
-    this.onPickupSpawn = null;   // (pickup) host
-    this.onWave = null;          // (n) host
-    this.onOver = null;          // (results)
-    this.onKill = null;          // ({from, to}) my death report, online
+    // hooks (wired by net.js / main.js)
+    this.onShot = null;         // (spec) my tracer for others
+    this.onHitRemote = null;    // (toUid, dmg, {hs, mel, from})
+    this.onSelfDeath = null;    // (killerUid, mel)
+    this.onBotDamage = null;    // guest → host (botId, dmg)
+    this.onBotShot = null;      // host → guests (visual)
+    this.onKillBroadcast = null;// host announces bot deaths
+    this.onWin = null;          // gungame: I completed the ladder
+    this.onOver = null;         // (results)
+    this.onChat = null;
   }
 
-  // ---------------- players ----------------
-  _basePlayer(uid, name, stats, ship) {
+  // ---------------- entities ----------------
+  _base(uid, name, skinId, team) {
     return {
-      uid, name, ship,
-      hue: stats.hue, weapon: stats.weapon, special: stats.special,
-      maxHp: stats.hp, hp: stats.hp,
-      speed: stats.speed, dmgMul: stats.dmgMul ?? 1, rateMul: stats.rateMul ?? 1,
-      x: 0, y: 0, a: 0, vx: 0, vy: 0, r: 16,
-      alive: true, respawnT: 0, invulnT: GAME.invulnTime,
-      fireCd: 0, dashCd: 0, specialCd: 0,
-      overdriveT: 0, shieldT: 0,
-      score: 0, kills: 0, deaths: 0, shardsGot: 0,
-      local: false, bot: null, remote: false,
-      // remote interpolation targets
-      netX: 0, netY: 0, netA: 0, netVx: 0, netVy: 0,
-      chatTxt: '', chatT: 0,
+      uid, name, skin: skinId, team,
+      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+      yaw: 0, pitch: 0, grounded: true,
+      hp: 100, maxHp: 100, alive: true, respawnT: 0, invulnT: GAME.invulnTime,
+      tier: 0, weapon: WEAPON_LADDER[0],
+      ammo: WEAPONS[WEAPON_LADDER[0]].mag, reloadT: 0, fireCd: 0,
+      kills: 0, deaths: 0, score: 0,
+      local: false, remote: false, bot: null,
+      netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
+      view: null, speedSm: 0, chatT: 0, deadT: 0,
     };
   }
 
-  _placeAtSpawn(p, idx = this.players.size % this.spawns.length) {
-    const s = this.spawns[idx % this.spawns.length];
-    p.x = p.netX = s.x; p.y = p.netY = s.y;
-    p.a = Math.atan2(GAME.arena / 2 - s.y, GAME.arena / 2 - s.x);
+  _spawnPos(p, idx = -1) {
+    const spawns = this.world.spawns;
+    if (idx >= 0) return spawns[idx % spawns.length];
+    // farthest spawn from living enemies
+    let best = spawns[0], bestD = -1;
+    for (const s of spawns) {
+      let d = Infinity;
+      for (const q of this.players.values()) {
+        if (q === p || !q.alive || q.team === p.team && this.mode === 'team') continue;
+        d = Math.min(d, (q.x - s.x) ** 2 + (q.z - s.z) ** 2);
+      }
+      if (d === Infinity) d = Math.random() * 1e6;
+      if (d > bestD) { bestD = d; best = s; }
+    }
+    return best;
   }
 
-  addLocal(uid, name, stats, ship, spawnIdx) {
-    const p = this._basePlayer(uid, name, stats, ship);
+  _place(p, s) {
+    p.x = p.netX = s.x; p.y = p.netY = s.y + 0.05; p.z = p.netZ = s.z;
+    p.vx = p.vy = p.vz = 0;
+    p.yaw = Math.atan2(-(0 - p.x), -(0 - p.z)); // face arena centre
+  }
+
+  addLocal(uid, name, skinId, spawnIdx) {
+    const p = this._base(uid, name, skinId, 'p');
     p.local = true;
-    this._placeAtSpawn(p, spawnIdx);
+    this._place(p, this._spawnPos(p, spawnIdx ?? 0));
     this.players.set(uid, p);
     this.me = p;
-    this.cam.x = p.x; this.cam.y = p.y;
+    this.viewModel.setWeapon(p.weapon);
+    this._syncCamera(p);
     return p;
   }
 
-  addBot(name, stats, ship, difficulty = 1) {
+  _makeView(p, isBot) {
+    const char = buildCharacter(p.skin);
+    char.group.position.set(p.x, p.y, p.z);
+    const skin = SKINS[p.skin] || SKINS.scout;
+    const name = makeNameSprite(p.name, isBot ? '#ff9b9b' : '#ffffff');
+    char.group.add(name);
+    const bar = makeHpBar();
+    char.group.add(bar.bg, bar.fg);
+    setCharacterWeapon(char, p.weapon);
+    this.scene.add(char.group);
+    p.view = { char, bar };
+  }
+
+  addBot(name, level, spawnIdx) {
     const uid = 'bot_' + randId(5);
-    const p = this._basePlayer(uid, name, stats, ship);
-    this._placeAtSpawn(p);
-    p.bot = new BotBrain(p, this, difficulty);
-    p.botMove = { x: 0, y: 0 }; p.botAim = { x: 1, y: 0 };
-    p.botFire = false; p.botDash = false; p.botSpecial = false;
+    const skins = Object.keys(SKINS);
+    const p = this._base(uid, name, skins[(Math.random() * skins.length) | 0], 'b');
+    const L = BOT_LEVELS[level] || BOT_LEVELS.normal;
+    p.maxHp = p.hp = L.hp;
+    p.weapon = 'botgun';
+    p.ammo = Infinity;
+    p.bot = { level: L, brain: null };
+    this._place(p, this._spawnPos(p, spawnIdx ?? -1));
     this.players.set(uid, p);
+    this._makeView(p, true);
     return p;
   }
 
   upsertRemote(uid, st) {
     let p = this.players.get(uid);
     if (!p) {
-      p = this._basePlayer(uid, st.name || '???', {
-        hp: st.maxHp || 100, speed: 260, hue: st.hue ?? 190,
-        weapon: st.weapon || 'blaster', special: 'overdrive',
-      }, st.ship || 'storm');
+      p = this._base(uid, st.name || '???', st.skin || 'scout', 'p');
       p.remote = true;
-      p.x = p.netX = st.x; p.y = p.netY = st.y;
+      p.x = p.netX = st.x || 0; p.y = p.netY = st.y || 0; p.z = p.netZ = st.z || 0;
       this.players.set(uid, p);
+      this._makeView(p, false);
       this.feed.push({ text: t('playerJoined', { name: p.name }), t: 5 });
     }
-    // detect death / respawn edges for local effects
     if (p.alive && st.alive === false) {
       p.alive = false;
-      this._explosion(p.x, p.y, p.hue, 26);
-      SFX.explode();
+      this.fx.impact(V1.set(p.x, p.y + 1, p.z), 0xff8866, 16, 5);
+      if (this._near(p, 40)) SFX.die();
     } else if (!p.alive && st.alive) {
       p.alive = true;
-      p.x = p.netX = st.x; p.y = p.netY = st.y;
+      p.x = p.netX = st.x; p.y = p.netY = st.y; p.z = p.netZ = st.z;
       p.invulnT = GAME.invulnTime;
     }
     p.name = st.name ?? p.name;
-    p.ship = st.ship ?? p.ship;
-    p.hue = st.hue ?? p.hue;
-    p.weapon = st.weapon ?? p.weapon;
-    p.netX = st.x; p.netY = st.y; p.netA = st.a || 0;
-    p.netVx = st.vx || 0; p.netVy = st.vy || 0;
-    p.hp = st.hp; p.maxHp = st.maxHp || p.maxHp;
+    p.netX = st.x; p.netY = st.y; p.netZ = st.z;
+    p.netYaw = st.yaw || 0; p.netPitch = st.pitch || 0;
+    p.hp = st.hp; p.maxHp = st.maxHp || 100;
+    p.tier = st.tier || 0;
+    if (st.w && st.w !== p.weapon) {
+      p.weapon = st.w;
+      if (p.view) setCharacterWeapon(p.view.char, p.weapon);
+    }
     p.kills = st.kills || 0; p.deaths = st.deaths || 0; p.score = st.score || 0;
     return p;
   }
@@ -181,733 +192,673 @@ export class Game {
   removePlayer(uid) {
     const p = this.players.get(uid);
     if (!p) return;
-    if (p.alive) this._explosion(p.x, p.y, p.hue, 14);
+    if (p.view) this.scene.remove(p.view.char.group);
     this.feed.push({ text: t('playerLeft', { name: p.name }), t: 5 });
     this.players.delete(uid);
-  }
-
-  creditKill(uid, victimName) {
-    const p = this.players.get(uid);
-    if (!p) return;
-    p.kills++; p.score += 100;
-    if (p === this.me) {
-      this.feed.push({ text: t('youKilled', { name: victimName }), t: 4 });
-    }
   }
 
   showChat(uid, key) {
     const p = this.players.get(uid);
     if (!p) return;
-    p.chatTxt = t('chat_' + key);
-    p.chatT = 2.6;
+    this.feed.push({ text: `${p.name}: ${t('chat_' + key)}`, t: 3.5 });
+  }
+
+  _near(p, d) {
+    if (!this.me) return false;
+    return (p.x - this.me.x) ** 2 + (p.z - this.me.z) ** 2 < d * d;
   }
 
   // ---------------- main step ----------------
   update(dt) {
-    if (this.over) { this._fx(dt); return; }
     dt = Math.min(dt, 0.05);
     this.elapsed += dt;
 
     for (const p of this.players.values()) {
-      this._tickTimers(p, dt);
+      p.fireCd = Math.max(0, p.fireCd - dt);
+      p.invulnT = Math.max(0, p.invulnT - dt);
+      p.chatT = Math.max(0, p.chatT - dt);
+      if (p.reloadT > 0) {
+        p.reloadT -= dt;
+        if (p.reloadT <= 0) {
+          p.reloadT = 0;
+          p.ammo = WEAPONS[p.weapon].mag;
+          if (p === this.me) SFX.reloadDone();
+        }
+      }
+      if (!p.alive && !p.remote) {
+        p.respawnT -= dt;
+        if (p.respawnT <= 0 && !this.over) this._respawn(p);
+      }
+
       if (p.remote) this._interpRemote(p, dt);
-      else this._controlAndMove(p, dt);
-    }
-    this._playersSoftPush();
-    this._updateBullets(dt);
-    if (this.mode === 'coop') this._updateEnemies(dt);
-    this._updatePickups(dt);
-    this._checkEnd();
-    this._fx(dt);
-
-    // camera follows me (even dead — spectate own wreck)
-    if (this.me) {
-      this.cam.x = lerp(this.cam.x, this.me.x, 1 - Math.pow(0.001, dt));
-      this.cam.y = lerp(this.cam.y, this.me.y, 1 - Math.pow(0.001, dt));
-    }
-  }
-
-  _tickTimers(p, dt) {
-    p.fireCd = Math.max(0, p.fireCd - dt);
-    p.dashCd = Math.max(0, p.dashCd - dt);
-    p.specialCd = Math.max(0, p.specialCd - dt);
-    p.invulnT = Math.max(0, p.invulnT - dt);
-    p.overdriveT = Math.max(0, p.overdriveT - dt);
-    p.shieldT = Math.max(0, p.shieldT - dt);
-    p.chatT = Math.max(0, p.chatT - dt);
-    if (!p.alive && !p.remote) {
-      p.respawnT -= dt;
-      if (p.respawnT <= 0) this._respawn(p);
-    }
-  }
-
-  _respawn(p) {
-    const s = this.spawns[(Math.random() * this.spawns.length) | 0];
-    p.x = s.x; p.y = s.y; p.vx = p.vy = 0;
-    p.hp = p.maxHp;
-    p.alive = true;
-    p.invulnT = GAME.invulnTime;
-  }
-
-  _controlAndMove(p, dt) {
-    if (p.alive) {
-      let mx = 0, my = 0, aimX = 0, aimY = 0, fire = false, dash = false, special = false, chat = -1;
-      if (p.local && this.input) {
-        this.input.update();
-        mx = this.input.move.x; my = this.input.move.y;
-        aimX = this.input.aim.x; aimY = this.input.aim.y;
-        fire = this.input.firing;
-        dash = this.input.consumeDash();
-        special = this.input.consumeSpecial();
-        chat = this.input.consumeChat();
-        if (chat >= 0 && this.onChat) this.onChat(chat);
-      } else if (p.bot) {
-        p.bot.update(dt);
-        mx = p.botMove.x; my = p.botMove.y;
-        aimX = p.botAim.x; aimY = p.botAim.y;
-        fire = p.botFire;
-        dash = p.botDash; p.botDash = false;
-        special = p.botSpecial; p.botSpecial = false;
-      }
-
-      // facing: aim while firing, else movement direction
-      const moving = Math.hypot(mx, my) > 0.05;
-      if (fire || Math.hypot(aimX, aimY) > 0.5) p.a = Math.atan2(aimY, aimX);
-      else if (moving) p.a = lerpAngle(p.a, Math.atan2(my, mx), 1 - Math.pow(0.0001, dt));
-
-      // acceleration + friction
-      const accel = p.speed * 6;
-      p.vx += mx * accel * dt;
-      p.vy += my * accel * dt;
-      const fr = Math.pow(0.0025, dt);
-      p.vx *= fr; p.vy *= fr;
-      const sp = Math.hypot(p.vx, p.vy);
-      const maxSp = p.speed * (p.overdriveT > 0 ? 1.15 : 1);
-      if (sp > maxSp) { p.vx *= maxSp / sp; p.vy *= maxSp / sp; }
-
-      if (dash && p.dashCd <= 0) this._dash(p, mx, my);
-      if (special && p.specialCd <= 0) this._special(p);
-      if (fire && p.fireCd <= 0) this._fire(p);
-
-      // thruster trail
-      if (sp > 60 && Math.random() < dt * 30) {
-        this.particles.push({
-          x: p.x - Math.cos(p.a) * 14, y: p.y - Math.sin(p.a) * 14,
-          vx: -p.vx * 0.2 + (Math.random() - 0.5) * 30, vy: -p.vy * 0.2 + (Math.random() - 0.5) * 30,
-          life: 0.35, maxLife: 0.35, size: 3.2, hue: p.hue, glow: true,
-        });
-      }
-    } else {
-      p.vx *= Math.pow(0.01, dt); p.vy *= Math.pow(0.01, dt);
+      else if (p.bot && !(this.online && !this.isHost)) this._botStep(p, dt);
+      else if (p.bot) this._interpRemote(p, dt); // guest view of host's bots
+      else if (p.local) this._localStep(p, dt);
     }
 
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    this._collideWorld(p);
-  }
-
-  _interpRemote(p, dt) {
-    // extrapolate the network target by its velocity, then chase it
-    p.netX += p.netVx * dt; p.netY += p.netVy * dt;
-    const k = 1 - Math.pow(0.00005, dt);
-    p.x = lerp(p.x, p.netX, k);
-    p.y = lerp(p.y, p.netY, k);
-    p.a = lerpAngle(p.a, p.netA, k);
-    if (dist(p.x, p.y, p.netX, p.netY) > 300) { p.x = p.netX; p.y = p.netY; }
-  }
-
-  _collideWorld(p) {
-    const pad = 20;
-    p.x = clamp(p.x, pad, GAME.arena - pad);
-    p.y = clamp(p.y, pad, GAME.arena - pad);
-    for (const o of this.obstacles) {
-      const res = pushOut(p.x, p.y, p.r, o.x, o.y, o.r);
-      if (res) { [p.x, p.y] = res; }
-    }
-  }
-
-  _playersSoftPush() {
-    const arr = [...this.players.values()].filter((p) => p.alive && !p.remote);
-    for (let i = 0; i < arr.length; i++) {
-      for (let j = i + 1; j < arr.length; j++) {
-        const a = arr[i], b = arr[j];
-        const d = dist(a.x, a.y, b.x, b.y), min = a.r + b.r;
-        if (d < min && d > 0) {
-          const push = (min - d) / 2, nx = (a.x - b.x) / d, ny = (a.y - b.y) / d;
-          a.x += nx * push; a.y += ny * push;
-          b.x -= nx * push; b.y -= ny * push;
-        }
-      }
-    }
-  }
-
-  // ---------------- combat ----------------
-  _dash(p, mx, my) {
-    p.dashCd = GAME.dashCd;
-    let dx = mx, dy = my;
-    if (Math.hypot(dx, dy) < 0.1) { dx = Math.cos(p.a); dy = Math.sin(p.a); }
-    const l = Math.hypot(dx, dy) || 1;
-    p.vx = (dx / l) * GAME.dashPower;
-    p.vy = (dy / l) * GAME.dashPower;
-    p.invulnT = Math.max(p.invulnT, 0.25);
-    for (let i = 0; i < 10; i++) {
-      this.particles.push({
-        x: p.x, y: p.y,
-        vx: -p.vx * 0.15 + (Math.random() - 0.5) * 80, vy: -p.vy * 0.15 + (Math.random() - 0.5) * 80,
-        life: 0.4, maxLife: 0.4, size: 3, hue: p.hue, glow: true,
-      });
-    }
-    if (p === this.me || !this.online) SFX.dash();
-  }
-
-  _special(p) {
-    p.specialCd = GAME.specialCd;
-    const S = SPECIALS[p.special] || {};
-    switch (p.special) {
-      case 'overdrive':
-        p.overdriveT = S.dur;
-        break;
-      case 'blink': {
-        const nx = p.x + Math.cos(p.a) * S.dist;
-        const ny = p.y + Math.sin(p.a) * S.dist;
-        this._explosion(p.x, p.y, p.hue, 8, 0.5);
-        p.x = clamp(nx, 20, GAME.arena - 20);
-        p.y = clamp(ny, 20, GAME.arena - 20);
-        this._collideWorld(p);
-        p.invulnT = Math.max(p.invulnT, 0.3);
-        break;
-      }
-      case 'shield':
-        p.shieldT = S.dur;
-        break;
-      case 'nova': {
-        this._explosion(p.x, p.y, p.hue, 40, 1.6);
-        this.cam.shake = Math.min(14, this.cam.shake + 10);
-        const dmg = S.dmg * p.dmgMul;
-        for (const q of this.players.values()) {
-          if (q === p || !q.alive || this.mode === 'coop') continue;
-          if (dist(p.x, p.y, q.x, q.y) < S.radius) this._damagePlayer(q, dmg, p.uid);
-        }
-        for (const e of this.enemies.values()) {
-          if (dist(p.x, p.y, e.x, e.y) < S.radius) this._damageEnemy(e, dmg, p.uid);
-        }
-        break;
-      }
-    }
-    SFX.special();
-  }
-
-  _fire(p) {
-    const w = WEAPONS[p.weapon];
-    p.fireCd = w.rate * p.rateMul * (p.overdriveT > 0 ? 0.5 : 1);
-    const shot = { x: p.x + Math.cos(p.a) * 20, y: p.y + Math.sin(p.a) * 20, a: p.a, w: p.weapon };
-    this._spawnBullets(shot, p.uid, p.dmgMul, false, p.hue);
-    if (p.local && this.onShot) this.onShot(shot);
-    SFX.shoot(p.weapon);
-  }
-
-  // spawn bullets from a shot spec; visual=true for remote players' shots
-  _spawnBullets(shot, owner, dmgMul, visual, hue) {
-    const w = WEAPONS[shot.w];
-    for (let i = 0; i < w.pellets; i++) {
-      const off = w.pellets > 1 ? (i - (w.pellets - 1) / 2) * w.spread : 0;
-      const a = shot.a + off;
-      this.bullets.push({
-        x: shot.x, y: shot.y, a,
-        vx: Math.cos(a) * w.speed, vy: Math.sin(a) * w.speed,
-        r: w.r, dmg: w.dmg * dmgMul, life: w.life, weapon: shot.w,
-        pierce: !!w.pierce, homing: !!w.homing,
-        owner, team: 'p', visual, hue: hue ?? 190, hit: null,
-      });
-    }
-  }
-
-  applyRemoteShot(uid, shot) {
-    const p = this.players.get(uid);
-    this._spawnBullets(shot, uid, 1, true, p ? p.hue : 0);
-    if (p && this.mode === 'coop' && !this.isHost) {
-      // guests still hear teammates fight
-      SFX.shoot(shot.w);
-    }
-  }
-
-  spawnEnemyShot(spec) {
-    const w = WEAPONS.sting;
-    this.bullets.push({
-      x: spec.x, y: spec.y, a: spec.a,
-      vx: Math.cos(spec.a) * w.speed, vy: Math.sin(spec.a) * w.speed,
-      r: w.r, dmg: w.dmg, life: w.life, weapon: 'sting',
-      pierce: false, homing: false, owner: 'enemy', team: 'e', visual: false, hue: 0, hit: null,
-    });
-  }
-
-  _updateBullets(dt) {
-    const arr = this.bullets;
-    for (let i = arr.length - 1; i >= 0; i--) {
-      const b = arr[i];
-      b.life -= dt;
-      if (b.life <= 0) { arr.splice(i, 1); continue; }
-
-      if (b.homing) this._homing(b, dt);
-      b.x += b.vx * dt; b.y += b.vy * dt;
-
-      if (b.x < 0 || b.y < 0 || b.x > GAME.arena || b.y > GAME.arena) { arr.splice(i, 1); continue; }
-
-      let dead = false;
-      for (const o of this.obstacles) {
-        if (circleHit(b.x, b.y, b.r, o.x, o.y, o.r)) { this._spark(b.x, b.y, b.hue); dead = true; break; }
-      }
-
-      if (!dead && b.team === 'p') {
-        // vs players (PvP) — my bullets damage, remote visuals just spark
-        if (this.mode === 'pvp') {
-          for (const q of this.players.values()) {
-            if (q.uid === b.owner || !q.alive) continue;
-            if (!circleHit(b.x, b.y, b.r, q.x, q.y, q.r)) continue;
-            if (b.hit?.has(q.uid)) continue;
-            this._spark(b.x, b.y, q.hue);
-            if (!b.visual) this._damagePlayer(q, b.dmg, b.owner);
-            if (b.pierce) { (b.hit ??= new Set()).add(q.uid); }
-            else { dead = true; }
-            break;
-          }
-        }
-        // vs enemies (co-op)
-        if (!dead && this.mode === 'coop' && !b.visual) {
-          for (const e of this.enemies.values()) {
-            if (e.hp <= 0) continue;
-            if (!circleHit(b.x, b.y, b.r, e.x, e.y, e.r)) continue;
-            if (b.hit?.has(e.id)) continue;
-            this._spark(b.x, b.y, 0);
-            this._damageEnemy(e, b.dmg, b.owner);
-            if (b.pierce) { (b.hit ??= new Set()).add(e.id); }
-            else { dead = true; }
-            break;
-          }
-        }
-      } else if (!dead && b.team === 'e') {
-        // enemy bullets hurt only ships I simulate (mine + offline bots)
-        for (const q of this.players.values()) {
-          if (q.remote || !q.alive) continue;
-          if (!circleHit(b.x, b.y, b.r, q.x, q.y, q.r)) continue;
-          this._damagePlayer(q, b.dmg, 'enemy');
-          dead = true;
-          break;
-        }
-      }
-
-      if (dead) arr.splice(i, 1);
-    }
-  }
-
-  _homing(b, dt) {
-    let best = null, bestD = 500 * 500;
-    const consider = (x, y, id) => {
-      const d = (b.x - x) ** 2 + (b.y - y) ** 2;
-      if (d < bestD) { bestD = d; best = { x, y }; }
-    };
-    if (this.mode === 'coop') {
-      for (const e of this.enemies.values()) if (e.hp > 0) consider(e.x, e.y, e.id);
-    } else {
-      for (const q of this.players.values()) if (q.alive && q.uid !== b.owner) consider(q.x, q.y, q.uid);
-    }
-    if (!best) return;
-    const want = Math.atan2(best.y - b.y, best.x - b.x);
-    b.a = lerpAngle(b.a, want, clamp(4 * dt, 0, 1));
-    const sp = Math.hypot(b.vx, b.vy);
-    b.vx = Math.cos(b.a) * sp; b.vy = Math.sin(b.a) * sp;
-  }
-
-  _damagePlayer(q, dmg, fromUid) {
-    if (!q.alive || q.invulnT > 0 || q.shieldT > 0) return;
-    if (q.remote) {
-      // shooter side: report the hit, victim applies it
-      if (this.onHitRemote) this.onHitRemote(q.uid, Math.round(dmg));
-      this.floats.push({ x: q.x, y: q.y - 24, txt: String(Math.round(dmg)), life: 0.7, color: '#ffd166' });
-      SFX.hit();
-      return;
-    }
-    q.hp -= dmg;
-    this.floats.push({ x: q.x, y: q.y - 24, txt: String(Math.round(dmg)), life: 0.7, color: q === this.me ? '#ff6b6b' : '#ffd166' });
-    if (q === this.me) {
-      this.cam.shake = Math.min(10, this.cam.shake + 3);
-      SFX.hurt();
-    } else SFX.hit();
-    if (q.hp <= 0) this._killPlayer(q, fromUid);
-  }
-
-  // damage arriving from the network, targeting my own ship
-  applyHitOnMe(dmg, fromUid) {
-    if (this.me) this._damagePlayer(this.me, dmg, fromUid);
-  }
-
-  _killPlayer(q, fromUid) {
-    q.hp = 0;
-    q.alive = false;
-    q.deaths++;
-    q.respawnT = this.mode === 'pvp' ? GAME.respawnPvp : GAME.respawnCoop;
-    this._explosion(q.x, q.y, q.hue, 30);
-    SFX.explode();
-    this.cam.shake = Math.min(16, this.cam.shake + (q === this.me ? 10 : 4));
-
-    const killer = this.players.get(fromUid);
-    if (!this.online) {
-      // offline: credit directly & feed
-      if (killer) { killer.kills++; killer.score += 100; }
-      this.feed.push({
-        text: t('kill', { a: killer ? killer.name : t('enemy_' + (this._lastEnemyKind || 'crawler')), b: q.name }),
-        t: 5,
-      });
-    } else if (q === this.me) {
-      // online: victim announces its own death; killer credited via event
-      if (this.onSelfDeath) this.onSelfDeath(fromUid);
-    }
-  }
-
-  // ---------------- enemies (co-op) ----------------
-  _updateEnemies(dt) {
-    const simulate = !this.online || this.isHost;
-
-    if (simulate) {
-      if (this.enemies.size === 0 && !this.over) {
-        this.waveDelay -= dt;
-        if (this.waveDelay <= 0) this._spawnWave(++this.wave);
-      }
-      for (const e of this.enemies.values()) this._enemyAI(e, dt);
-    } else {
-      for (const e of this.enemies.values()) {
-        const k = 1 - Math.pow(0.0005, dt);
-        e.x = lerp(e.x, e.netX, k); e.y = lerp(e.y, e.netY, k);
-        e.a = lerpAngle(e.a, e.netA, k);
-      }
-    }
-
-    // contact damage — every client applies to ships IT simulates
-    for (const e of this.enemies.values()) {
-      e.touchCd = Math.max(0, (e.touchCd || 0) - dt);
-      if (e.hp <= 0 || e.touchCd > 0) continue;
-      for (const q of this.players.values()) {
-        if (q.remote || !q.alive) continue;
-        if (circleHit(e.x, e.y, e.r, q.x, q.y, q.r)) {
-          e.touchCd = 0.6;
-          this._lastEnemyKind = e.kind;
-          this._damagePlayer(q, e.dmg, 'enemy');
-          break;
-        }
-      }
-    }
-  }
-
-  _spawnWave(n) {
-    this.waveDelay = 2.5;
-    const boss = bossWave(n);
-    const list = [];
-    if (boss) {
-      list.push('boss');
-      for (let i = 0; i < 2 + n / 5; i++) list.push('crawler');
-    } else {
-      let budget = waveBudget(n);
-      const kinds = ['crawler', 'crawler', 'stinger', n >= 3 ? 'crusher' : 'crawler'];
-      while (budget > 0) {
-        const k = kinds[(Math.random() * kinds.length) | 0];
-        list.push(k);
-        budget -= ENEMIES[k].cost;
-      }
-    }
-    for (const kind of list) this._spawnEnemy(kind, n);
-    this.feed.push({ text: boss ? t('bossIncoming') : t('waveIncoming', { n }), t: 4 });
-    boss ? SFX.boss() : SFX.wave();
-    if (this.onWave) this.onWave(n);
-  }
-
-  _spawnEnemy(kind, waveN) {
-    const E = ENEMIES[kind];
-    const id = 'e' + randId(5);
-    const edge = (Math.random() * 4) | 0;
-    const A = GAME.arena, m = 30;
-    const pos = [
-      [Math.random() * A, m], [Math.random() * A, A - m],
-      [m, Math.random() * A], [A - m, Math.random() * A],
-    ][edge];
-    const hp = kind === 'boss' ? bossHp(waveN) : E.hp + Math.floor(waveN * 1.5);
-    this.enemies.set(id, {
-      id, kind, x: pos[0], y: pos[1], a: 0,
-      hp, maxHp: hp, speed: E.speed, dmg: E.dmg, r: E.r,
-      score: E.score, shards: E.shards,
-      fireCd: 1 + Math.random(), abilityCd: 3, touchCd: 0.8,
-      netX: pos[0], netY: pos[1], netA: 0,
-    });
-  }
-
-  _enemyAI(e, dt) {
-    if (e.hp <= 0) return;
-    const target = this._nearestShip(e.x, e.y);
-    const E = ENEMIES[e.kind];
-    let sx = 0, sy = 0;
-    if (target) {
-      const d = dist(e.x, e.y, target.x, target.y) || 1;
-      const dirX = (target.x - e.x) / d, dirY = (target.y - e.y) / d;
-      e.a = Math.atan2(dirY, dirX);
-
-      if (e.kind === 'stinger') {
-        const want = E.range;
-        const app = clamp((d - want) / 150, -1, 1);
-        sx = dirX * app + -dirY * 0.5; sy = dirY * app + dirX * 0.5;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0 && d < want * 1.6) {
-          e.fireCd = WEAPONS.sting.rate;
-          this._enemyFire(e.x, e.y, e.a);
-        }
-      } else if (e.kind === 'boss') {
-        sx = dirX; sy = dirY;
-        const enraged = e.hp < e.maxHp * 0.3;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0) {
-          e.fireCd = enraged ? 1.6 : 2.5;
-          const N = 10;
-          for (let i = 0; i < N; i++) this._enemyFire(e.x, e.y, (i / N) * TAU + this.elapsed);
-        }
-        e.abilityCd -= dt;
-        if (e.abilityCd <= 0) {
-          e.abilityCd = 6;
-          this._spawnEnemy('crawler', this.wave);
-          this._spawnEnemy('crawler', this.wave);
-        }
-        if (enraged) { sx *= 1.5; sy *= 1.5; }
-      } else {
-        sx = dirX; sy = dirY; // crawler / crusher: straight chase
-      }
-    }
-
-    e.x += sx * e.speed * dt;
-    e.y += sy * e.speed * dt;
-    e.x = clamp(e.x, 20, GAME.arena - 20);
-    e.y = clamp(e.y, 20, GAME.arena - 20);
-    for (const o of this.obstacles) {
-      const res = pushOut(e.x, e.y, e.r, o.x, o.y, o.r);
-      if (res) [e.x, e.y] = res;
-    }
-    // enemy separation
-    for (const q of this.enemies.values()) {
-      if (q === e || q.hp <= 0) continue;
-      const res = pushOut(e.x, e.y, e.r * 0.8, q.x, q.y, q.r * 0.8);
-      if (res) [e.x, e.y] = res;
-    }
-  }
-
-  _enemyFire(x, y, a) {
-    const spec = { x, y, a };
-    this.spawnEnemyShot(spec);
-    if (this.online && this.isHost && this.onEnemyShot) this.onEnemyShot(spec);
-  }
-
-  _nearestShip(x, y) {
-    let best = null, bestD = Infinity;
-    for (const q of this.players.values()) {
-      if (!q.alive) continue;
-      const d = dist(x, y, q.x, q.y);
-      if (d < bestD) { bestD = d; best = q; }
-    }
-    return best;
-  }
-
-  _damageEnemy(e, dmg, fromUid) {
-    const authoritative = !this.online || this.isHost;
-    if (!authoritative) {
-      if (this.onEnemyDamage) this.onEnemyDamage(e.id, Math.round(dmg));
-      this.floats.push({ x: e.x, y: e.y - e.r - 8, txt: String(Math.round(dmg)), life: 0.6, color: '#fff' });
-      SFX.hit();
-      return;
-    }
-    e.hp -= dmg;
-    this.floats.push({ x: e.x, y: e.y - e.r - 8, txt: String(Math.round(dmg)), life: 0.6, color: '#fff' });
-    SFX.hit();
-    if (e.hp <= 0) this._killEnemy(e, fromUid);
-  }
-
-  // host applies damage reported by guests
-  applyEnemyDamageEvent(id, dmg, fromUid) {
-    const e = this.enemies.get(id);
-    if (e && e.hp > 0) this._damageEnemy(e, dmg, fromUid);
-  }
-
-  _killEnemy(e, fromUid) {
-    this.enemies.delete(e.id);
-    this._explosion(e.x, e.y, e.kind === 'boss' ? 320 : 0, e.kind === 'boss' ? 60 : 16, e.kind === 'boss' ? 2 : 1);
-    e.kind === 'boss' ? SFX.bigExplode() : SFX.explode();
-    const killer = this.players.get(fromUid);
-    if (killer && !killer.remote) {
-      killer.kills++;
-      killer.score += e.score;
-      killer.shardsGot += e.shards;
-    } else if (killer) {
-      killer.score += e.score; // display-only; their client tracks its own rewards
-    }
-  }
-
-  // guest: merge host snapshot
-  setEnemySnapshot(snap) {
-    snap = snap || {};
-    for (const id of [...this.enemies.keys()]) {
-      if (!snap[id]) {
-        const e = this.enemies.get(id);
-        this._explosion(e.x, e.y, e.kind === 'boss' ? 320 : 0, e.kind === 'boss' ? 60 : 16);
-        e.kind === 'boss' ? SFX.bigExplode() : SFX.explode();
-        this.enemies.delete(id);
-      }
-    }
-    for (const [id, s] of Object.entries(snap)) {
-      let e = this.enemies.get(id);
-      if (!e) {
-        const E = ENEMIES[s.k];
-        e = {
-          id, kind: s.k, x: s.x, y: s.y, a: s.a || 0,
-          hp: s.hp, maxHp: s.m || E.hp, speed: E.speed, dmg: E.dmg, r: E.r,
-          score: E.score, shards: E.shards,
-          netX: s.x, netY: s.y, netA: s.a || 0, touchCd: 0.8,
-        };
-        this.enemies.set(id, e);
-      } else {
-        e.netX = s.x; e.netY = s.y; e.netA = s.a || 0;
-        e.hp = s.hp; e.maxHp = s.m || e.maxHp;
-      }
-    }
-  }
-
-  getEnemySnapshot() {
-    const out = {};
-    for (const e of this.enemies.values()) {
-      out[e.id] = { k: e.kind, x: Math.round(e.x), y: Math.round(e.y), a: +e.a.toFixed(2), hp: Math.round(e.hp), m: e.maxHp };
-    }
-    return out;
-  }
-
-  // when host migrates to me mid-match
-  becomeHost() {
-    this.isHost = true;
-    for (const e of this.enemies.values()) { e.x = e.netX; e.y = e.netY; }
-  }
-
-  // ---------------- pickups ----------------
-  _updatePickups(dt) {
-    const authoritative = !this.online || this.isHost;
-    if (authoritative) {
-      this.pickupT -= dt;
-      if (this.pickupT <= 0 && this.pickups.size < GAME.pickupMax) {
-        this.pickupT = GAME.pickupEveryMs / 1000;
-        const pk = {
-          id: 'k' + randId(5),
-          k: Math.random() < 0.45 ? 'hp' : 'shard',
-          x: 120 + Math.random() * (GAME.arena - 240),
-          y: 120 + Math.random() * (GAME.arena - 240),
-        };
-        let blocked = false;
-        for (const o of this.obstacles) if (circleHit(pk.x, pk.y, 14, o.x, o.y, o.r)) blocked = true;
-        if (!blocked) {
-          this.pickups.set(pk.id, pk);
-          if (this.online && this.onPickupSpawn) this.onPickupSpawn(pk);
-        }
-      }
-    }
-    for (const [id, pk] of this.pickups) {
-      for (const q of this.players.values()) {
-        if (q.remote || !q.alive) continue;
-        if (!circleHit(pk.x, pk.y, 16, q.x, q.y, q.r)) continue;
-        this.pickups.delete(id);
-        if (pk.k === 'hp') q.hp = Math.min(q.maxHp, q.hp + 35);
-        else q.shardsGot += 8;
-        if (q === this.me) SFX.pickup();
-        this.floats.push({ x: pk.x, y: pk.y - 16, txt: pk.k === 'hp' ? '+35' : '💠+8', life: 0.8, color: pk.k === 'hp' ? '#6ee7a0' : '#7dd3fc' });
-        if (this.online && this.onPickupTaken) this.onPickupTaken(id);
-        break;
-      }
-    }
-  }
-
-  addPickup(pk) { this.pickups.set(pk.id, pk); }
-  removePickup(id) { this.pickups.delete(id); }
-
-  // ---------------- match end ----------------
-  _checkEnd() {
-    if (this.over) return;
-    if (this.mode === 'pvp') {
-      if (this.endAt && this.timeFn() >= this.endAt) this._finish();
-    } else {
-      // co-op: everyone down at once = defeat (needs at least the local ship present)
-      const all = [...this.players.values()];
-      if (all.length && all.every((p) => !p.alive)) this._finish(false);
-    }
-  }
-
-  timeLeft() {
-    return this.endAt ? Math.max(0, (this.endAt - this.timeFn()) / 1000) : 0;
-  }
-
-  _finish(win = undefined) {
-    const placements = [...this.players.values()]
-      .map((p) => ({ uid: p.uid, name: p.name, kills: p.kills, deaths: p.deaths, score: p.score, me: p === this.me }))
-      .sort((a, b) => b.kills - a.kills || b.score - a.score || a.deaths - b.deaths);
-    this.over = {
-      mode: this.mode,
-      placements,
-      wave: this.wave,
-      win: this.mode === 'pvp'
-        ? placements.length > 0 && placements[0].me
-        : !!win,
-      myShards: this.me ? this.me.shardsGot : 0,
-    };
-    if (this.onOver) this.onOver(this.over);
-  }
-
-  // called by net when host declares co-op over
-  forceGameOver() { if (!this.over) this._finish(false); }
-
-  // ---------------- fx ----------------
-  _spark(x, y, hue) {
-    for (let i = 0; i < 5; i++) {
-      const a = Math.random() * TAU, s = 60 + Math.random() * 160;
-      this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.25, maxLife: 0.25, size: 2.2, hue, glow: true });
-    }
-  }
-
-  _explosion(x, y, hue, n = 20, scale = 1) {
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * TAU, s = (40 + Math.random() * 260) * scale;
-      this.particles.push({
-        x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-        life: 0.5 + Math.random() * 0.5, maxLife: 1, size: 2 + Math.random() * 4 * scale, hue, glow: true,
-      });
-    }
-  }
-
-  _fx(dt) {
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.life -= dt;
-      if (p.life <= 0) { this.particles.splice(i, 1); continue; }
-      p.x += p.vx * dt; p.y += p.vy * dt;
-      p.vx *= Math.pow(0.05, dt); p.vy *= Math.pow(0.05, dt);
-    }
-    for (let i = this.floats.length - 1; i >= 0; i--) {
-      const f = this.floats[i];
-      f.life -= dt; f.y -= 30 * dt;
-      if (f.life <= 0) this.floats.splice(i, 1);
-    }
+    this._updateProjectiles(dt);
+    this._updateViews(dt);
+    this.fx.update(dt);
+    this._decayHud(dt);
     for (let i = this.feed.length - 1; i >= 0; i--) {
       this.feed[i].t -= dt;
       if (this.feed[i].t <= 0) this.feed.splice(i, 1);
     }
-    this.cam.shake = Math.max(0, this.cam.shake - 30 * dt);
+    this._checkEnd();
   }
 
-  // compact state for the network
+  // ---------------- local player ----------------
+  _localStep(p, dt) {
+    const input = this.input;
+    input.update();
+    const look = input.consumeLook();
+    if (p.alive && !this.over) {
+      p.yaw -= look.dx;
+      p.pitch = clamp(p.pitch + look.dy, -1.45, 1.45);
+    }
+
+    let wishX = 0, wishZ = 0;
+    if (p.alive && !this.over) {
+      const f = forwardOf(p.yaw);
+      const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
+      wishX = rx * input.move.x + f.x * input.move.y;
+      wishZ = rz * input.move.x + f.z * input.move.y;
+      const wl = Math.hypot(wishX, wishZ);
+      if (wl > 1) { wishX /= wl; wishZ /= wl; }
+
+      if (input.consumeJump() && p.grounded) {
+        p.vy = GAME.jumpVel;
+        p.grounded = false;
+        SFX.jump();
+      }
+      if (input.consumeReload()) this._startReload(p);
+      const chat = input.consumeChat();
+      if (chat >= 0 && this.onChat) this.onChat(chat);
+      if (input.firing) this._tryFire(p);
+    }
+
+    this._physics(p, wishX, wishZ, GAME.moveSpeed, dt);
+    if (p.y < GAME.fallY && p.alive) this._killPlayer(p, p.uid, false);
+    this._syncCamera(p);
+  }
+
+  _syncCamera(p) {
+    const sp = Math.hypot(p.vx, p.vz);
+    if (sp > 1 && p.grounded) this._bobT += Math.min(0.06, sp * 0.004);
+    const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6);
+    this.camera.position.set(p.x, p.y + GAME.eyeHeight + bob, p.z);
+    this.camera.rotation.y = p.yaw;
+    this.camera.rotation.x = -p.pitch;
+    this.viewModel.update(1 / 60, sp, p.reloadT > 0);
+  }
+
+  // ---------------- shared physics (players + bots) ----------------
+  _physics(p, wishX, wishZ, speed, dt) {
+    const accel = p.grounded ? 11 : 3.2;
+    p.vx = lerp(p.vx, wishX * speed, Math.min(1, accel * dt));
+    p.vz = lerp(p.vz, wishZ * speed, Math.min(1, accel * dt));
+    p.vy += GAME.gravity * dt;
+
+    const r = GAME.playerRadius, H = GAME.playerHeight;
+    const cols = this.world.colliders;
+    const overlaps = (x, y, z) => {
+      const out = [];
+      for (const c of cols) {
+        if (x + r > c.x0 && x - r < c.x1 && y < c.y1 && y + H > c.y0 && z + r > c.z0 && z - r < c.z1) out.push(c);
+      }
+      return out;
+    };
+
+    // X axis (with step-up)
+    let nx = p.x + p.vx * dt;
+    let hits = overlaps(nx, p.y, p.z);
+    if (hits.length) {
+      const stepTop = Math.max(...hits.map((c) => c.y1));
+      if (p.grounded && stepTop - p.y <= 0.55 && !overlaps(nx, stepTop + 0.01, p.z).length) {
+        p.y = stepTop + 0.01;
+      } else {
+        nx = p.x; p.vx = 0;
+      }
+    }
+    p.x = nx;
+
+    // Z axis (with step-up)
+    let nz = p.z + p.vz * dt;
+    hits = overlaps(p.x, p.y, nz);
+    if (hits.length) {
+      const stepTop = Math.max(...hits.map((c) => c.y1));
+      if (p.grounded && stepTop - p.y <= 0.55 && !overlaps(p.x, stepTop + 0.01, nz).length) {
+        p.y = stepTop + 0.01;
+      } else {
+        nz = p.z; p.vz = 0;
+      }
+    }
+    p.z = nz;
+
+    // Y axis
+    let ny = p.y + p.vy * dt;
+    const wasAir = !p.grounded;
+    p.grounded = false;
+    hits = overlaps(p.x, ny, p.z);
+    if (hits.length) {
+      if (p.vy <= 0) {
+        ny = Math.max(...hits.map((c) => c.y1)) + 0.001;
+        p.vy = 0; p.grounded = true;
+      } else {
+        ny = Math.min(...hits.map((c) => c.y0)) - H - 0.001;
+        p.vy = 0;
+      }
+    }
+    if (ny <= 0) { ny = 0; if (p.vy <= 0) { p.vy = 0; p.grounded = true; } }
+    p.y = ny;
+    if (wasAir && p.grounded && p === this.me) SFX.land();
+  }
+
+  _interpRemote(p, dt) {
+    const k = 1 - Math.pow(0.00004, dt);
+    p.x = lerp(p.x, p.netX, k);
+    p.y = lerp(p.y, p.netY, k);
+    p.z = lerp(p.z, p.netZ, k);
+    p.yaw = lerpAngle(p.yaw, p.netYaw, k);
+    p.pitch = lerp(p.pitch, p.netPitch, k);
+    if ((p.x - p.netX) ** 2 + (p.z - p.netZ) ** 2 > 64) { p.x = p.netX; p.y = p.netY; p.z = p.netZ; }
+  }
+
+  // ---------------- firing ----------------
+  _startReload(p) {
+    const w = WEAPONS[p.weapon];
+    if (p.reloadT > 0 || !isFinite(w.mag) || p.ammo >= w.mag) return;
+    p.reloadT = w.reload;
+    if (p === this.me) SFX.reload();
+  }
+
+  _tryFire(p) {
+    if (p.fireCd > 0 || p.reloadT > 0 || !p.alive) return;
+    const w = WEAPONS[p.weapon];
+    if (p.ammo <= 0) { this._startReload(p); return; }
+    p.fireCd = w.rate;
+    if (isFinite(w.mag)) p.ammo--;
+    this.fireWeapon(p, false);
+    if (p.bot && this.online && this.isHost && this.onBotShot) {
+      const f = forwardOf(p.yaw, p.pitch);
+      this.onBotShot({
+        o: p.uid, x: +p.x.toFixed(2), y: +(p.y + GAME.eyeHeight).toFixed(2), z: +p.z.toFixed(2),
+        dx: +f.x.toFixed(3), dy: +f.y.toFixed(3), dz: +f.z.toFixed(3), w: p.weapon,
+      });
+    }
+    if (p === this.me) {
+      this.viewModel.kick();
+      if (this.onShot) {
+        const f = forwardOf(p.yaw, p.pitch);
+        this.onShot({ x: +p.x.toFixed(2), y: +(p.y + GAME.eyeHeight).toFixed(2), z: +p.z.toFixed(2), dx: +f.x.toFixed(3), dy: +f.y.toFixed(3), dz: +f.z.toFixed(3), w: p.weapon });
+      }
+      if (p.ammo === 0) this._startReload(p);
+    }
+  }
+
+  // performs the actual shot; visual=true → tracer only, no damage
+  fireWeapon(p, visual, originOverride, dirOverride) {
+    const w = WEAPONS[p.weapon];
+    const eye = originOverride || { x: p.x, y: p.y + GAME.eyeHeight, z: p.z };
+    const baseDir = dirOverride || forwardOf(p.yaw, p.pitch);
+    if (this._near(p, 55) || p === this.me) SFX.shoot(p.weapon);
+
+    // muzzle position for the tracer
+    let muzzle;
+    if (p === this.me) {
+      muzzle = this.viewModel.muzzleWorld(V1.clone());
+    } else if (p.view) {
+      muzzle = p.view.char.gunAnchor.getWorldPosition(V1.clone());
+    } else {
+      muzzle = V1.clone().set(eye.x, eye.y - 0.2, eye.z);
+    }
+    this.fx.muzzleFlash(muzzle);
+
+    if (w.melee) { if (!visual) this._melee(p, w); return; }
+
+    if (w.projectile) {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(w.projectile.radius, 8, 8),
+        new THREE.MeshBasicMaterial({ color: w.color }),
+      );
+      m.position.set(eye.x, eye.y, eye.z);
+      this.scene.add(m);
+      this.projectiles.push({
+        mesh: m, owner: p.uid, team: p.team, visual,
+        x: eye.x, y: eye.y, z: eye.z,
+        vx: baseDir.x * w.projectile.speed, vy: baseDir.y * w.projectile.speed, vz: baseDir.z * w.projectile.speed,
+        life: 2.5, w,
+      });
+      return;
+    }
+
+    for (let i = 0; i < w.pellets; i++) {
+      const sp = w.spread * (p.bot ? 1.4 : 1);
+      const dx = baseDir.x + (Math.random() - 0.5) * 2 * sp;
+      const dy = baseDir.y + (Math.random() - 0.5) * 2 * sp;
+      const dz = baseDir.z + (Math.random() - 0.5) * 2 * sp;
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      this._hitscan(p, eye, { x: dx / dl, y: dy / dl, z: dz / dl }, w, visual, muzzle);
+    }
+  }
+
+  _hitscan(p, eye, dir, w, visual, muzzle) {
+    let tWall = w.range;
+    for (const c of this.world.colliders) {
+      const tt = rayAABB(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, c);
+      if (tt < tWall) tWall = tt;
+    }
+    // ground plane
+    if (dir.y < -1e-6) {
+      const tg = -eye.y / dir.y;
+      if (tg > 0 && tg < tWall) tWall = tg;
+    }
+
+    let hitP = null, hitT = tWall, headshot = false;
+    for (const q of this.players.values()) {
+      if (q === p || !q.alive || q.invulnT > 0) continue;
+      if (this.mode === 'team' && q.team === p.team) continue;
+      // three-sphere body approximation
+      const spheres = [
+        [q.x, q.y + 0.45, q.z, 0.4, false],
+        [q.x, q.y + 1.1, q.z, 0.45, false],
+        [q.x, q.y + 1.62, q.z, 0.3, true],
+      ];
+      for (const [cx, cy, cz, r, hs] of spheres) {
+        const tt = raySphere(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, cx, cy, cz, r);
+        if (tt < hitT) { hitT = tt; hitP = q; headshot = hs; }
+      }
+    }
+
+    const end = V2.set(eye.x + dir.x * hitT, eye.y + dir.y * hitT, eye.z + dir.z * hitT);
+    this.fx.tracer(muzzle, end, p.team === 'b' ? 0xff7b72 : 0xfff0b0);
+    if (hitP) {
+      this.fx.impact(end, 0xff5964, 5, 2.5);
+      if (hitP.view) flashCharacter(hitP.view.char);
+      if (!visual) {
+        const dmg = w.dmg * (headshot ? w.hsMult : 1);
+        this._damagePlayer(hitP, dmg, p.uid, { hs: headshot, mel: false });
+      }
+    } else if (hitT < w.range) {
+      this.fx.impact(end, 0xd9c9a0, 4, 2);
+    }
+  }
+
+  _melee(p, w) {
+    const f = forwardOf(p.yaw);
+    let best = null, bestD = w.range;
+    for (const q of this.players.values()) {
+      if (q === p || !q.alive || q.invulnT > 0) continue;
+      if (this.mode === 'team' && q.team === p.team) continue;
+      const dx = q.x - p.x, dz = q.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d > w.range || Math.abs(q.y - p.y) > 1.6) continue;
+      const dot = (dx * f.x + dz * f.z) / (d || 1);
+      if (dot > 0.45 && d < bestD) { best = q; bestD = d; }
+    }
+    if (best) {
+      this.fx.impact(V1.set(best.x, best.y + 1.2, best.z), 0xffd166, 10, 4);
+      this._damagePlayer(best, w.dmg, p.uid, { hs: false, mel: true });
+    }
+  }
+
+  _updateProjectiles(dt) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const pr = this.projectiles[i];
+      pr.life -= dt;
+      const steps = 2; // sub-steps for tunnel-proofing
+      let exploded = false;
+      for (let s = 0; s < steps && !exploded; s++) {
+        pr.x += pr.vx * dt / steps; pr.y += pr.vy * dt / steps; pr.z += pr.vz * dt / steps;
+        if (pr.y <= 0.1) exploded = true;
+        if (!exploded) {
+          for (const c of this.world.colliders) {
+            if (pr.x > c.x0 && pr.x < c.x1 && pr.y > c.y0 && pr.y < c.y1 && pr.z > c.z0 && pr.z < c.z1) { exploded = true; break; }
+          }
+        }
+        if (!exploded) {
+          for (const q of this.players.values()) {
+            if (q.uid === pr.owner || !q.alive) continue;
+            if (this.mode === 'team' && q.team === pr.team) continue;
+            if ((q.x - pr.x) ** 2 + (q.y + 0.9 - pr.y) ** 2 + (q.z - pr.z) ** 2 < 0.8) { exploded = true; break; }
+          }
+        }
+      }
+      pr.mesh.position.set(pr.x, pr.y, pr.z);
+      if (exploded || pr.life <= 0) {
+        this.scene.remove(pr.mesh);
+        this.projectiles.splice(i, 1);
+        if (exploded) this._explode(pr);
+      }
+    }
+  }
+
+  _explode(pr) {
+    const { splash } = pr.w.projectile;
+    this.fx.explosion(V1.set(pr.x, pr.y, pr.z), pr.w.color);
+    if (this._nearPoint(pr.x, pr.z, 50)) SFX.explode();
+    if (pr.visual) return;
+    const owner = this.players.get(pr.owner);
+    for (const q of this.players.values()) {
+      if (!q.alive || q.uid === pr.owner || q.invulnT > 0) continue;
+      if (this.mode === 'team' && owner && q.team === owner.team) continue;
+      const d = Math.hypot(q.x - pr.x, q.y + 0.9 - pr.y, q.z - pr.z);
+      if (d < splash) {
+        const dmg = pr.w.dmg * (1 - (d / splash) * 0.7);
+        this._damagePlayer(q, dmg, pr.owner, { hs: false, mel: false });
+      }
+    }
+  }
+
+  _nearPoint(x, z, d) {
+    if (!this.me) return false;
+    return (x - this.me.x) ** 2 + (z - this.me.z) ** 2 < d * d;
+  }
+
+  // remote player fired — tracer/projectile visual only
+  applyRemoteShot(uid, s) {
+    const p = this.players.get(uid);
+    if (!p) return;
+    const dl = Math.hypot(s.dx, s.dy, s.dz) || 1;
+    const saveW = p.weapon;
+    p.weapon = s.w;
+    this.fireWeapon(p, true, { x: s.x, y: s.y, z: s.z }, { x: s.dx / dl, y: s.dy / dl, z: s.dz / dl });
+    p.weapon = saveW;
+  }
+
+  // ---------------- damage & kills ----------------
+  _damagePlayer(q, dmg, fromUid, { hs = false, mel = false } = {}) {
+    if (!q.alive || q.invulnT > 0) return;
+    // guests don't own bots — relay damage to the host
+    if (q.bot && this.online && !this.isHost) {
+      if (this.onBotDamage) this.onBotDamage(q.uid, Math.round(dmg));
+      this.hudFlags.hitmarker = 0.25;
+      if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
+      return;
+    }
+    if (q.remote) {
+      if (this.onHitRemote) this.onHitRemote(q.uid, Math.round(dmg), { hs, mel, from: fromUid });
+      this.hudFlags.hitmarker = 0.25;
+      if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
+      return;
+    }
+    q.hp -= dmg;
+    if (q === this.me) {
+      this.hudFlags.hurt = 0.5;
+      SFX.hurt();
+    } else {
+      const from = this.players.get(fromUid);
+      if (from === this.me) {
+        this.hudFlags.hitmarker = 0.25;
+        if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
+      }
+    }
+    if (q.hp <= 0) this._killPlayer(q, fromUid, mel);
+  }
+
+  applyHitOnMe(dmg, fromUid, hs, mel) {
+    if (this.me) this._damagePlayer(this.me, dmg, fromUid, { hs, mel });
+  }
+
+  // host applies guests' damage to bots
+  applyBotDamageEvent(botId, dmg, fromUid) {
+    const b = this.players.get(botId);
+    if (b && b.bot && b.alive) this._damagePlayer(b, dmg, fromUid, {});
+  }
+
+  _killPlayer(q, fromUid, mel) {
+    q.hp = 0;
+    q.alive = false;
+    q.deaths++;
+    q.respawnT = GAME.respawnTime;
+    this.fx.impact(V1.set(q.x, q.y + 1, q.z), 0xff8866, 18, 6);
+    if (q === this.me || this._near(q, 45)) SFX.die();
+
+    const killer = this.players.get(fromUid);
+    const killerName = killer ? killer.name : '?';
+
+    if (!this.online) {
+      this.feed.push({ text: t(mel ? 'killKnife' : 'kill', { a: killerName, b: q.name }), t: 5 });
+      if (killer && killer !== q) this._creditLocal(killer, q, mel);
+      if (mel && !q.bot) this._demote(q);
+      this._tallyTeams(killer, q);
+    } else if (q === this.me) {
+      if (this.onSelfDeath) this.onSelfDeath(fromUid, mel);
+      if (mel) this._demote(q);
+    } else if (q.bot && this.isHost) {
+      // host announces bot deaths so every client can tally the team score
+      if (this.onKillBroadcast) this.onKillBroadcast(fromUid, killerName, q.uid, q.name, mel);
+      if (killer && !killer.remote) this._creditLocal(killer, q, mel);
+      this._tallyTeams(killer, q);
+    }
+  }
+
+  _creditLocal(killer, victim, mel) {
+    killer.kills++;
+    killer.score += 100;
+    if (killer === this.me) {
+      this.feed.push({ text: t('youKilled', { name: victim.name }), t: 4 });
+      this._advanceTier(killer);
+    } else if (killer.bot && this.mode === 'gungame') {
+      // practice bots don't climb the ladder — keeps offline winnable
+    }
+  }
+
+  // called by net when a kill event says I'm the killer
+  creditKill(victimName, mel, victimIsBot) {
+    if (!this.me) return;
+    this.me.kills++;
+    this.me.score += 100;
+    this.feed.push({ text: t('youKilled', { name: victimName }), t: 4 });
+    this._advanceTier(this.me);
+  }
+
+  tallyRemoteKill(killerUid, victimUid) {
+    // team-mode scoreboard from events (works for all clients)
+    const kBot = killerUid.startsWith('bot_');
+    const vBot = victimUid.startsWith('bot_');
+    if (this.mode !== 'team') return;
+    if (vBot && !kBot) this.teamScore++;
+    if (!vBot && kBot) this.botScore++;
+  }
+
+  _tallyTeams(killer, victim) {
+    if (this.mode !== 'team') return;
+    if (victim.team === 'b' && killer && killer.team === 'p') this.teamScore++;
+    if (victim.team === 'p' && killer && killer.team === 'b') this.botScore++;
+  }
+
+  _advanceTier(p) {
+    p.tier++;
+    if (this.mode === 'gungame' && p.tier >= WEAPON_LADDER.length) {
+      if (p === this.me && this.onWin) this.onWin();
+      this.forceGameOver({ winnerUid: p.uid, winnerName: p.name });
+      return;
+    }
+    p.tier = Math.min(p.tier, WEAPON_LADDER.length - 1);
+    this._setTier(p);
+    if (p === this.me) {
+      SFX.tierUp();
+      this.hudFlags.tierBanner = p.tier === WEAPON_LADDER.length - 1
+        ? t('lastWeapon')
+        : t('tierUp', { w: t('weapon_' + p.weapon) });
+    }
+  }
+
+  _demote(q) {
+    if (q.tier > 0) {
+      q.tier--;
+      this._setTier(q);
+      if (q === this.me) { SFX.tierDown(); this.hudFlags.tierBanner = t('tierDown'); }
+    }
+  }
+
+  _setTier(p) {
+    p.weapon = WEAPON_LADDER[p.tier];
+    p.ammo = WEAPONS[p.weapon].mag;
+    p.reloadT = 0;
+    if (p === this.me) this.viewModel.setWeapon(p.weapon);
+    else if (p.view) setCharacterWeapon(p.view.char, p.weapon);
+  }
+
+  _respawn(p) {
+    const s = this._spawnPos(p);
+    this._place(p, s);
+    p.hp = p.maxHp;
+    p.alive = true;
+    p.invulnT = GAME.invulnTime;
+    p.ammo = WEAPONS[p.weapon].mag;
+    p.reloadT = 0;
+  }
+
+  // ---------------- bots (host / offline) ----------------
+  _botStep(p, dt) {
+    if (!p.bot.brain) {
+      // lazily import-free: brain assigned by bots.js through attachBrains()
+      p.vx = p.vz = 0;
+    } else if (p.alive) {
+      p.bot.brain.update(dt);
+    }
+    const L = p.bot.level;
+    const wish = p.bot.wish || { x: 0, z: 0 };
+    this._physics(p, p.alive ? wish.x : 0, p.alive ? wish.z : 0, L.speed, dt);
+    if (p.y < GAME.fallY && p.alive) this._killPlayer(p, p.uid, false);
+    if (p.alive && p.bot.wantJump && p.grounded) { p.vy = GAME.jumpVel; p.grounded = false; p.bot.wantJump = false; }
+    if (p.alive && p.bot.wantFire) { this._tryFire(p); p.bot.wantFire = false; }
+  }
+
+  // ---------------- bot net sync ----------------
+  getBotSnapshot() {
+    const out = {};
+    for (const p of this.players.values()) {
+      if (!p.bot) continue;
+      out[p.uid] = {
+        n: p.name, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
+        yaw: +p.yaw.toFixed(2), hp: Math.round(p.hp), m: p.maxHp, a: p.alive ? 1 : 0, s: p.skin,
+      };
+    }
+    return out;
+  }
+
+  setBotSnapshot(snap) {
+    snap = snap || {};
+    for (const uid of [...this.players.keys()]) {
+      const p = this.players.get(uid);
+      if (p.bot && !snap[uid]) this.removePlayer(uid);
+    }
+    for (const [uid, s] of Object.entries(snap)) {
+      let p = this.players.get(uid);
+      if (!p) {
+        p = this._base(uid, s.n, s.s || 'ember', 'b');
+        p.bot = { level: BOT_LEVELS[this.botLevel], brain: null };
+        p.weapon = 'botgun';
+        p.remote = false;
+        p.x = p.netX = s.x; p.y = p.netY = s.y; p.z = p.netZ = s.z;
+        this.players.set(uid, p);
+        this._makeView(p, true);
+      }
+      if (p.alive && !s.a) {
+        p.alive = false;
+        this.fx.impact(V1.set(p.x, p.y + 1, p.z), 0xff8866, 14, 5);
+        if (this._near(p, 45)) SFX.die();
+      } else if (!p.alive && s.a) {
+        p.alive = true;
+        p.x = p.netX = s.x; p.y = p.netY = s.y; p.z = p.netZ = s.z;
+      }
+      p.netX = s.x; p.netY = s.y; p.netZ = s.z; p.netYaw = s.yaw;
+      p.hp = s.hp; p.maxHp = s.m || 100;
+    }
+  }
+
+  becomeHost() {
+    this.isHost = true;
+    for (const p of this.players.values()) {
+      if (p.bot) { p.x = p.netX; p.y = p.netY; p.z = p.netZ; }
+    }
+  }
+
+  // ---------------- views ----------------
+  _updateViews(dt) {
+    for (const p of this.players.values()) {
+      if (!p.view) continue;
+      const { char, bar } = p.view;
+      char.group.visible = p.alive;
+      if (!p.alive) continue;
+      char.group.position.set(p.x, p.y, p.z);
+      char.group.rotation.y = p.yaw + Math.PI;
+      const sp = p.remote || (p.bot && this.online && !this.isHost)
+        ? Math.hypot(p.netX - p.x, p.netZ - p.z) * 12
+        : Math.hypot(p.vx, p.vz);
+      p.speedSm = lerp(p.speedSm, sp, 0.2);
+      animateCharacter(char, dt, p.speedSm, true);
+      updateHpBar(bar, p.hp / p.maxHp);
+      // spawn-protection shimmer
+      char.group.traverse((o) => {
+        if (o.isMesh && o.material.transparent !== undefined) {
+          const flick = p.invulnT > 0 && Math.sin(this.elapsed * 16) > 0;
+          o.material.opacity = flick ? 0.4 : 1;
+          o.material.transparent = flick;
+        }
+      });
+    }
+  }
+
+  _decayHud(dt) {
+    const h = this.hudFlags;
+    h.hitmarker = Math.max(0, h.hitmarker - dt);
+    h.headshot = Math.max(0, h.headshot - dt);
+    h.hurt = Math.max(0, h.hurt - dt);
+  }
+
+  // ---------------- match end ----------------
+  timeLeft() { return this.endAt ? Math.max(0, (this.endAt - this.timeFn()) / 1000) : 0; }
+
+  _checkEnd() {
+    if (this.over) return;
+    if (this.mode === 'team' && (!this.online || this.isHost)) {
+      if (this.teamScore >= this.targetKills || this.botScore >= this.targetKills
+        || (this.endAt && this.timeFn() >= this.endAt)) {
+        this.forceGameOver({ teamWin: this.teamScore >= this.botScore });
+      }
+    }
+  }
+
+  forceGameOver(extra = {}) {
+    if (this.over) return;
+    const humans = [...this.players.values()].filter((p) => !p.bot);
+    const placements = humans
+      .map((p) => ({ uid: p.uid, name: p.name, kills: p.kills, deaths: p.deaths, tier: p.tier, score: p.score, me: p === this.me }))
+      .sort((a, b) => b.tier - a.tier || b.kills - a.kills || a.deaths - b.deaths);
+    this.over = {
+      mode: this.mode,
+      placements,
+      teamScore: this.teamScore,
+      botScore: this.botScore,
+      winnerName: extra.winnerName || (placements[0] && placements[0].name),
+      win: extra.winnerUid ? extra.winnerUid === this.me?.uid
+        : extra.teamWin !== undefined ? extra.teamWin
+        : placements.length > 0 && placements[0].me,
+      ...extra,
+    };
+    if (this.onOver) this.onOver(this.over);
+  }
+
   getSelfState() {
     const p = this.me;
     return {
-      name: p.name, ship: p.ship, hue: p.hue, weapon: p.weapon,
-      x: Math.round(p.x), y: Math.round(p.y), a: +p.a.toFixed(2),
-      vx: Math.round(p.vx), vy: Math.round(p.vy),
+      name: p.name, skin: p.skin,
+      x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
+      yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2),
       hp: Math.round(p.hp), maxHp: p.maxHp, alive: p.alive,
-      score: p.score, kills: p.kills, deaths: p.deaths,
+      tier: p.tier, w: p.weapon,
+      kills: p.kills, deaths: p.deaths, score: p.score,
     };
+  }
+
+  dispose() {
+    this.fx.dispose();
+    this.scene.traverse((o) => {
+      if (o.isMesh) o.geometry?.dispose?.();
+    });
   }
 }
