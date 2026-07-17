@@ -303,7 +303,16 @@ function startLoop(game) {
   UI.showScreen('game');
   fitRenderer();
   state.input.enabled = true;
+  state.input.aiming = false;
+  state.input.crouchHeld = false;
   state.input.requestLock();
+  // mobile: go fullscreen + lock to landscape (best effort)
+  if (state.input.touchMode) {
+    document.documentElement.requestFullscreen?.().then(() => {
+      screen.orientation?.lock?.('landscape').catch(() => {});
+      fitRenderer();
+    }).catch(() => {});
+  }
   state.lastTs = performance.now();
 
   const frame = (ts) => {

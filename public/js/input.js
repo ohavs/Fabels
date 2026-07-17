@@ -1,32 +1,39 @@
 // ============================================================
 // FPS input.
-//  Desktop: pointer-lock mouse look, WASD, Space jump, R reload,
-//           left mouse fire, 1-4 quick chat, Tab scoreboard.
-//  Mobile:  left-zone virtual stick = move, right-zone drag = look,
-//           on-screen fire / jump / reload buttons.
+//  Desktop: pointer-lock mouse look, WASD, Space jump, Shift sprint,
+//           C/Ctrl crouch (slide while sprinting), R reload,
+//           left mouse fire, right mouse aim (ADS), Tab scoreboard.
+//  Mobile:  left-zone virtual stick = move (full push = sprint),
+//           right-zone drag = look, on-screen fire / jump / crouch /
+//           aim / reload buttons. touch-action:none everywhere so the
+//           browser never steals the gestures.
 // ============================================================
 
-const JOY_RADIUS = 55;
+const JOY_RADIUS = 62;
 
 export class Input {
   constructor() {
     this.move = { x: 0, y: 0 };     // x = strafe (+right), y = forward (+ahead)
-    this.lookDX = 0;                // accumulated radians-ish, consumed per frame
+    this.lookDX = 0;
     this.lookDY = 0;
     this.firing = false;
+    this.aiming = false;            // ADS held (desktop) / toggled (mobile)
+    this.sprintHeld = false;
+    this.crouchHeld = false;        // desktop hold; mobile toggle writes this too
     this.wantJump = false;
     this.wantReload = false;
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;
+    this.autoFire = true;           // mobile assist: fire when crosshair is on an enemy
     this.sensitivity = 1;
 
     this._keys = new Set();
-    this._stick = null;             // left joystick touch
-    this._look = null;              // right look touch
+    this._stick = null;
+    this._look = null;
     this._mouseDown = false;
     this._locked = false;
-    this.enabled = false;           // only capture while in-game
+    this.enabled = false;
   }
 
   consumeLook() {
@@ -55,6 +62,8 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
       if (e.code === 'Tab') { e.preventDefault(); this.scoreHeld = true; return; }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.sprintHeld = true;
+      if (e.code === 'ControlLeft' || e.code === 'KeyC') { e.preventDefault(); this.crouchHeld = true; }
       if (e.repeat) return;
       this._keys.add(e.code);
       if (e.code === 'Space') { e.preventDefault(); this.wantJump = true; }
@@ -64,9 +73,16 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => {
       if (e.code === 'Tab') this.scoreHeld = false;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.sprintHeld = false;
+      if (e.code === 'ControlLeft' || e.code === 'KeyC') this.crouchHeld = false;
       this._keys.delete(e.code);
     });
-    window.addEventListener('blur', () => { this._keys.clear(); this._mouseDown = false; });
+    window.addEventListener('blur', () => {
+      this._keys.clear();
+      this._mouseDown = false;
+      this.sprintHeld = false;
+      if (!this.touchMode) { this.crouchHeld = false; this.aiming = false; }
+    });
 
     // ---- pointer lock mouse ----
     document.addEventListener('pointerlockchange', () => {
@@ -74,15 +90,20 @@ export class Input {
     });
     canvas.addEventListener('mousemove', (e) => {
       if (!this._locked || !this.enabled) return;
-      this.lookDX += e.movementX * 0.0022 * this.sensitivity;
-      this.lookDY += e.movementY * 0.0022 * this.sensitivity;
+      const sens = 0.0022 * this.sensitivity * (this.aiming ? 0.55 : 1);
+      this.lookDX += e.movementX * sens;
+      this.lookDY += e.movementY * sens;
     });
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled || this.touchMode) return;
       if (!this._locked) { this.requestLock(); return; }
       if (e.button === 0) this._mouseDown = true;
+      if (e.button === 2) this.aiming = true;
     });
-    window.addEventListener('mouseup', () => { this._mouseDown = false; });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this._mouseDown = false;
+      if (e.button === 2 && !this.touchMode) this.aiming = false;
+    });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -115,6 +136,8 @@ export class Input {
         e.preventDefault();
         let dx = t.clientX - s.ox, dy = t.clientY - s.oy;
         const len = Math.hypot(dx, dy);
+        // full push (past the rim) = sprint
+        s.mag = len / JOY_RADIUS;
         if (len > JOY_RADIUS) { dx *= JOY_RADIUS / len; dy *= JOY_RADIUS / len; }
         s.dx = dx / JOY_RADIUS; s.dy = dy / JOY_RADIUS;
         this._vis.knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
@@ -148,8 +171,9 @@ export class Input {
       for (const t of e.changedTouches) {
         if (t.identifier !== s.id) continue;
         e.preventDefault();
-        this.lookDX += (t.clientX - s.px) * 0.0045 * this.sensitivity;
-        this.lookDY += (t.clientY - s.py) * 0.0045 * this.sensitivity;
+        const sens = 0.005 * this.sensitivity * (this.aiming ? 0.55 : 1);
+        this.lookDX += (t.clientX - s.px) * sens;
+        this.lookDY += (t.clientY - s.py) * sens;
         s.px = t.clientX; s.py = t.clientY;
       }
     };
@@ -170,7 +194,8 @@ export class Input {
   update() {
     if (this._stick) {
       this.move.x = this._stick.dx;
-      this.move.y = -this._stick.dy;   // up on the stick = forward
+      this.move.y = -this._stick.dy;
+      this.sprintHeld = (this._stick.mag || 0) > 1.15 && this.move.y > 0.35;
     } else {
       let x = 0, y = 0;
       if (this._keys.has('KeyW') || this._keys.has('ArrowUp')) y += 1;
@@ -180,6 +205,7 @@ export class Input {
       const len = Math.hypot(x, y);
       this.move.x = len > 1 ? x / len : x;
       this.move.y = len > 1 ? y / len : y;
+      if (this.touchMode) { /* keep touch state */ }
     }
     if (!this.touchMode) this.firing = this._mouseDown;
   }

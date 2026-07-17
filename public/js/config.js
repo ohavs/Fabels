@@ -30,7 +30,12 @@ export const GAME = {
   roomTTL: 2 * 60 * 60 * 1000,
   // movement (metres, seconds)
   moveSpeed: 6.2,
-  sprintMult: 1.0,
+  sprintMult: 1.45,
+  crouchMult: 0.5,
+  adsMoveMult: 0.6,
+  slideSpeed: 10.5,
+  slideTime: 0.75,
+  slideCd: 1.4,
   accel: 60,
   friction: 10,
   gravity: -24,

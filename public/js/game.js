@@ -89,6 +89,9 @@ export class Game {
       tier: 0, weapon: WEAPON_LADDER[0],
       ammo: WEAPONS[WEAPON_LADDER[0]].mag, reloadT: 0, fireCd: 0,
       kills: 0, deaths: 0, score: 0,
+      // stance: 0 stand · 1 crouch · 2 slide (synced); crouchK = smoothed 0..1
+      stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
+      ads: false, bloom: 0,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
       view: null, speedSm: 0, chatT: 0, deadT: 0,
@@ -180,6 +183,7 @@ export class Game {
     p.netX = st.x; p.netY = st.y; p.netZ = st.z;
     p.netYaw = st.yaw || 0; p.netPitch = st.pitch || 0;
     p.hp = st.hp; p.maxHp = st.maxHp || 100;
+    p.stance = st.st || 0;
     p.tier = st.tier || 0;
     if (st.w && st.w !== p.weapon) {
       p.weapon = st.w;
@@ -257,7 +261,10 @@ export class Game {
       p.pitch = clamp(p.pitch + look.dy, -1.45, 1.45);
     }
 
-    let wishX = 0, wishZ = 0;
+    p.slideCd = Math.max(0, p.slideCd - dt);
+    p.bloom = Math.max(0, p.bloom - dt * 0.09);
+
+    let wishX = 0, wishZ = 0, speed = GAME.moveSpeed;
     if (p.alive && !this.over) {
       const f = forwardOf(p.yaw);
       const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
@@ -266,30 +273,122 @@ export class Game {
       const wl = Math.hypot(wishX, wishZ);
       if (wl > 1) { wishX /= wl; wishZ /= wl; }
 
-      if (input.consumeJump() && p.grounded) {
-        p.vy = GAME.jumpVel;
-        p.grounded = false;
+      // ---- stance state machine: stand / sprint / crouch / slide ----
+      p.ads = input.aiming && !WEAPONS[p.weapon].melee;
+      const moving = wl > 0.3;
+      const sprinting = input.sprintHeld && moving && input.move.y > 0.2
+        && !p.ads && !input.crouchHeld && p.slideT <= 0 && p.grounded;
+
+      if (p.slideT > 0) {
+        // sliding: locked direction, decaying boost
+        p.slideT -= dt;
+        const k = p.slideT / GAME.slideTime;
+        speed = GAME.slideSpeed * (0.35 + 0.65 * k);
+        wishX = p.slideDirX; wishZ = p.slideDirZ;
+        p.stance = 2;
+        if (p.slideT <= 0) p.stance = input.crouchHeld ? 1 : 0;
+      } else if (input.crouchHeld && this._wasSprinting && p.grounded && p.slideCd <= 0 && moving) {
+        // sprint + crouch = slide
+        p.slideT = GAME.slideTime;
+        p.slideCd = GAME.slideCd + GAME.slideTime;
+        p.slideDirX = wishX; p.slideDirZ = wishZ;
+        p.stance = 2;
         SFX.jump();
+      } else if (input.crouchHeld) {
+        p.stance = 1;
+        speed = GAME.moveSpeed * GAME.crouchMult;
+      } else {
+        p.stance = 0;
+        speed = sprinting ? GAME.moveSpeed * GAME.sprintMult : GAME.moveSpeed;
+      }
+      this._wasSprinting = sprinting;
+      if (p.ads) speed *= GAME.adsMoveMult;
+
+      if (input.consumeJump() && p.grounded) {
+        if (p.stance !== 0 && p.slideT <= 0) { p.stance = 0; input.crouchHeld = input.touchMode ? false : input.crouchHeld; }
+        else {
+          p.vy = GAME.jumpVel;
+          p.grounded = false;
+          SFX.jump();
+        }
       }
       if (input.consumeReload()) this._startReload(p);
       const chat = input.consumeChat();
       if (chat >= 0 && this.onChat) this.onChat(chat);
-      if (input.firing) this._tryFire(p);
+
+      // fire: manual, or mobile auto-fire when the crosshair rests on an enemy
+      if (input.firing || (input.touchMode && input.autoFire && this._crosshairOnEnemy(p))) {
+        this._tryFire(p);
+      }
     }
 
-    this._physics(p, wishX, wishZ, GAME.moveSpeed, dt);
+    // smooth crouch factor (also drives eye height + hitbox scale)
+    const targetK = p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0;
+    p.crouchK = lerp(p.crouchK, targetK, Math.min(1, dt * 10));
+
+    this._physics(p, wishX, wishZ, speed, dt);
     if (p.y < GAME.fallY && p.alive) this._killPlayer(p, p.uid, false);
-    this._syncCamera(p);
+    this._syncCamera(p, dt);
   }
 
-  _syncCamera(p) {
+  // is an enemy under the crosshair (small cone + line of sight)?
+  _crosshairOnEnemy(p) {
+    if (p.fireCd > 0 || p.reloadT > 0) return false;
+    const f = forwardOf(p.yaw, p.pitch);
+    const w = WEAPONS[p.weapon];
+    for (const q of this.players.values()) {
+      if (q === p || !q.alive || q.invulnT > 0) continue;
+      if (this.mode === 'team' && q.team === p.team) continue;
+      const dx = q.x - p.x, dy = (q.y + 1.1) - (p.y + GAME.eyeHeight), dz = q.z - p.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d > w.range || d < 0.5) continue;
+      const dot = (dx * f.x + dy * f.y + dz * f.z) / d;
+      if (dot > Math.cos(0.05 + 0.5 / d)) {
+        if (!this._losBlocked(p.x, p.y + GAME.eyeHeight, p.z, q.x, q.y + 1.1, q.z)) return true;
+      }
+    }
+    return false;
+  }
+
+  _losBlocked(ax, ay, az, bx, by, bz) {
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    for (const c of this.world.colliders) {
+      if (rayAABB(ax, ay, az, dx / len, dy / len, dz / len, c) < len) return true;
+    }
+    return false;
+  }
+
+  // effective spread: base × stance/motion/ADS modifiers + bloom
+  effectiveSpread(p) {
+    const w = WEAPONS[p.weapon];
+    let s = w.spread;
+    if (p.ads) s *= 0.35;
+    if (p.stance === 1) s *= 0.7;
+    const sp = Math.hypot(p.vx, p.vz);
+    if (sp > GAME.moveSpeed * 0.6) s *= 1.5;
+    if (!p.grounded) s *= 1.9;
+    return s + p.bloom;
+  }
+
+  _syncCamera(p, dt = 1 / 60) {
     const sp = Math.hypot(p.vx, p.vz);
     if (sp > 1 && p.grounded) this._bobT += Math.min(0.06, sp * 0.004);
-    const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6);
-    this.camera.position.set(p.x, p.y + GAME.eyeHeight + bob, p.z);
+    const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6) * (p.ads ? 0.3 : 1);
+    const eye = GAME.eyeHeight - p.crouchK * 0.62;
+    this.camera.position.set(p.x, p.y + eye + bob, p.z);
     this.camera.rotation.y = p.yaw;
     this.camera.rotation.x = -p.pitch;
-    this.viewModel.update(1 / 60, sp, p.reloadT > 0);
+
+    // FOV: sprint widens, ADS narrows (sniper = scope)
+    const sniper = p.weapon === 'sniper';
+    const targetFov = p.ads ? (sniper ? 24 : 55)
+      : sp > GAME.moveSpeed * 1.1 ? 82 : 75;
+    if (Math.abs(this.camera.fov - targetFov) > 0.1) {
+      this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 10));
+      this.camera.updateProjectionMatrix();
+    }
+    this.viewModel.update(dt, sp, p.reloadT > 0, p.ads, sniper);
   }
 
   // ---------------- shared physics (players + bots) ----------------
@@ -378,6 +477,7 @@ export class Game {
     if (p.ammo <= 0) { this._startReload(p); return; }
     p.fireCd = w.rate;
     if (isFinite(w.mag)) p.ammo--;
+    if (p === this.me) p.bloom = Math.min(0.045, p.bloom + w.spread * 0.9 + 0.004);
     this.fireWeapon(p, false);
     if (p.bot && this.online && this.isHost && this.onBotShot) {
       const f = forwardOf(p.yaw, p.pitch);
@@ -433,7 +533,7 @@ export class Game {
     }
 
     for (let i = 0; i < w.pellets; i++) {
-      const sp = w.spread * (p.bot ? 1.4 : 1);
+      const sp = p === this.me ? this.effectiveSpread(p) : w.spread * (p.bot ? 1.4 : 1);
       const dx = baseDir.x + (Math.random() - 0.5) * 2 * sp;
       const dy = baseDir.y + (Math.random() - 0.5) * 2 * sp;
       const dz = baseDir.z + (Math.random() - 0.5) * 2 * sp;
@@ -458,11 +558,12 @@ export class Game {
     for (const q of this.players.values()) {
       if (q === p || !q.alive || q.invulnT > 0) continue;
       if (this.mode === 'team' && q.team === p.team) continue;
-      // three-sphere body approximation
+      // three-sphere body approximation, squashed when crouching/sliding
+      const hs2 = 1 - Math.min(1, q.crouchK) * 0.3;
       const spheres = [
-        [q.x, q.y + 0.45, q.z, 0.4, false],
-        [q.x, q.y + 1.1, q.z, 0.45, false],
-        [q.x, q.y + 1.62, q.z, 0.3, true],
+        [q.x, q.y + 0.45 * hs2, q.z, 0.4, false],
+        [q.x, q.y + 1.1 * hs2, q.z, 0.45, false],
+        [q.x, q.y + 1.62 * hs2, q.z, 0.3, true],
       ];
       for (const [cx, cy, cz, r, hs] of spheres) {
         const tt = raySphere(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, cx, cy, cz, r);
@@ -784,6 +885,9 @@ export class Game {
       const { char, bar } = p.view;
       char.group.visible = p.alive;
       if (!p.alive) continue;
+      // crouch/slide squash follows the synced stance
+      p.crouchK = lerp(p.crouchK, p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0, 0.2);
+      char.group.scale.y = 1 - Math.min(1, p.crouchK) * 0.3;
       char.group.position.set(p.x, p.y, p.z);
       char.group.rotation.y = p.yaw + Math.PI;
       const sp = p.remote || (p.bot && this.online && !this.isHost)
@@ -850,7 +954,7 @@ export class Game {
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2),
       hp: Math.round(p.hp), maxHp: p.maxHp, alive: p.alive,
-      tier: p.tier, w: p.weapon,
+      tier: p.tier, w: p.weapon, st: p.stance,
       kills: p.kills, deaths: p.deaths, score: p.score,
     };
   }

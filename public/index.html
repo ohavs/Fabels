@@ -10,6 +10,9 @@
   <meta name="description" content="שברי כוכב: זירת האש — משחק יריות תלת־ממד מרובה משתתפים" />
   <title>זירת האש ⭐ STARSHARDS ARENA</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='none' stroke='%2357c4e5' stroke-width='3'/><circle cx='16' cy='16' r='4' fill='%23ffd166'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;700;800;900&display=swap" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -137,10 +140,12 @@
     <canvas id="game-canvas"></canvas>
 
     <div id="hud" dir="rtl">
-      <!-- crosshair + hitmarker -->
-      <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+      <!-- dynamic per-weapon crosshair + hitmarker + sniper scope -->
+      <div id="crosshair"><i></i><i></i><i></i><i></i><s></s><b></b></div>
       <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+      <div id="scope" class="hidden"><div class="scope-ring"></div><i class="h"></i><i class="v"></i></div>
       <div id="hurt-vignette"></div>
+      <div id="rotate-overlay"><span>🔄</span><p>סובבו את המכשיר לרוחב למשחק נוח</p></div>
 
       <div class="hud-top">
         <div class="hud-stat"><span class="hud-label">ניקוד</span><span id="hud-score">0</span></div>
@@ -177,9 +182,11 @@
       <div id="zone-left" class="joy-zone left"></div>
       <div id="zone-right" class="joy-zone right"></div>
       <button id="btn-fire" class="fire-btn">⊕</button>
+      <button id="btn-jump" class="tb tb-jump">⤒</button>
+      <button id="btn-aim" class="tb tb-aim">◎</button>
+      <button id="btn-crouch" class="tb tb-crouch">🡓</button>
       <div class="action-btns">
-        <button id="btn-jump" class="action-btn"><span class="ab-icon">⤒</span></button>
-        <button id="btn-reload" class="action-btn"><span class="ab-icon">⟳</span></button>
+        <button id="btn-reload" class="action-btn small"><span class="ab-icon">⟳</span></button>
         <button id="btn-score" class="action-btn small"><span class="ab-icon">📋</span></button>
         <button id="btn-chat" class="action-btn small"><span class="ab-icon">💬</span></button>
       </div>

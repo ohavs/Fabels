@@ -214,17 +214,21 @@ export class ViewModel {
     return this.gun.localToWorld(target);
   }
 
-  update(dt, moveSpeed, reloading) {
+  update(dt, moveSpeed, reloading, ads = false, sniper = false) {
     this.swayT += dt * (2 + moveSpeed);
     this.recoil = Math.max(0, this.recoil - dt * 6);
     this.raiseK = Math.min(1, this.raiseK + dt * 4);
     this.reloadK += ((reloading ? 1 : 0) - this.reloadK) * Math.min(1, dt * 8);
-    const sway = Math.min(1, moveSpeed / 6);
+    this.adsK = (this.adsK ?? 0) + ((ads ? 1 : 0) - (this.adsK ?? 0)) * Math.min(1, dt * 12);
+    const k = this.adsK;
+    // sniper scope replaces the viewmodel entirely
+    this.root.visible = !(sniper && k > 0.7);
+    const sway = Math.min(1, moveSpeed / 6) * (1 - k * 0.8);
     this.root.position.set(
-      0.3 + Math.sin(this.swayT) * 0.012 * sway,
-      -0.3 + Math.abs(Math.cos(this.swayT)) * 0.02 * sway
+      0.3 * (1 - k) + Math.sin(this.swayT) * 0.012 * sway,
+      -0.3 + k * 0.08 + Math.abs(Math.cos(this.swayT)) * 0.02 * sway
         - this.reloadK * 0.22 - (1 - this.raiseK) * 0.35 + this.recoil * 0.03,
-      -0.55 + this.recoil * 0.09,
+      -0.55 + k * 0.12 + this.recoil * 0.09,
     );
     this.root.rotation.set(this.recoil * 0.16 + this.reloadK * 0.7, 0, this.reloadK * 0.3);
   }

@@ -218,6 +218,9 @@ export function resetHUD() {
   $('hud-banner').classList.remove('show');
   $('chat-panel').classList.add('hidden');
   $('scoreboard').classList.add('hidden');
+  $('scope').classList.add('hidden');
+  $('btn-crouch').classList.remove('on');
+  $('btn-aim').classList.remove('on');
 }
 
 export function updateHUD(game, input) {
@@ -250,6 +253,18 @@ export function updateHUD(game, input) {
     pips.innerHTML = WEAPON_LADDER.map(() => '<span></span>').join('');
   }
   [...pips.children].forEach((el, i) => el.classList.toggle('on', i <= me.tier));
+
+  // dynamic crosshair: gap follows the real bullet spread, style per weapon
+  const ch = $('crosshair');
+  const sniperScoped = me.weapon === 'sniper' && me.ads;
+  ch.dataset.w = me.weapon;
+  ch.classList.toggle('hidden', sniperScoped || !me.alive);
+  $('scope').classList.toggle('hidden', !sniperScoped || !me.alive);
+  if (me.alive && !sniperScoped) {
+    const spread = game.effectiveSpread(me);
+    const gap = Math.round(7 + spread * 620);
+    ch.style.setProperty('--gap', gap + 'px');
+  }
 
   // flags
   const h = game.hudFlags;
@@ -308,6 +323,15 @@ export function bindHUD(input, { onExit, onChat }) {
   hold($('btn-fire'), () => { input.firing = true; }, () => { input.firing = false; });
   hold($('btn-jump'), () => { input.wantJump = true; });
   hold($('btn-reload'), () => { input.wantReload = true; });
+  // toggles: crouch & ADS
+  hold($('btn-crouch'), () => {
+    input.crouchHeld = !input.crouchHeld;
+    $('btn-crouch').classList.toggle('on', input.crouchHeld);
+  });
+  hold($('btn-aim'), () => {
+    input.aiming = !input.aiming;
+    $('btn-aim').classList.toggle('on', input.aiming);
+  });
   hold($('btn-score'), () => { sbToggle = !sbToggle; });
   hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
   for (const b of $('chat-panel').querySelectorAll('button')) {
