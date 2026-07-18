@@ -40,38 +40,69 @@ const state = {
   practice: { mode: 'gungame', map: 'town', botLevel: 'normal', botCount: 3 },
 };
 
+// never let a slow/hung network call trap us on the loading screen
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    Promise.resolve(promise).catch((e) => { console.warn('boot step failed', e); return fallback; }),
+    new Promise((res) => setTimeout(() => res(fallback), ms)),
+  ]);
+}
+
 // ---------------- boot ----------------
 async function boot() {
-  loadSettings();
-  document.addEventListener('pointerdown', () => {
-    unlockAudio();
-    if (!state.game) startMusic('menu');   // browsers need a gesture before audio
-  }, { once: true });
+  // whatever happens below, guarantee we reach the menu within 12s
+  const failSafe = setTimeout(() => {
+    if (!$('scr-menu').classList.contains('active')) {
+      console.warn('boot fail-safe: forcing menu');
+      try { finishBoot(false); } catch (e) { console.error(e); UI.showScreen('menu'); }
+    }
+  }, 10000);
 
-  UI.setLoadStatus(t('connecting'));
-  const online = await initFirebase();
-  UI.setLoadStatus(t('loading'));
-  await loadProfile();
+  try {
+    loadSettings();
+    document.addEventListener('pointerdown', () => {
+      unlockAudio();
+      if (!state.game) startMusic('menu');
+    }, { once: true });
+
+    UI.setLoadStatus(t('connecting'));
+    const online = await withTimeout(initFirebase(), 5000, false);
+    UI.setLoadStatus(t('loading'));
+    await withTimeout(loadProfile(), 4000, null);   // Firestore getDoc can hang → cap it
+    clearTimeout(failSafe);
+    finishBoot(online);
+  } catch (e) {
+    console.error('boot error', e);
+    clearTimeout(failSafe);
+    finishBoot(false);
+  }
+}
+
+let _booted = false;
+function finishBoot(online) {
+  if (_booted) return;
+  _booted = true;
+
   UI.setConn(online);
   if (!online) UI.toast(t('offlineMode'));
 
-  state.input = new Input();
-  state.input.attach({
-    canvas: $('game-canvas'),
-    zoneL: $('zone-left'),
-    zoneR: $('zone-right'),
-  });
-  UI.bindHUD(state.input, {
-    onExit: exitMatch,
-    onChat: (idx) => { state.input.wantChat = idx; },
-  });
+  if (!state.input) {
+    state.input = new Input();
+    state.input.attach({
+      canvas: $('game-canvas'),
+      zoneL: $('zone-left'),
+      zoneR: $('zone-right'),
+    });
+    UI.bindHUD(state.input, {
+      onExit: exitMatch,
+      onChat: (idx) => { state.input.wantChat = idx; },
+    });
+    state.renderer = createRenderer($('game-canvas'));
+    window.addEventListener('resize', fitRenderer);
+    wireMenu();
+  }
 
-  state.renderer = createRenderer($('game-canvas'));
-  window.addEventListener('resize', fitRenderer);
-
-  wireMenu();
   UI.refreshMenu();
-
   const daily = claimDaily();
   UI.showScreen('menu');
   if (daily) UI.toast(t('daily', { n: daily }), 'gold');

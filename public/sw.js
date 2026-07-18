@@ -1,29 +1,27 @@
 // ============================================================
 // Service worker — installable PWA with offline play.
-// Same-origin assets: stale-while-revalidate (instant loads,
-// silent background updates). Firebase/Google traffic: network
-// only (never cache realtime data or auth).
+//   • HTML + JS + CSS  → network-first (online players always get the
+//     freshest code; falls back to cache only when truly offline).
+//     This prevents a stale/broken cached bundle from bricking boot.
+//   • other same-origin assets → cache-first (fast, offline-friendly).
+//   • Firebase / Google traffic → never intercepted.
+// Bump CACHE on every meaningful change to evict old bundles.
 // ============================================================
 
-const CACHE = 'starshards-v1';
-const PRECACHE = [
-  './',
-  './index.html',
-  './manifest.json',
-  './css/style.css',
-  './icon-192.png',
-  './icon-512.png',
+const CACHE = 'starshards-v3';
+const CORE = [
+  './', './index.html', './manifest.json', './css/style.css',
+  './icon-192.png', './icon-512.png',
   './js/main.js', './js/config.js', './js/i18n.js', './js/util.js',
   './js/audio.js', './js/fb.js', './js/profile.js', './js/input.js',
   './js/world.js', './js/chars.js', './js/weapons.js', './js/game.js',
-  './js/bots.js', './js/net.js', './js/ui.js',
+  './js/bots.js', './js/net.js', './js/ui.js', './js/icons.js',
   './js/vendor/three.module.js',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()),
-  );
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE).catch(() => {})));
 });
 
 self.addEventListener('activate', (e) => {
@@ -34,23 +32,32 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+const isCode = (url) => /\.(?:html|js|css)$/.test(url.pathname) || url.pathname === '/' || url.pathname.endsWith('/');
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET') return;
-  // never intercept firebase / google traffic
-  if (url.origin !== location.origin) return;
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
 
-  e.respondWith(
-    caches.match(e.request).then((cached) => {
-      const fetched = fetch(e.request)
+  if (e.request.mode === 'navigate' || isCode(url)) {
+    // network-first: fresh code online, cached code offline
+    e.respondWith(
+      fetch(e.request)
         .then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, clone));
-          }
+          if (res && res.ok) { const c = res.clone(); caches.open(CACHE).then((cc) => cc.put(e.request, c)); }
           return res;
         })
-        .catch(() => cached);
+        .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html'))),
+    );
+    return;
+  }
+
+  // other assets: cache-first with background refresh
+  e.respondWith(
+    caches.match(e.request).then((cached) => {
+      const fetched = fetch(e.request).then((res) => {
+        if (res && res.ok) { const c = res.clone(); caches.open(CACHE).then((cc) => cc.put(e.request, c)); }
+        return res;
+      }).catch(() => cached);
       return cached || fetched;
     }),
   );
