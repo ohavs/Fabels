@@ -750,7 +750,15 @@ export class Game {
   }
 
   // ---------------- shared physics (players + bots) ----------------
+  // fixed sub-stepping: large frames are split so collision response and
+  // acceleration behave identically at 30fps and 120fps
   _physics(p, wishX, wishZ, speed, dt) {
+    const steps = dt > 0.017 ? Math.min(4, Math.ceil(dt / 0.0166)) : 1;
+    const h = dt / steps;
+    for (let i = 0; i < steps; i++) this._physStep(p, wishX, wishZ, speed, h);
+  }
+
+  _physStep(p, wishX, wishZ, speed, dt) {
     const accel = p.grounded ? 11 : 3.2;
     p.vx = lerp(p.vx, wishX * speed, Math.min(1, accel * dt));
     p.vz = lerp(p.vz, wishZ * speed, Math.min(1, accel * dt));
@@ -1017,7 +1025,7 @@ export class Game {
     return (x - this.me.x) ** 2 + (z - this.me.z) ** 2 < d * d;
   }
 
-  // ---------------- building (walls & ramps) ----------------
+  // ---------------- building (walls & ramps, 3m grid like Fortnite) ----------------
   placeBuild(kind) {
     const p = this.me;
     if (!p?.alive || p.buildCd > 0) return;
@@ -1026,20 +1034,37 @@ export class Game {
       this.hudFlags.tierBanner = t('noMats');
       return;
     }
-    p.mats -= cost;
-    p.buildCd = BUILD.placeCd;
-    this.matchStats.builds++;
     // snap facing to the dominant axis so colliders stay axis-aligned
     const f = forwardOf(p.yaw);
     const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
     const dir = ax === 'x' ? Math.sign(f.x) || 1 : Math.sign(f.z) || 1;
-    const spec = {
-      id: 'b' + randId(5), t: kind, o: p.uid,
-      x: +(p.x + (ax === 'x' ? dir * 2.4 : 0)).toFixed(1),
-      y: +Math.max(0, p.y).toFixed(1),
-      z: +(p.z + (ax === 'z' ? dir * 2.4 : 0)).toFixed(1),
-      ax, dir,
-    };
+    const G = 3;
+    // grid snap: wall sits on the next grid line ahead, centred in the cell;
+    // y snaps to half-metres so stacking on ramps/roofs is clean
+    let bx, bz;
+    if (ax === 'x') {
+      bx = Math.round((p.x + dir * (G / 2)) / G) * G;
+      if ((bx - p.x) * dir < 0.75) bx += dir * G;    // too close → next line
+      bz = Math.floor(p.z / G) * G + G / 2;
+    } else {
+      bz = Math.round((p.z + dir * (G / 2)) / G) * G;
+      if ((bz - p.z) * dir < 0.75) bz += dir * G;
+      bx = Math.floor(p.x / G) * G + G / 2;
+    }
+    const by = Math.max(0, Math.round(p.y * 2) / 2);
+    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, x: bx, y: by, z: bz, ax, dir };
+    if (kind === 'r') {
+      // ramp starts at the near edge of the next cell
+      spec.x = ax === 'x' ? bx : Math.floor(p.x / G) * G + G / 2;
+      spec.z = ax === 'z' ? bz : Math.floor(p.z / G) * G + G / 2;
+    }
+    // one build per snapped slot
+    const slotKey = `${kind}:${spec.x}:${by}:${spec.z}:${ax}`;
+    for (const b of this.builds.values()) if (b.slot === slotKey) return;
+    p.mats -= cost;
+    p.buildCd = BUILD.placeCd;
+    this.matchStats.builds++;
+    spec.slot = slotKey;
     this._addBuild(spec);
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
     SFX.reloadDone();
@@ -1048,34 +1073,53 @@ export class Game {
   _addBuild(spec) {
     if (this.builds.has(spec.id)) return;
     const meshes = [];
-    const cols = [];
     const woodM = mat(0x9a7148);
-    const addPiece = (x, y, z, w, h, d) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), woodM);
+    const darkM = mat(0x6f4e2e);
+    const addPiece = (x, y, z, w, h, d, { collide = true, m: useM = woodM, rz = 0 } = {}) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), useM);
       m.position.set(x, y + h / 2, z);
       m.scale.set(w, h, d);
+      if (rz) m.rotation.z = rz;
       m.castShadow = true;
       m.receiveShadow = true;
       this.scene.add(m);
       meshes.push(m);
-      const c = { x0: x - w / 2, y0: y, z0: z - d / 2, x1: x + w / 2, y1: y + h, z1: z + d / 2, buildId: spec.id };
-      this.world.colliders.push(c);
-      cols.push(c);
+      if (collide) {
+        this.world.colliders.push({ x0: x - w / 2, y0: y, z0: z - d / 2, x1: x + w / 2, y1: y + h, z1: z + d / 2, buildId: spec.id });
+      }
     };
     if (spec.t === 'w') {
-      // wall: 3.6 wide, 3 tall, thin along the facing axis
-      if (spec.ax === 'x') addPiece(spec.x, spec.y, spec.z, 0.3, 3, 3.6);
-      else addPiece(spec.x, spec.y, spec.z, 3.6, 3, 0.3);
+      // framed plank wall: 3.05 wide (seals grid gaps), 3 tall
+      const W = 3.05, H3 = 3, T = 0.25;
+      if (spec.ax === 'x') {
+        addPiece(spec.x, spec.y, spec.z, T, H3, W);
+        addPiece(spec.x, spec.y + H3 - 0.18, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
+        addPiece(spec.x, spec.y, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(T + 0.08, H3 * 1.32, 0.28), darkM);
+        brace.position.set(spec.x, spec.y + H3 / 2, spec.z);
+        brace.rotation.x = 0.87;
+        this.scene.add(brace);
+        meshes.push(brace);
+      } else {
+        addPiece(spec.x, spec.y, spec.z, W, H3, T);
+        addPiece(spec.x, spec.y + H3 - 0.18, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
+        addPiece(spec.x, spec.y, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
+        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.28, H3 * 1.32, T + 0.08), darkM);
+        brace.position.set(spec.x, spec.y + H3 / 2, spec.z);
+        brace.rotation.z = 0.87;
+        this.scene.add(brace);
+        meshes.push(brace);
+      }
     } else {
-      // ramp: 4 rising steps away from the builder
+      // ramp: 4 rising steps away from the builder + side stringers
       for (let i = 0; i < 4; i++) {
         const off = i * 0.95;
         const h = 0.55 * (i + 1);
-        if (spec.ax === 'x') addPiece(spec.x + spec.dir * off, spec.y, spec.z, 0.95, h, 3);
-        else addPiece(spec.x, spec.y, spec.z + spec.dir * off, 3, h, 0.95);
+        if (spec.ax === 'x') addPiece(spec.x + spec.dir * off, spec.y, spec.z, 0.97, h, 3.05);
+        else addPiece(spec.x, spec.y, spec.z + spec.dir * off, 3.05, h, 0.97);
       }
     }
-    this.builds.set(spec.id, { id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o });
+    this.builds.set(spec.id, { id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o, slot: spec.slot || '' });
   }
 
   applyRemoteBuild(spec) { this._addBuild(spec); }

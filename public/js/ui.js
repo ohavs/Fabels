@@ -74,7 +74,7 @@ function pillRow(el, items, selected, canPick, onPick, labelFn) {
   }
 }
 
-export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, practiceMode }) {
+export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, practiceMode, privacy }) {
   const wrap = $('practice-mode-wrap');
   wrap.style.display = practiceMode ? '' : 'none';
   if (practiceMode) {
@@ -85,7 +85,14 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   $('bots-opts').style.display = showBots ? '' : 'none';
   if (showBots) {
     pillRow($('bot-picker'), BOT_LEVEL_ORDER, botLevel, canPick, (b) => onPick({ botLevel: b }), (b) => t('bots_' + b));
-    pillRow($('botcount-picker'), [2, 3, 4, 5, 6], botCount, canPick, (n) => onPick({ botCount: n }), (n) => String(n));
+    pillRow($('botcount-picker'), [0, 2, 3, 4, 5, 6], botCount, canPick, (n) => onPick({ botCount: n }), (n) => String(n));
+  }
+  // online rooms: host chooses public (matchmaking) or private (code only)
+  $('privacy-wrap').style.display = privacy ? '' : 'none';
+  if (privacy) {
+    pillRow($('privacy-picker'), ['public', 'private'], privacy.value, canPick,
+      (v) => onPick({ private: v === 'private' }),
+      (v) => t(v === 'public' ? 'roomPublic' : 'roomPrivate'));
   }
 }
 

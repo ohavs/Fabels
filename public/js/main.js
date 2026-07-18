@@ -227,8 +227,9 @@ function enterOnlineLobby(room) {
   const renderOpts = () => {
     const m = room.meta || {};
     UI.renderLobbyOptions({
-      map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount || 4,
-      showBots: room.mode === 'team',
+      map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount ?? 4,
+      showBots: ['team', 'ctf', 'br'].includes(room.mode),
+      privacy: { value: m.private ? 'private' : 'public' },
       canPick: room.isHost && m.state === 'waiting',
       onPick: (patch) => room.setOptions(patch),
     });
@@ -299,14 +300,15 @@ function beginOnlineMatch() {
 
   if (room.isHost) {
     const lvl = meta.botLevel || 'normal';
+    const wantBots = (meta.botCount ?? 4) > 0;   // botCount 0 = friends only
     if (room.mode === 'team') {
-      for (let i = 0; i < (meta.botCount || 4); i++) game.addBot(botName(i), lvl);
-    } else if (room.mode === 'ctf') {
+      for (let i = 0; i < (meta.botCount ?? 4); i++) game.addBot(botName(i), lvl);
+    } else if (room.mode === 'ctf' && wantBots) {
       const humansR = order.filter((_, i) => i % 2 === 0).length;
       const humansB = order.length - humansR;
       for (let i = humansR; i < CTF.teamSize; i++) game.addBot(botName(i), lvl, -1, 'r');
       for (let i = humansB; i < CTF.teamSize; i++) game.addBot(botName(i + 3), lvl, -1, 'b');
-    } else if (room.mode === 'br') {
+    } else if (room.mode === 'br' && wantBots) {
       for (let i = order.length; i < BR.combatants; i++) game.addBot(botName(i), lvl);
     }
     attachBrains(game);
@@ -341,10 +343,13 @@ function startOffline() {
   if (mode === 'duel') {
     game.addBot(botName(0), 'hard');
   } else if (mode === 'ctf') {
-    for (let i = 1; i < CTF.teamSize; i++) game.addBot(botName(i), pr.botLevel, -1, 'r');
-    for (let i = 0; i < CTF.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
+    const fill = pr.botCount > 0;
+    if (fill) {
+      for (let i = 1; i < CTF.teamSize; i++) game.addBot(botName(i), pr.botLevel, -1, 'r');
+      for (let i = 0; i < CTF.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
+    }
   } else if (mode === 'br') {
-    for (let i = 1; i < BR.combatants; i++) game.addBot(botName(i), pr.botLevel);
+    if (pr.botCount > 0) for (let i = 1; i < BR.combatants; i++) game.addBot(botName(i), pr.botLevel);
   } else if (mode === 'builddm') {
     for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
   } else if (mode !== 'zombies') {

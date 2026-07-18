@@ -72,6 +72,8 @@ export const STR = {
   hostLeft: 'המארח עזב — מארח חדש נבחר',
   chooseMap: 'בחירת מפה',
   chooseBots: 'רמת בוטים',
+  roomPublic: 'ציבורי — כל אחד מצטרף',
+  roomPrivate: '🔒 פרטי — רק עם קוד',
 
   // HUD / battle
   kill: '{a} חיסל את {b}',

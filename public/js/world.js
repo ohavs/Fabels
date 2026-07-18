@@ -55,11 +55,25 @@ export class World {
     m.receiveShadow = true;
     this.scene.add(m);
     if (collide) {
-      // rotated boxes get a conservative AABB
-      const rw = rotY ? Math.max(w, d) : w, rd = rotY ? Math.max(w, d) : d;
+      // exact AABB of the rotated footprint (no phantom corners)
+      let rw = w, rd = d;
+      if (rotY) {
+        const c = Math.abs(Math.cos(rotY)), s = Math.abs(Math.sin(rotY));
+        rw = w * c + d * s;
+        rd = w * s + d * c;
+      }
       this.colliders.push({ x0: x - rw / 2, y0: y, z0: z - rd / 2, x1: x + rw / 2, y1: y + h, z1: z + rd / 2 });
     }
     return m;
+  }
+
+  // long diagonal ridge as stepped axis-aligned segments — visuals match colliders
+  ridge(x, z, len, h, ang, color, thick = 1.8) {
+    const segs = Math.max(2, Math.ceil(len / 3));
+    for (let i = 0; i < segs; i++) {
+      const t = (i - (segs - 1) / 2) * 3;
+      this.box(x + Math.cos(ang) * t, 0, z + Math.sin(ang) * t, 3.2, h * (0.85 + Math.random() * 0.3), thick, color);
+    }
   }
 
   cyl(x, y, z, r, h, color, { collide = true, seg = 8, emissive } = {}) {
@@ -69,7 +83,9 @@ export class World {
     m.castShadow = true;
     m.receiveShadow = true;
     this.scene.add(m);
-    if (collide) this.colliders.push({ x0: x - r, y0: y, z0: z - r, x1: x + r, y1: y + h, z1: z + r });
+    // tighter box than the circumscribed square: no invisible corner walls
+    const cr = r * 0.78;
+    if (collide) this.colliders.push({ x0: x - cr, y0: y, z0: z - cr, x1: x + cr, y1: y + h, z1: z + cr });
     return m;
   }
 
@@ -80,7 +96,8 @@ export class World {
     m.rotation.y = rotY;
     m.castShadow = true;
     this.scene.add(m);
-    if (collide) this.colliders.push({ x0: x - r * 0.7, y0: y, z0: z - r * 0.7, x1: x + r * 0.7, y1: y + h, z1: z + r * 0.7 });
+    const cr = r * 0.5; // cones taper — collide only with the thick core
+    if (collide) this.colliders.push({ x0: x - cr, y0: y, z0: z - cr, x1: x + cr, y1: y + h * 0.8, z1: z + cr });
     return m;
   }
 
@@ -184,14 +201,28 @@ export class World {
     g.receiveShadow = true;
     this.scene.add(g);
 
-    // arena boundary: visible low wall + invisible tall collider
+    // arena boundary: low wall + tall VISIBLE holo-barrier (no more mystery walls)
     const wallC = 0x333a4d;
-    const H = 30, half = S / 2;
-    for (const [x, z, w, d] of [
-      [0, -half, S, 1], [0, half, S, 1], [-half, 0, 1, S], [half, 0, 1, S],
+    const H = 30, half = S / 2, holoH = 9;
+    const holoMat = new THREE.MeshBasicMaterial({
+      color: 0x57c4e5, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false,
+    });
+    const holoEdge = new THREE.MeshBasicMaterial({
+      color: 0x57c4e5, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+    });
+    for (const [x, z, w, d, rot] of [
+      [0, -half, S, 1, 0], [0, half, S, 1, 0], [-half, 0, 1, S, Math.PI / 2], [half, 0, 1, S, Math.PI / 2],
     ]) {
       this.box(x, 0, z, w, 1.4, d, wallC, { collide: false });
       this.colliders.push({ x0: x - w / 2, y0: 0, z0: z - d / 2, x1: x + w / 2, y1: H, z1: z + d / 2 });
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(S, holoH), holoMat);
+      plane.position.set(x, 1.4 + holoH / 2, z);
+      plane.rotation.y = rot;
+      this.scene.add(plane);
+      const edge = new THREE.Mesh(new THREE.PlaneGeometry(S, 0.22), holoEdge);
+      edge.position.set(x, 1.4 + holoH, z);
+      edge.rotation.y = rot;
+      this.scene.add(edge);
     }
   }
 
@@ -422,9 +453,9 @@ export class World {
       this.cyl(x, 0, z, 0.25, 1.3, 0x7a5c48, { seg: 6 });
       this.cone(x, 1, z, 1.2, 2.8, 0xd8ecdf, { seg: 7 });
     }
-    // ice ridge walls + enterable research cabin with roof stairs
-    this.box(-6, 0, -20, 16, 2.6, 1.6, 0xcfe6f8, { rotY: 0.3 });
-    this.box(10, 0, 18, 14, 2.2, 1.6, 0xcfe6f8, { rotY: -0.5 });
+    // ice ridge walls (stepped segments — colliders match what you see)
+    this.ridge(-6, -20, 16, 2.6, 0.3, 0xcfe6f8);
+    this.ridge(10, 18, 14, 2.2, -0.5, 0xcfe6f8);
     this.room(-16, -8, 7, 6, 3.4, 0x9fb8cc, 0x718ea6, 'x');
     this.stairs(-11.6, 0, -11.4, 'x', 7, 2, 0x718ea6);
     this.nav(-16, -8, 0); this.nav(-16, -8, 3.7);

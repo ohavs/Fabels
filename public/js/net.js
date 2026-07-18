@@ -167,6 +167,12 @@ export class Room {
   setOptions(patch) {
     if (!this.isHost) return;
     FB.d.update(this._ref('meta'), patch).catch(() => {});
+    // private rooms are hidden from quick-match (still joinable by code)
+    if (patch.private !== undefined) {
+      FB.d.update(this._idxRef(), {
+        state: patch.private ? 'private' : 'waiting', at: FB.serverNow(),
+      }).catch(() => {});
+    }
   }
 
   async startMatch() {
