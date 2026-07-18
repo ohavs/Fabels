@@ -569,6 +569,7 @@ export class Game {
     this._updateGrenades(dt);
     this._updatePickups(dt);
     this._updateViews(dt);
+    this._updateGhost();
     this.fx.update(dt);
     this._decayHud(dt);
     for (let i = this.feed.length - 1; i >= 0; i--) {
@@ -1063,37 +1064,71 @@ export class Game {
     return (x - this.me.x) ** 2 + (z - this.me.z) ** 2 < d * d;
   }
 
-  // ---------------- building (3m grid, placed where you aim, like 1v1.lol) ----------------
-  // resolve the target build slot from where the player is looking
+  // ---------------- building (3m grid, PLAYER-RELATIVE like Fortnite) ----------------
+  // pieces snap to the player's own grid cell and always connect to them:
+  //   wall  → the grid edge directly in front, facing the player
+  //   floor → the tile the player stands on
+  //   ramp  → fills the player's cell, rising in the facing direction
   _buildTarget(kind) {
     const p = this.me;
     const G = BUILD.grid;
-    const f = forwardOf(p.yaw, p.pitch);
+    const f = forwardOf(p.yaw);                       // yaw only (ignore pitch)
     const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
-    const dir = ax === 'x' ? Math.sign(f.x) || 1 : Math.sign(f.z) || 1;
-    // point in front of the player at build reach, clamped to ground
-    const reach = BUILD.reach;
-    let tx = p.x + f.x * reach;
-    let tz = p.z + f.z * reach;
-    // aim ground hit if looking down
-    if (f.y < -0.05) {
-      const tg = Math.min(reach, -(p.y + GAME.eyeHeight) / f.y);
-      tx = p.x + f.x * tg; tz = p.z + f.z * tg;
-    }
-    const cellX = Math.floor(tx / G) * G + G / 2;
-    const cellZ = Math.floor(tz / G) * G + G / 2;
-    const by = Math.max(0, Math.round(p.y / G) * G);   // snap to floor levels
+    const dir = ax === 'x' ? (f.x >= 0 ? 1 : -1) : (f.z >= 0 ? 1 : -1);
+    // the cell the player is standing in
+    const cellX = Math.floor(p.x / G) * G + G / 2;
+    const cellZ = Math.floor(p.z / G) * G + G / 2;
+    // floor level under the player (snap down to a grid multiple)
+    const by = Math.max(0, Math.round(p.y / G) * G);
 
     if (kind === 'f') {
-      return { kind, ax, dir, x: cellX, y: Math.max(0, Math.round((p.y) / G) * G), z: cellZ };
+      // floor tile under my feet
+      return { kind, ax, dir, x: cellX, y: by, z: cellZ };
     }
     if (kind === 'w') {
-      // wall sits on the grid line nearest the aim point, on the facing axis
-      if (ax === 'x') return { kind, ax, dir, x: Math.round(tx / G) * G, y: by, z: cellZ };
-      return { kind, ax, dir, x: cellX, y: by, z: Math.round(tz / G) * G };
+      // wall on the grid line at the front edge of my cell, facing me
+      if (ax === 'x') {
+        const lineX = (Math.floor(p.x / G) + (dir > 0 ? 1 : 0)) * G;
+        return { kind, ax, dir, x: lineX, y: by, z: cellZ };
+      }
+      const lineZ = (Math.floor(p.z / G) + (dir > 0 ? 1 : 0)) * G;
+      return { kind, ax, dir, x: cellX, y: by, z: lineZ };
     }
-    // ramp fills the aimed cell, rising along the facing axis
+    // ramp fills my cell, rising forward
     return { kind, ax, dir, x: cellX, y: by, z: cellZ };
+  }
+
+  // translucent preview of where the current build piece will land
+  _updateGhost() {
+    const p = this.me;
+    const tool = this.input ? this.input.tool : 'gun';
+    const active = this.canBuild && p && p.alive && !this.over && (tool === 'wall' || tool === 'ramp' || tool === 'floor');
+    if (!active) { if (this._ghost) this._ghost.visible = false; return; }
+    const kind = { wall: 'w', ramp: 'r', floor: 'f' }[tool];
+    const g = this._buildTarget(kind);
+    if (!this._ghost) {
+      const mat_ = new THREE.MeshBasicMaterial({ color: 0x8effa0, transparent: true, opacity: 0.32, depthWrite: false });
+      this._ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat_);
+      this._ghost.renderOrder = 5;
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x2effa0 }));
+      this._ghost.add(edge);
+      this.scene.add(this._ghost);
+    }
+    const gh = this._ghost;
+    gh.visible = true;
+    const cost = kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost : BUILD.floorCost;
+    gh.material.color.setHex(p.mats >= cost ? 0x8effa0 : 0xff6b6b);
+    const W = 3.05;
+    gh.rotation.set(0, 0, 0);
+    if (kind === 'f') { gh.position.set(g.x, g.y + 0.14, g.z); gh.scale.set(W, 0.28, W); }
+    else if (kind === 'w') {
+      if (g.ax === 'x') { gh.position.set(g.x, g.y + 1.5, g.z); gh.scale.set(0.25, 3, W); }
+      else { gh.position.set(g.x, g.y + 1.5, g.z); gh.scale.set(W, 3, 0.25); }
+    } else { // ramp — sloped
+      gh.position.set(g.x, g.y + 1.1, g.z);
+      if (g.ax === 'x') { gh.scale.set(W, 0.3, W); gh.rotation.z = -g.dir * 0.62; }
+      else { gh.scale.set(W, 0.3, W); gh.rotation.x = g.dir * 0.62; }
+    }
   }
 
   placeBuild(kind) {
