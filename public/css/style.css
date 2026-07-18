@@ -125,6 +125,7 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 .mode-card.duel { background: linear-gradient(135deg, #ff416c, #a80038 90%); }
 .mode-card.zombies { background: linear-gradient(135deg, #2f9e44, #0b5f22 90%); }
 .mode-card.ctf { background: linear-gradient(135deg, #e8590c, #d9480f 90%); }
+.mode-card.builddm { background: linear-gradient(135deg, #b8791f, #7a4a12 90%); }
 .mode-card {
   position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;
   column-gap: 14px; align-items: center; text-align: right;

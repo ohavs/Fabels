@@ -170,7 +170,15 @@ export const PICKUPS = {
   },
 };
 // modes where you start with a pistol and loot weapons from crates
-export const LOADOUT_MODES = ['zombies', 'br', 'ctf'];
+export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm'];
+
+// ---- Build Battle (Fortnite-style build deathmatch) -------------------------
+export const BUILDDM = {
+  timeSec: 600,          // 10 minutes, most kills wins
+  matsStart: 30,
+  matsMax: 60,
+  matsPerKill: 8,
+};
 export const CRATE_TIERS = [
   { weapons: ['smg', 'shotgun'], color: 0x9db4c8, weight: 5 },   // common
   { weapons: ['rifle', 'lmg'],   color: 0x57c4e5, weight: 3 },   // rare

@@ -78,7 +78,7 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   const wrap = $('practice-mode-wrap');
   wrap.style.display = practiceMode ? '' : 'none';
   if (practiceMode) {
-    pillRow($('practice-mode-picker'), ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br'],
+    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'duel', 'team', 'zombies', 'ctf', 'br'],
       practiceMode, true, (m) => onPick({ mode: m }), (m) => t('mode_' + m));
   }
   pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
@@ -255,6 +255,9 @@ export function updateHUD(game, input) {
     $('hud-center').textContent = `${fmtTime(game.timeLeft())} · ${t('ctfScore', { r: game.ctf.score.r, b: game.ctf.score.b })}`;
   } else if (game.mode === 'br') {
     $('hud-center').textContent = t('brAlive', { n: game.brAliveCount() });
+  } else if (game.mode === 'builddm') {
+    const lead = [...game.players.values()].sort((a, b) => b.kills - a.kills)[0];
+    $('hud-center').textContent = `${fmtTime(game.timeLeft())}${lead && lead.kills > 0 ? ' · ' + t('dmLeader', { name: lead.name, n: lead.kills }) : ''}`;
   } else {
     $('hud-center').textContent = `נשק ${Math.min(me.tier + 1, WEAPON_LADDER.length)}/${WEAPON_LADDER.length}`;
   }
@@ -382,7 +385,7 @@ function drawMinimap(game) {
 
   for (const p of game.players.values()) {
     if (!p.alive || p === game.me) continue;
-    const sameTeam = game.mode !== 'gungame' && game.mode !== 'duel' && game.mode !== 'br' && p.team === game.me?.team;
+    const sameTeam = game.teamplay && p.team === game.me?.team;
     const isEnemyBot = !!p.bot;
     // enemies show on the radar only when they fired recently (or PvE bots always)
     const ping = game.elapsed - (p.lastShotAt || -99) < 3;

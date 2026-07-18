@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, CTF, BUILD,
+  ZOMBIES, zombieWave, BR, CTF, BUILD, BUILDDM,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -118,7 +118,7 @@ export class Game {
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
       ads: false, bloom: 0,
       armor: 0, nades: GRENADE.start, nadeCd: 0,
-      mats: BUILD.matsStart, buildCd: 0,
+      mats: this.mode === 'builddm' ? BUILDDM.matsStart : BUILD.matsStart, buildCd: 0,
       streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
@@ -1162,8 +1162,8 @@ export class Game {
     for (const q of this.players.values()) {
       if (!q.alive || q.invulnT > 0) continue;
       const owner = this.players.get(g.owner);
-      if (this.mode !== 'gungame' && this.mode !== 'duel' && owner && q.team === owner.team && q !== owner) continue;
-      if (q.uid === g.owner && false) continue; // self-damage allowed
+      // friendly fire off only in team modes; FFA grenades hit everyone
+      if (this.teamplay && owner && q.team === owner.team && q !== owner) continue;
       const d = Math.hypot(q.x - g.x, q.y + 0.9 - g.y, q.z - g.z);
       if (d < GRENADE.radius) {
         const dmg = GRENADE.dmg * dmgMul * (1 - (d / GRENADE.radius) * 0.75);
@@ -1281,7 +1281,7 @@ export class Game {
       q.nades = Math.min(GRENADE.max, q.nades + 1);
       this.feed.push({ text: '+💣', t: 2.5 });
     } else if (pk.k === 'mats') {
-      q.mats = Math.min(BUILD.matsMax, q.mats + PICKUPS.kinds.mats.amount);
+      q.mats = Math.min(this.matsMax(), q.mats + PICKUPS.kinds.mats.amount);
       this.feed.push({ text: `+${PICKUPS.kinds.mats.amount} 🧱`, t: 2.5 });
     } else if (pk.k === 'weapon' && this.isLoadout) {
       q.weapon = pk.w;
@@ -1296,10 +1296,13 @@ export class Game {
   }
 
   // ---------------- killstreaks & emotes ----------------
+  matsMax() { return this.mode === 'builddm' ? BUILDDM.matsMax : BUILD.matsMax; }
+
   _myKillFx() {
     const me = this.me;
     me.streak++;
-    me.mats = Math.min(BUILD.matsMax, me.mats + BUILD.matsPerKill);
+    me.mats = Math.min(this.matsMax(), me.mats
+      + (this.mode === 'builddm' ? BUILDDM.matsPerKill : BUILD.matsPerKill));
     for (const ks of KILLSTREAKS) {
       if (me.streak !== ks.at) continue;
       if (ks.k === 'speed') { me.buffSpeedT = ks.dur; this.hudFlags.tierBanner = t('streak3'); }
@@ -1629,6 +1632,10 @@ export class Game {
       if (humans.length && humans.every((q) => !q.alive)) {
         this.forceGameOver({ teamWin: false });
       }
+    }
+    // build deathmatch: pure timer — every client ends at the same clock
+    if (this.mode === 'builddm' && this.endAt && this.timeFn() >= this.endAt) {
+      this.forceGameOver();
     }
   }
 

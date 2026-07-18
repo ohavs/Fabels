@@ -5,7 +5,7 @@
 
 import {
   GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
-  CTF, BR, rewardsZombies, rewardsBr,
+  CTF, BR, BUILDDM, rewardsZombies, rewardsBr,
 } from './config.js';
 import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
@@ -89,7 +89,7 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br']) {
+  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br', 'builddm']) {
     $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
   }
   $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
@@ -270,6 +270,7 @@ function enterOnlineLobby(room) {
 const endAtFor = (mode, startAt) =>
   mode === 'team' ? startAt + GAME.matchTimeTeam * 1000
     : mode === 'ctf' ? startAt + CTF.timeSec * 1000
+    : mode === 'builddm' ? startAt + BUILDDM.timeSec * 1000
     : 0;
 
 function beginOnlineMatch() {
@@ -344,6 +345,8 @@ function startOffline() {
     for (let i = 0; i < CTF.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
   } else if (mode === 'br') {
     for (let i = 1; i < BR.combatants; i++) game.addBot(botName(i), pr.botLevel);
+  } else if (mode === 'builddm') {
+    for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
   } else if (mode !== 'zombies') {
     for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
   }
