@@ -106,6 +106,25 @@ function finishBoot(online) {
   const daily = claimDaily();
   UI.showScreen('menu');
   if (daily) UI.toast(t('daily', { n: daily }), 'gold');
+
+  // deep-link: ?room=CODE → auto-join a friend's room
+  const roomCode = new URLSearchParams(location.search).get('room');
+  if (roomCode) {
+    history.replaceState(null, '', location.pathname);   // clean the URL
+    joinRoomByCode(roomCode.trim().toUpperCase());
+  }
+}
+
+async function joinRoomByCode(code) {
+  if (!code) return;
+  if (!FB.online) { UI.toast(t('onlineNeedsFirebase'), 'red'); return; }
+  UI.toast(t('joiningRoom'));
+  try {
+    const room = await Room.joinByCode(code, lobbyInfo());
+    enterOnlineLobby(room);
+  } catch (e) {
+    UI.toast(t(e.message === 'roomNotFound' ? 'roomNotFound' : 'joinFailed'), 'red');
+  }
 }
 
 function fitRenderer() {
@@ -215,6 +234,7 @@ function enterPracticeLobby(mode) {
 
 function renderPracticeLobby() {
   const pr = state.practice;
+  $('btn-invite').style.display = 'none';   // offline practice — nobody to invite
   const fakeMeta = { mode: pr.mode, state: 'waiting', host: 'me', maxPlayers: 1 + pr.botCount };
   UI.renderLobby([{ uid: 'me', name: profile.name, lvl: playerLevel(), me: true }], fakeMeta, 'me', '');
   UI.renderLobbyOptions({
@@ -254,6 +274,29 @@ function enterOnlineLobby(room) {
   state.matchStarted = false;
   state.lastEntry = { mode: room.mode, online: true };
   UI.showScreen('lobby');
+
+  // invite-by-link: share/copy a URL that drops friends straight into this room
+  const inviteBtn = $('btn-invite');
+  inviteBtn.style.display = '';
+  inviteBtn.textContent = t('inviteFriends');
+  inviteBtn.classList.remove('copied');
+  inviteBtn.onclick = async () => {
+    const url = `${location.origin}${location.pathname}?room=${room.id}`;
+    SFX.click();
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: t('inviteShareTitle'), text: t('inviteShareText'), url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        inviteBtn.textContent = t('linkCopied');
+        inviteBtn.classList.add('copied');
+        UI.toast(t('linkCopied'), 'gold');
+      }
+    } catch {
+      // clipboard blocked → show the URL so they can copy manually
+      prompt(t('inviteFriends'), url);
+    }
+  };
 
   const renderOpts = () => {
     const m = room.meta || {};

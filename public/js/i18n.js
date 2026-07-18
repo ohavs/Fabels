@@ -74,6 +74,11 @@ export const STR = {
   chooseBots: 'רמת בוטים',
   roomPublic: 'ציבורי — כל אחד מצטרף',
   roomPrivate: '🔒 פרטי — רק עם קוד',
+  inviteFriends: '🔗 הזמינו חברים',
+  linkCopied: '✓ הקישור הועתק! שלחו לחברים',
+  joiningRoom: 'מצטרף לחדר של חבר…',
+  inviteShareTitle: 'בואו לשחק זירת האש!',
+  inviteShareText: 'הצטרפו לקרב שלי בזירת האש 🎮',
 
   // HUD / battle
   kill: '{a} חיסל את {b}',

@@ -205,8 +205,16 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 
 .room-code {
   font-size: 1.5rem; font-weight: 900; letter-spacing: 0.4em; color: var(--cyan);
-  direction: ltr; margin: 2px 0 10px; text-shadow: 0 0 14px rgba(0, 213, 255, 0.6);
+  direction: ltr; margin: 2px 0 6px; text-shadow: 0 0 14px rgba(0, 213, 255, 0.6);
 }
+.invite-btn {
+  margin: 0 auto 10px; padding: 9px 20px; border-radius: 10px; font-weight: 900; font-size: 0.95rem;
+  transform: skewX(var(--skew));
+  background: linear-gradient(180deg, #3dff8b, #16a34a); color: #06210f;
+  border: 2.5px solid #b6ffcf; box-shadow: 0 4px 0 #0e7a35;
+}
+.invite-btn:active { transform: skewX(var(--skew)) translateY(3px); box-shadow: 0 1px 0 #0e7a35; }
+.invite-btn.copied { background: linear-gradient(180deg, #ffd200, #ffb300); color: #4a2800; box-shadow: 0 4px 0 #b87800; }
 
 /* lobby options */
 .lobby-opts { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
