@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, CTF, BUILD, BUILDDM,
+  ZOMBIES, zombieWave, BR, CTF, BUILD, BUILDDM, BUILD_MODES,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -71,6 +71,8 @@ export class Game {
     this.wave = 0;
     this.waveDelay = 3;
     this.startAt = o.startAt || Date.now();
+    this.canBuild = BUILD_MODES.includes(o.mode) || o.mode === 'br';
+    this.thirdPerson = BUILD_MODES.includes(o.mode);  // build modes start in 3rd person
     this.me = null;
 
     if (o.mode === 'br') this._initZone();
@@ -118,7 +120,7 @@ export class Game {
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
       ads: false, bloom: 0,
       armor: 0, nades: GRENADE.start, nadeCd: 0,
-      mats: this.mode === 'builddm' ? BUILDDM.matsStart : BUILD.matsStart, buildCd: 0,
+      mats: this.mode === 'builddm' ? BUILDDM.matsStart : BUILD.matsStart, buildCd: 0, pickCd: 0,
       streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
@@ -160,6 +162,8 @@ export class Game {
     }
     this.players.set(uid, p);
     this.me = p;
+    // own character (shown in third person, hidden in first person)
+    this._makeView(p, false);
     this.viewModel.setWeapon(p.weapon);
     this._syncCamera(p);
     return p;
@@ -172,6 +176,7 @@ export class Game {
       ? (p.team === 'r' ? '#ff6b6b' : '#7db4ff')
       : isBot ? '#ff9b9b' : '#ffffff';
     const name = makeNameSprite(p.name, nameColor);
+    char.nameSprite = name;
     char.group.add(name);
     const bar = makeHpBar();
     char.group.add(bar.bg, bar.fg);
@@ -534,6 +539,7 @@ export class Game {
       p.chatT = Math.max(0, p.chatT - dt);
       p.nadeCd = Math.max(0, p.nadeCd - dt);
       p.buildCd = Math.max(0, p.buildCd - dt);
+      p.pickCd = Math.max(0, p.pickCd - dt);
       p.buffSpeedT = Math.max(0, p.buffSpeedT - dt);
       p.buffDmgT = Math.max(0, p.buffDmgT - dt);
       p.danceT = Math.max(0, p.danceT - dt);
@@ -639,15 +645,26 @@ export class Game {
       }
       if (input.consumeReload()) this._startReload(p);
       if (input.consumeNade()) this.throwNade(p);
-      if (input.consumeEmote()) this.doEmote();
-      if (input.consumeWall()) this.placeBuild('w');
-      if (input.consumeRamp()) this.placeBuild('r');
+      const em = input.consumeEmote();
+      if (em >= 0) this.doEmote(em);
+      if (input.consumeCamera()) this.thirdPerson = !this.thirdPerson;
       const chat = input.consumeChat();
       if (chat >= 0 && this.onChat) this.onChat(chat);
 
-      // fire: manual, or mobile auto-fire when the crosshair rests on an enemy
-      if (input.firing || (input.touchMode && input.autoFire && this._crosshairOnEnemy(p))) {
-        this._tryFire(p);
+      // action routed by the selected tool (gun / pickaxe / build piece / edit)
+      const tool = this.canBuild ? input.tool : 'gun';
+      if (tool === 'wall' || tool === 'ramp' || tool === 'floor') {
+        if (input.firing) this.placeBuild({ wall: 'w', ramp: 'r', floor: 'f' }[tool]);
+      } else if (tool === 'pick') {
+        if (input.firing) this._swingPickaxe(p);
+      } else if (tool === 'edit') {
+        if (input.firing && !this._editHeld) this._editAimed(p);
+        this._editHeld = input.firing;
+      } else {
+        // gun: manual, or mobile auto-fire when the crosshair rests on an enemy
+        if (input.firing || (input.touchMode && input.autoFire && this._crosshairOnEnemy(p))) {
+          this._tryFire(p);
+        }
       }
     }
 
@@ -732,20 +749,41 @@ export class Game {
     }
     const sp = Math.hypot(p.vx, p.vz);
     if (sp > 1 && p.grounded) this._bobT += Math.min(0.06, sp * 0.004);
-    const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6) * (p.ads ? 0.3 : 1);
     const eye = GAME.eyeHeight - p.crouchK * 0.62;
-    this.camera.position.set(p.x, p.y + eye + bob, p.z);
-    this.camera.rotation.y = p.yaw;
-    this.camera.rotation.x = -p.pitch;
+    const tp = this.thirdPerson && !p.ads;   // ADS always snaps to first person
+
+    if (tp) {
+      // over-the-shoulder: sit behind & above, pull in when a wall is close
+      const f = forwardOf(p.yaw, p.pitch);
+      const back = 4.2, up = 1.7, side = 0.65;
+      const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
+      let dist = back;
+      const ox = p.x + rx * side, oy = p.y + eye + 0.3, oz = p.z + rz * side;
+      // don't clip the camera through geometry behind the player
+      for (const c of this.world.colliders) {
+        const tt = rayAABB(oy !== undefined ? ox : ox, oy, oz, -f.x, -f.y, -f.z, c);
+        if (tt < dist) dist = Math.max(1.2, tt - 0.3);
+      }
+      this.camera.position.set(ox - f.x * dist, oy - f.y * dist + up, oz - f.z * dist);
+      this.camera.rotation.y = p.yaw;
+      this.camera.rotation.x = -p.pitch;
+    } else {
+      const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6) * (p.ads ? 0.3 : 1);
+      this.camera.position.set(p.x, p.y + eye + bob, p.z);
+      this.camera.rotation.y = p.yaw;
+      this.camera.rotation.x = -p.pitch;
+    }
 
     // FOV: sprint widens, ADS narrows (sniper = scope)
     const sniper = p.weapon === 'sniper';
     const targetFov = p.ads ? (sniper ? 24 : 55)
-      : sp > GAME.moveSpeed * 1.1 ? 82 : 75;
+      : tp ? 70 : sp > GAME.moveSpeed * 1.1 ? 82 : 75;
     if (Math.abs(this.camera.fov - targetFov) > 0.1) {
       this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 10));
       this.camera.updateProjectionMatrix();
     }
+    // hide the first-person viewmodel in third person
+    this.viewModel.root.visible = !tp;
     this.viewModel.update(dt, sp, p.reloadT > 0, p.ads, sniper);
   }
 
@@ -1025,46 +1063,110 @@ export class Game {
     return (x - this.me.x) ** 2 + (z - this.me.z) ** 2 < d * d;
   }
 
-  // ---------------- building (walls & ramps, 3m grid like Fortnite) ----------------
+  // ---------------- building (3m grid, placed where you aim, like 1v1.lol) ----------------
+  // resolve the target build slot from where the player is looking
+  _buildTarget(kind) {
+    const p = this.me;
+    const G = BUILD.grid;
+    const f = forwardOf(p.yaw, p.pitch);
+    const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
+    const dir = ax === 'x' ? Math.sign(f.x) || 1 : Math.sign(f.z) || 1;
+    // point in front of the player at build reach, clamped to ground
+    const reach = BUILD.reach;
+    let tx = p.x + f.x * reach;
+    let tz = p.z + f.z * reach;
+    // aim ground hit if looking down
+    if (f.y < -0.05) {
+      const tg = Math.min(reach, -(p.y + GAME.eyeHeight) / f.y);
+      tx = p.x + f.x * tg; tz = p.z + f.z * tg;
+    }
+    const cellX = Math.floor(tx / G) * G + G / 2;
+    const cellZ = Math.floor(tz / G) * G + G / 2;
+    const by = Math.max(0, Math.round(p.y / G) * G);   // snap to floor levels
+
+    if (kind === 'f') {
+      return { kind, ax, dir, x: cellX, y: Math.max(0, Math.round((p.y) / G) * G), z: cellZ };
+    }
+    if (kind === 'w') {
+      // wall sits on the grid line nearest the aim point, on the facing axis
+      if (ax === 'x') return { kind, ax, dir, x: Math.round(tx / G) * G, y: by, z: cellZ };
+      return { kind, ax, dir, x: cellX, y: by, z: Math.round(tz / G) * G };
+    }
+    // ramp fills the aimed cell, rising along the facing axis
+    return { kind, ax, dir, x: cellX, y: by, z: cellZ };
+  }
+
   placeBuild(kind) {
     const p = this.me;
     if (!p?.alive || p.buildCd > 0) return;
-    const cost = kind === 'w' ? BUILD.wallCost : BUILD.rampCost;
-    if (p.mats < cost) {
-      this.hudFlags.tierBanner = t('noMats');
-      return;
-    }
-    // snap facing to the dominant axis so colliders stay axis-aligned
-    const f = forwardOf(p.yaw);
-    const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
-    const dir = ax === 'x' ? Math.sign(f.x) || 1 : Math.sign(f.z) || 1;
-    const G = 3;
-    // grid snap: wall sits on the next grid line ahead, centred in the cell;
-    // y snaps to half-metres so stacking on ramps/roofs is clean
-    let bx, bz;
-    if (ax === 'x') {
-      bx = Math.round((p.x + dir * (G / 2)) / G) * G;
-      if ((bx - p.x) * dir < 0.75) bx += dir * G;    // too close → next line
-      bz = Math.floor(p.z / G) * G + G / 2;
-    } else {
-      bz = Math.round((p.z + dir * (G / 2)) / G) * G;
-      if ((bz - p.z) * dir < 0.75) bz += dir * G;
-      bx = Math.floor(p.x / G) * G + G / 2;
-    }
-    const by = Math.max(0, Math.round(p.y * 2) / 2);
-    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, x: bx, y: by, z: bz, ax, dir };
-    if (kind === 'r') {
-      // ramp starts at the near edge of the next cell
-      spec.x = ax === 'x' ? bx : Math.floor(p.x / G) * G + G / 2;
-      spec.z = ax === 'z' ? bz : Math.floor(p.z / G) * G + G / 2;
-    }
-    // one build per snapped slot
-    const slotKey = `${kind}:${spec.x}:${by}:${spec.z}:${ax}`;
+    const cost = kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost : BUILD.floorCost;
+    if (p.mats < cost) { this.hudFlags.tierBanner = t('noMats'); return; }
+    const tgt = this._buildTarget(kind);
+    const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
     for (const b of this.builds.values()) if (b.slot === slotKey) return;
     p.mats -= cost;
     p.buildCd = BUILD.placeCd;
     this.matchStats.builds++;
-    spec.slot = slotKey;
+    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, slot: slotKey, ...tgt };
+    this._addBuild(spec);
+    if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
+    SFX.reloadDone();
+  }
+
+  // ---------------- pickaxe: harvest materials + light melee ----------------
+  _swingPickaxe(p) {
+    if (p.pickCd > 0) return;
+    p.pickCd = WEAPONS.pickaxe.rate;
+    const f = forwardOf(p.yaw, p.pitch);
+    const eye = { x: p.x, y: p.y + GAME.eyeHeight, z: p.z };
+    const range = WEAPONS.pickaxe.range;
+    // nearest hit: player, build, or world surface within range
+    let tHit = range, kind = null, victim = null, buildId = null;
+    for (const q of this.players.values()) {
+      if (q === p || !q.alive) continue;
+      if (this.teamplay && q.team === p.team) continue;
+      const tt = raySphere(eye.x, eye.y, eye.z, f.x, f.y, f.z, q.x, q.y + 1.1, q.z, 0.7);
+      if (tt < tHit) { tHit = tt; kind = 'player'; victim = q; }
+    }
+    for (const c of this.world.colliders) {
+      const tt = rayAABB(eye.x, eye.y, eye.z, f.x, f.y, f.z, c);
+      if (tt < tHit) { tHit = tt; kind = c.buildId ? 'build' : 'world'; buildId = c.buildId || null; }
+    }
+    if (f.y < -1e-6) {
+      const tg = -eye.y / f.y;
+      if (tg > 0 && tg < tHit) { tHit = tg; kind = 'world'; }
+    }
+    const hit = V1.set(eye.x + f.x * tHit, eye.y + f.y * tHit, eye.z + f.z * tHit);
+    if (kind === 'player') {
+      this._damagePlayer(victim, WEAPONS.pickaxe.dmg, p.uid, { mel: true });
+      this.fx.impact(hit, 0xffd166, 8, 4);
+    } else if (kind === 'build') {
+      if (!this.online || this.isHost || true) this.damageBuild(buildId, 25);
+      this.fx.impact(hit, 0x9a7148, 8, 4);
+    } else if (kind === 'world') {
+      // harvest: every hit yields materials (arcade-simple, infinite)
+      p.mats = Math.min(this.matsMax(), p.mats + BUILD.harvestPerHit);
+      this.fx.impact(hit, 0x7dd3fc, 8, 4);
+    }
+    SFX.hit();
+  }
+
+  // ---------------- edit: cycle the aimed wall (full → doorway → full) ----------------
+  _editAimed(p) {
+    const f = forwardOf(p.yaw, p.pitch);
+    const eye = { x: p.x, y: p.y + GAME.eyeHeight, z: p.z };
+    let tBest = 9, target = null;
+    for (const c of this.world.colliders) {
+      if (!c.buildId) continue;
+      const tt = rayAABB(eye.x, eye.y, eye.z, f.x, f.y, f.z, c);
+      if (tt < tBest) { tBest = tt; target = c.buildId; }
+    }
+    if (!target) return;
+    const b = this.builds.get(target);
+    if (!b || b.owner !== p.uid || b.t !== 'w') return;   // only edit your own walls
+    b.edit = b.edit === 'door' ? 'full' : 'door';
+    const spec = { id: b.id, t: 'w', o: b.owner, slot: b.slot, x: b.x, y: b.y, z: b.z, ax: b.ax, dir: b.dir, edit: b.edit };
+    this.removeBuild(b.id, false);
     this._addBuild(spec);
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
     SFX.reloadDone();
@@ -1088,38 +1190,43 @@ export class Game {
         this.world.colliders.push({ x0: x - w / 2, y0: y, z0: z - d / 2, x1: x + w / 2, y1: y + h, z1: z + d / 2, buildId: spec.id });
       }
     };
+    const W = 3.05, H3 = 3, T = 0.25;
     if (spec.t === 'w') {
-      // framed plank wall: 3.05 wide (seals grid gaps), 3 tall
-      const W = 3.05, H3 = 3, T = 0.25;
-      if (spec.ax === 'x') {
-        addPiece(spec.x, spec.y, spec.z, T, H3, W);
-        addPiece(spec.x, spec.y + H3 - 0.18, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
-        addPiece(spec.x, spec.y, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
-        const brace = new THREE.Mesh(new THREE.BoxGeometry(T + 0.08, H3 * 1.32, 0.28), darkM);
-        brace.position.set(spec.x, spec.y + H3 / 2, spec.z);
-        brace.rotation.x = 0.87;
-        this.scene.add(brace);
-        meshes.push(brace);
-      } else {
-        addPiece(spec.x, spec.y, spec.z, W, H3, T);
-        addPiece(spec.x, spec.y + H3 - 0.18, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
-        addPiece(spec.x, spec.y, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
-        const brace = new THREE.Mesh(new THREE.BoxGeometry(0.28, H3 * 1.32, T + 0.08), darkM);
-        brace.position.set(spec.x, spec.y + H3 / 2, spec.z);
-        brace.rotation.z = 0.87;
-        this.scene.add(brace);
-        meshes.push(brace);
+      const door = spec.edit === 'door';
+      // build the wall as (up to) 3 stacked panels along the facing axis,
+      // leaving the centre panel out when edited into a doorway
+      const panelH = H3 / 3;
+      for (let row = 0; row < 3; row++) {
+        if (door && row === 0) continue;  // bottom-centre removed → doorway
+        const py = spec.y + row * panelH;
+        if (spec.ax === 'x') addPiece(spec.x, py, spec.z, T, panelH, W);
+        else addPiece(spec.x, py, spec.z, W, panelH, T);
       }
+      // frame trim (non-colliding)
+      if (spec.ax === 'x') {
+        addPiece(spec.x, spec.y + H3 - 0.18, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
+        if (!door) addPiece(spec.x, spec.y, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
+      } else {
+        addPiece(spec.x, spec.y + H3 - 0.18, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
+        if (!door) addPiece(spec.x, spec.y, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
+      }
+    } else if (spec.t === 'f') {
+      // floor tile: full 3×3 slab
+      addPiece(spec.x, spec.y, spec.z, W, 0.28, W);
+      addPiece(spec.x, spec.y, spec.z, W, 0.1, W, { collide: false, m: darkM });
     } else {
-      // ramp: 4 rising steps away from the builder + side stringers
+      // ramp: 4 rising steps spanning the cell
       for (let i = 0; i < 4; i++) {
-        const off = i * 0.95;
-        const h = 0.55 * (i + 1);
-        if (spec.ax === 'x') addPiece(spec.x + spec.dir * off, spec.y, spec.z, 0.97, h, 3.05);
-        else addPiece(spec.x, spec.y, spec.z + spec.dir * off, 3.05, h, 0.97);
+        const off = (i - 1.5) * 0.76;
+        const h = 0.6 * (i + 1);
+        if (spec.ax === 'x') addPiece(spec.x + spec.dir * off, spec.y, spec.z, 0.78, h, W);
+        else addPiece(spec.x, spec.y, spec.z + spec.dir * off, W, h, 0.78);
       }
     }
-    this.builds.set(spec.id, { id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o, slot: spec.slot || '' });
+    this.builds.set(spec.id, {
+      id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o, slot: spec.slot || '',
+      x: spec.x, y: spec.y, z: spec.z, ax: spec.ax, dir: spec.dir, edit: spec.edit || 'full',
+    });
   }
 
   applyRemoteBuild(spec) { this._addBuild(spec); }
@@ -1356,17 +1463,20 @@ export class Game {
     }
   }
 
-  doEmote() {
+  doEmote(idx = 0) {
     if (!this.me?.alive) return;
-    if (this.onEmote) this.onEmote();
+    this.me.danceT = 3.4;
+    this.me.danceType = idx;
+    if (this.onEmote) this.onEmote(idx);
     this.feed.push({ text: t('emoted', { name: this.me.name }), t: 3 });
     SFX.pickup();
   }
 
-  applyEmote(uid) {
+  applyEmote(uid, idx = 0) {
     const p = this.players.get(uid);
     if (!p) return;
-    p.danceT = 2.6;
+    p.danceT = 3.4;
+    p.danceType = idx;
     this.feed.push({ text: t('emoted', { name: p.name }), t: 3 });
   }
 
@@ -1627,8 +1737,12 @@ export class Game {
     for (const p of this.players.values()) {
       if (!p.view) continue;
       const { char, bar } = p.view;
-      char.group.visible = p.alive;
-      if (!p.alive) continue;
+      // own body only renders in third person; hide its name/hp sprites always
+      const isSelf = p === this.me;
+      char.group.visible = p.alive && (!isSelf || (this.thirdPerson && !p.ads));
+      if (isSelf && bar) { bar.bg.visible = false; bar.fg.visible = false; }
+      if (isSelf && char.nameSprite) char.nameSprite.visible = false;
+      if (!p.alive || !char.group.visible) continue;
       // crouch/slide squash follows the synced stance
       p.crouchK = lerp(p.crouchK, p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0, 0.2);
       const zs = p.zscale || 1;
@@ -1639,7 +1753,7 @@ export class Game {
         ? Math.hypot(p.netX - p.x, p.netZ - p.z) * 12
         : Math.hypot(p.vx, p.vz);
       p.speedSm = lerp(p.speedSm, sp, 0.2);
-      animateCharacter(char, dt, p.speedSm, true, p.danceT > 0);
+      animateCharacter(char, dt, p.speedSm, true, p.danceT > 0 ? (p.danceType || 0) : -1);
       updateHpBar(bar, p.hp / p.maxHp);
       // spawn-protection shimmer
       char.group.traverse((o) => {

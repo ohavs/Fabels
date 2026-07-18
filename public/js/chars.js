@@ -75,22 +75,48 @@ export function setCharacterWeapon(char, weaponId) {
   char.gunAnchor.add(gun);
 }
 
-// limb swing while moving, arms aim-ish pose, dance emote, hit flash decay
-export function animateCharacter(char, dt, speed, grounded, dancing = false) {
+// limb swing while moving, arms aim-ish pose, dance emotes, hit flash decay
+// dance: -1 none, 0 floss, 1 wave, 2 flex, 3 cheer, 4 bow, 5 laugh
+export function animateCharacter(char, dt, speed, grounded, dance = -1) {
   char.animT += dt * (4 + speed * 1.6);
-  if (dancing) {
-    // flossy arm-wave dance
-    const d = char.animT * 2.2;
-    char.shL.rotation.x = -2.6 + Math.sin(d) * 0.8;
-    char.shR.rotation.x = -2.6 + Math.sin(d + Math.PI) * 0.8;
-    char.shL.rotation.z = Math.sin(d) * 0.6;
-    char.shR.rotation.z = -Math.sin(d) * 0.6;
-    char.hipL.rotation.x = Math.sin(d) * 0.35;
-    char.hipR.rotation.x = -Math.sin(d) * 0.35;
-    char.head.rotation.z = Math.sin(d * 2) * 0.18;
-    char.group.rotation.z = Math.sin(d) * 0.06;
+  if (dance >= 0) {
+    const d = char.animT * 2.4;
+    // reset accumulators each frame
+    char.head.rotation.z = 0; char.group.rotation.z = 0;
+    if (dance === 1) {
+      // wave: one arm up, swinging
+      char.shR.rotation.x = -2.9; char.shR.rotation.z = Math.sin(d * 1.6) * 0.7;
+      char.shL.rotation.x = -0.2; char.shL.rotation.z = 0;
+      char.hipL.rotation.x = 0; char.hipR.rotation.x = 0;
+      char.head.rotation.z = Math.sin(d) * 0.1;
+    } else if (dance === 2) {
+      // flex: both arms curled up
+      char.shR.rotation.x = -2.5; char.shR.rotation.z = -1.1 + Math.sin(d) * 0.15;
+      char.shL.rotation.x = -2.5; char.shL.rotation.z = 1.1 - Math.sin(d) * 0.15;
+      char.group.rotation.z = Math.sin(d) * 0.05;
+    } else if (dance === 3) {
+      // cheer: arms up, waving
+      char.shR.rotation.x = -3.0 + Math.sin(d) * 0.3; char.shR.rotation.z = 0.3;
+      char.shL.rotation.x = -3.0 + Math.sin(d + 0.5) * 0.3; char.shL.rotation.z = -0.3;
+      char.head.rotation.z = Math.sin(d) * 0.12;
+    } else if (dance === 4) {
+      // bow
+      char.group.rotation.x = 0.5 + Math.sin(d * 0.5) * 0.1;
+      char.shL.rotation.x = -0.6; char.shR.rotation.x = -0.6;
+    } else {
+      // floss (0) / laugh (5): flossy arm-wave
+      char.shL.rotation.x = -2.6 + Math.sin(d) * 0.8;
+      char.shR.rotation.x = -2.6 + Math.sin(d + Math.PI) * 0.8;
+      char.shL.rotation.z = Math.sin(d) * 0.6;
+      char.shR.rotation.z = -Math.sin(d) * 0.6;
+      char.hipL.rotation.x = Math.sin(d) * 0.35;
+      char.hipR.rotation.x = -Math.sin(d) * 0.35;
+      char.head.rotation.z = Math.sin(d * 2) * 0.18;
+      char.group.rotation.z = Math.sin(d) * 0.06;
+    }
     return;
   }
+  char.group.rotation.x = 0;
   char.group.rotation.z = 0;
   char.head.rotation.z = 0;
   char.shL.rotation.z = 0;

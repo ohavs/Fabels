@@ -5,8 +5,9 @@
 
 import { t } from './i18n.js';
 import {
-  SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel,
+  SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel, RETICLE,
 } from './config.js';
+import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX } from './audio.js';
@@ -243,10 +244,12 @@ export function resetHUD() {
   $('hud-respawn').textContent = '';
   $('hud-banner').classList.remove('show');
   $('chat-panel').classList.add('hidden');
+  $('emote-wheel').classList.add('hidden');
   $('scoreboard').classList.add('hidden');
   $('scope').classList.add('hidden');
   $('btn-crouch').classList.remove('on');
   $('btn-aim').classList.remove('on');
+  $('btn-sprint').classList.remove('on');
 }
 
 export function updateHUD(game, input) {
@@ -278,29 +281,48 @@ export function updateHUD(game, input) {
   fill.classList.toggle('low', frac < 0.3);
   $('hud-armor-fill').style.width = `${clamp(me.armor / 100, 0, 1) * 100}%`;
   $('hud-hp-text').textContent = Math.max(0, Math.round(me.hp));
-  $('hud-nades').textContent = `💣 ×${me.nades} · 🧱 ×${me.mats}`;
+  $('rsc-nade').textContent = `💣 ${me.nades}`;
+  $('rsc-mats').textContent = `🧱 ${me.mats}`;
+  $('rsc-mats').style.display = game.canBuild ? '' : 'none';
 
   drawMinimap(game);
 
-  // weapon
-  $('hud-weapon-name').textContent = t('weapon_' + me.weapon);
+  // weapon / active tool label
+  const tool = game.canBuild ? input.tool : 'gun';
+  const toolName = { wall: 'קיר', ramp: 'רמפה', floor: 'רצפה', pick: 'מכוש', edit: 'עריכה' }[tool];
+  $('hud-weapon-name').textContent = toolName || t('weapon_' + me.weapon);
   const ammoEl = $('hud-ammo');
-  if (me.reloadT > 0) { ammoEl.textContent = '⟳'; ammoEl.className = 'reloading'; }
+  if (tool !== 'gun') { ammoEl.textContent = ''; ammoEl.className = 'reloading'; }
+  else if (me.reloadT > 0) { ammoEl.textContent = '⟳'; ammoEl.className = 'reloading'; }
   else { ammoEl.textContent = isFinite(me.ammo) ? String(me.ammo) : '∞'; ammoEl.className = ''; }
   const pips = $('hud-tier');
   if (pips.children.length !== WEAPON_LADDER.length) {
     pips.innerHTML = WEAPON_LADDER.map(() => '<span></span>').join('');
   }
-  [...pips.children].forEach((el, i) => el.classList.toggle('on', i <= me.tier));
+  const showLadder = !game.isLoadout;
+  pips.style.display = showLadder ? '' : 'none';
+  if (showLadder) [...pips.children].forEach((el, i) => el.classList.toggle('on', i <= me.tier));
+
+  // build bar: highlight the active tool + grey out unaffordable pieces
+  if (game.canBuild) {
+    for (const b of document.querySelectorAll('#build-bar .bb')) {
+      const tl = b.dataset.tool;
+      b.classList.toggle('sel', tl === tool || (tl === 'gun' && tool === 'gun'));
+      const cost = { wall: 2, ramp: 3, floor: 2 }[tl];
+      if (cost) b.classList.toggle('nomats', me.mats < cost);
+    }
+  }
+  $('btn-cam').classList.toggle('on', game.thirdPerson);
 
   // dynamic crosshair: gap follows the real bullet spread, style per weapon
   const ch = $('crosshair');
-  const sniperScoped = me.weapon === 'sniper' && me.ads;
-  ch.dataset.w = me.weapon;
+  const sniperScoped = me.weapon === 'sniper' && me.ads && tool === 'gun';
+  ch.dataset.w = RETICLE[me.weapon] || 'cross';
+  if (tool !== 'gun') ch.dataset.w = tool === 'pick' ? 'dot' : 'build';
   ch.classList.toggle('hidden', sniperScoped || !me.alive);
   $('scope').classList.toggle('hidden', !sniperScoped || !me.alive);
   if (me.alive && !sniperScoped) {
-    const spread = game.effectiveSpread(me);
+    const spread = tool === 'gun' ? game.effectiveSpread(me) : 0.004;
     const gap = Math.round(7 + spread * 620);
     ch.style.setProperty('--gap', gap + 'px');
   }
@@ -435,14 +457,16 @@ function renderScoreboard(game) {
 
 // bind HUD buttons to the input layer
 export function bindHUD(input, { onExit, onChat }) {
-  // reveal touch buttons on first touch anywhere
+  paintIcons();
   window.addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
 
   const hold = (el, down, up) => {
     el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); down(); }, { passive: false });
     el.addEventListener('touchend', (e) => { e.preventDefault(); up && up(); }, { passive: false });
     el.addEventListener('touchcancel', () => up && up());
+    el.addEventListener('click', (e) => { e.preventDefault(); down(); up && up(); }); // desktop-friendly
   };
+
   // fire button also aims while dragging (Fortnite-mobile style)
   const fireBtn = $('btn-fire');
   let fireTouch = null;
@@ -457,7 +481,7 @@ export function bindHUD(input, { onExit, onChat }) {
     for (const t0 of e.changedTouches) {
       if (t0.identifier !== fireTouch.id) continue;
       e.preventDefault();
-      const sens = 0.005 * input.sensitivity * (input.aiming ? 0.55 : 1);
+      const sens = 0.005 * input.sensitivity * (input.aiming ? 0.5 : 1);
       input.lookDX += (t0.clientX - fireTouch.px) * sens;
       input.lookDY += (t0.clientY - fireTouch.py) * sens;
       fireTouch.px = t0.clientX; fireTouch.py = t0.clientY;
@@ -466,30 +490,61 @@ export function bindHUD(input, { onExit, onChat }) {
   const fireEnd = () => { fireTouch = null; input.firing = false; };
   fireBtn.addEventListener('touchend', (e) => { e.preventDefault(); fireEnd(); }, { passive: false });
   fireBtn.addEventListener('touchcancel', fireEnd);
+
   hold($('btn-jump'), () => { input.wantJump = true; });
   hold($('btn-reload'), () => { input.wantReload = true; });
-  // toggles: crouch & ADS
+  hold($('btn-nade'), () => { input.wantNade = true; });
   hold($('btn-crouch'), () => {
     input.crouchHeld = !input.crouchHeld;
     $('btn-crouch').classList.toggle('on', input.crouchHeld);
+  });
+  hold($('btn-sprint'), () => {
+    input.sprintToggle = !input.sprintToggle;
+    $('btn-sprint').classList.toggle('on', input.sprintToggle);
   });
   hold($('btn-aim'), () => {
     input.aiming = !input.aiming;
     $('btn-aim').classList.toggle('on', input.aiming);
   });
-  hold($('btn-nade'), () => { input.wantNade = true; });
-  hold($('btn-emote'), () => { input.wantEmote = true; });
-  hold($('btn-wall'), () => { input.wantWall = true; });
-  hold($('btn-ramp'), () => { input.wantRamp = true; });
+  hold($('btn-cam'), () => { input.wantCamera = true; });
   hold($('btn-score'), () => { sbToggle = !sbToggle; });
   hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
+  hold($('btn-emote'), () => $('emote-wheel').classList.toggle('hidden'));
+
+  // build bar tool selection
+  for (const b of document.querySelectorAll('#build-bar .bb')) {
+    hold(b, () => { input.setTool(b.dataset.tool); $('emote-wheel').classList.add('hidden'); });
+  }
+  // reflect tool changes on the bar
+  input.onTool = (tool) => {
+    for (const b of document.querySelectorAll('#build-bar .bb')) {
+      b.classList.toggle('sel', b.dataset.tool === tool);
+    }
+  };
+
   for (const b of $('chat-panel').querySelectorAll('button')) {
     const fn = () => { onChat(+b.dataset.chat); $('chat-panel').classList.add('hidden'); };
     b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
     b.addEventListener('click', fn);
   }
+  for (const b of $('emote-wheel').querySelectorAll('button')) {
+    const fn = () => { input.wantEmote = +b.dataset.emote; $('emote-wheel').classList.add('hidden'); };
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
+    b.addEventListener('click', fn);
+  }
   $('btn-exit').addEventListener('click', onExit);
   $('btn-exit').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); onExit(); }, { passive: false });
+}
+
+// show/hide the build bar & reset tool for a new match
+export function setupHudForMode(game, input) {
+  const bar = $('build-bar');
+  bar.classList.toggle('hidden', !game.canBuild);
+  input.setTool('gun');
+  input.sprintToggle = false;
+  $('btn-sprint').classList.remove('on');
+  $('btn-crouch').classList.remove('on');
+  $('btn-aim').classList.remove('on');
 }
 
 // ---------------- results ----------------

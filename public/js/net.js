@@ -233,7 +233,7 @@ export class Room {
     game.onChat = (idx) => pushTransient('events', { k: 'chat', u: FB.uid, c: idx });
     game.onWin = () => pushTransient('events', { k: 'win', u: FB.uid, name: game.me.name });
     game.onNadeThrow = (spec) => pushTransient('events', { k: 'nade', u: FB.uid, ...spec });
-    game.onEmote = () => pushTransient('events', { k: 'emote', u: FB.uid });
+    game.onEmote = (idx) => pushTransient('events', { k: 'emote', u: FB.uid, i: idx || 0 });
 
     this._unsubs.push(d.onChildAdded(this._ref('events'), (s) => {
       const v = s.val();
@@ -252,7 +252,7 @@ export class Room {
           if (v.u !== FB.uid) game.applyRemoteNade(v);
           break;
         case 'emote':
-          if (v.u !== FB.uid) game.applyEmote(v.u);
+          if (v.u !== FB.uid) game.applyEmote(v.u, v.i || 0);
           break;
         case 'wave':
           if (!game.isHost) {

@@ -197,7 +197,7 @@
       <div class="hud-weapon">
         <div id="hud-weapon-name">אקדח</div>
         <div id="hud-ammo">12</div>
-        <div id="hud-nades" class="hud-nades">💣 ×1 · 🧱 ×10</div>
+        <div id="hud-nades" class="hud-nades"><span class="rsc" id="rsc-nade">💣 1</span><span class="rsc" id="rsc-mats">🧱 10</span></div>
         <div id="hud-tier" class="tier-pips"></div>
       </div>
 
@@ -216,7 +216,7 @@
       <ul id="hud-feed"></ul>
       <div id="hud-banner"></div>
       <div id="hud-respawn"></div>
-      <div id="lock-hint">לחצו לנעילת עכבר · WASD תנועה · Shift ריצה · C כריעה/סלייד · G רימון · Q קיר · F רמפה · B ריקוד · ESC משחרר</div>
+      <div id="lock-hint">לחצו לנעילת עכבר · WASD תנועה · Shift ריצה · C כריעה · חלל קפיצה · G רימון · 1 קיר · 2 רמפה · 3 רצפה · 4 מכוש · E עריכה · V מצלמה · B ריקוד · ESC משחרר</div>
 
       <!-- scoreboard -->
       <div id="scoreboard" class="hidden">
@@ -224,27 +224,55 @@
         <div id="scoreboard-rows"></div>
       </div>
 
-      <!-- touch controls -->
+      <!-- touch controls: left = move stick, right = look -->
       <div id="zone-left" class="joy-zone left"></div>
       <div id="zone-right" class="joy-zone right"></div>
-      <button id="btn-fire" class="fire-btn">⊕</button>
-      <button id="btn-jump" class="tb tb-jump">⤒</button>
-      <button id="btn-aim" class="tb tb-aim">◎</button>
-      <button id="btn-crouch" class="tb tb-crouch">🡓</button>
-      <button id="btn-nade" class="tb tb-nade">💣</button>
-      <button id="btn-wall" class="tb tb-wall">🧱</button>
-      <button id="btn-ramp" class="tb tb-ramp">📐</button>
-      <div class="action-btns">
-        <button id="btn-reload" class="action-btn small"><span class="ab-icon">⟳</span></button>
-        <button id="btn-score" class="action-btn small"><span class="ab-icon">📋</span></button>
-        <button id="btn-chat" class="action-btn small"><span class="ab-icon">💬</span></button>
-        <button id="btn-emote" class="action-btn small"><span class="ab-icon">🕺</span></button>
+
+      <button id="btn-fire" class="fire-btn" aria-label="ירי"><span data-icon="fire"></span></button>
+
+      <!-- right-hand action stack -->
+      <div class="rstack">
+        <button id="btn-aim" class="tb" aria-label="כוונת"><span data-icon="aim"></span></button>
+        <button id="btn-jump" class="tb" aria-label="קפיצה"><span data-icon="jump"></span></button>
+        <button id="btn-crouch" class="tb" aria-label="כריעה"><span data-icon="crouch"></span></button>
+        <button id="btn-sprint" class="tb" aria-label="ריצה"><span data-icon="sprint"></span></button>
+        <button id="btn-reload" class="tb" aria-label="טעינה"><span data-icon="reload"></span></button>
+        <button id="btn-nade" class="tb" aria-label="רימון"><span data-icon="grenade"></span></button>
       </div>
+
+      <!-- build bar (bottom-centre, shown in build-capable modes) -->
+      <div id="build-bar" class="build-bar hidden">
+        <button id="btn-pickaxe" class="bb" data-tool="pick" aria-label="מכוש"><span data-icon="pickaxe"></span></button>
+        <button id="btn-gun" class="bb sel" data-tool="gun" aria-label="נשק"><span data-icon="fire"></span></button>
+        <button id="btn-wall" class="bb" data-tool="wall" aria-label="קיר"><span data-icon="wall"></span><b class="bb-cost">2</b></button>
+        <button id="btn-ramp" class="bb" data-tool="ramp" aria-label="רמפה"><span data-icon="ramp"></span><b class="bb-cost">3</b></button>
+        <button id="btn-floor" class="bb" data-tool="floor" aria-label="רצפה"><span data-icon="floor"></span><b class="bb-cost">2</b></button>
+        <button id="btn-edit" class="bb" data-tool="edit" aria-label="עריכה"><span data-icon="edit"></span></button>
+      </div>
+
+      <!-- top-left utility cluster -->
+      <div class="action-btns">
+        <button id="btn-cam" class="action-btn small" aria-label="מצלמה"><span data-icon="camera"></span></button>
+        <button id="btn-score" class="action-btn small" aria-label="תוצאות"><span data-icon="scoreboard"></span></button>
+        <button id="btn-chat" class="action-btn small" aria-label="צ'אט"><span data-icon="chat"></span></button>
+        <button id="btn-emote" class="action-btn small" aria-label="ריקוד"><span data-icon="emote"></span></button>
+      </div>
+
       <div id="chat-panel" class="chat-panel hidden">
         <button data-chat="0">קרב מעולה!</button>
         <button data-chat="1">צריך עזרה כאן!</button>
         <button data-chat="2">להסתער!</button>
         <button data-chat="3">איזה יופי!</button>
+      </div>
+
+      <!-- emote wheel -->
+      <div id="emote-wheel" class="emote-wheel hidden">
+        <button data-emote="0">🕺</button>
+        <button data-emote="1">👋</button>
+        <button data-emote="2">💪</button>
+        <button data-emote="3">🎉</button>
+        <button data-emote="4">🙏</button>
+        <button data-emote="5">😂</button>
       </div>
     </div>
   </section>

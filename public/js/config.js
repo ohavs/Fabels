@@ -65,6 +65,15 @@ export const WEAPONS = {
   // zombie attacks
   spit:    { dmg: 12, rate: 1.8, mag: Infinity, reload: 0, spread: 0.02, auto: false, pellets: 1, range: 30, hsMult: 1, color: 0x7fbf4a, projectile: { speed: 14, radius: 0.2, splash: 1.6 } },
   zmelee:  { dmg: 14, rate: 0.9, mag: Infinity, reload: 0, spread: 0, auto: false, pellets: 1, range: 1.6, hsMult: 1, color: 0x69a24a, melee: true },
+  // harvesting tool (build modes) — low damage, gathers materials
+  pickaxe: { dmg: 20, rate: 0.55, mag: Infinity, reload: 0, spread: 0, auto: false, pellets: 1, range: 3.2, hsMult: 1, color: 0xb0b6c0, melee: true, harvest: true },
+};
+
+// reticle style per weapon (drives the HUD crosshair shape)
+export const RETICLE = {
+  pistol: 'cross', smg: 'dot', shotgun: 'ring', rifle: 'chevron',
+  lmg: 'wide', sniper: 'scope', plasma: 'circle', knife: 'dot',
+  botgun: 'cross', pickaxe: 'dot',
 };
 
 // ---- Maps ----------------------------------------------------------------
@@ -122,10 +131,16 @@ export const QUICK_CHAT = ['gg', 'help', 'attack', 'nice'];
 // ---- Building (Fortnite-style walls & ramps) --------------------------------
 export const BUILD = {
   matsStart: 10, matsMax: 30, matsPerKill: 4,
-  wallCost: 2, rampCost: 3,
+  wallCost: 2, rampCost: 3, floorCost: 2,
   wallHp: 130,
-  placeCd: 0.4,
+  placeCd: 0.18,
+  reach: 8,            // how far ahead you can place (metres)
+  grid: 3,            // build grid size (Fortnite tile)
+  harvestPerHit: 12,  // mats gained per pickaxe hit on a node
 };
+
+// modes that play in third person with the build bar & pickaxe
+export const BUILD_MODES = ['builddm'];
 
 // ---- Daily challenges -------------------------------------------------------
 export const CHALLENGE_POOL = [

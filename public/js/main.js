@@ -368,6 +368,7 @@ function startLoop(game) {
   stopLoop();
   state.game = game;
   UI.resetHUD();
+  UI.setupHudForMode(game, state.input);
   UI.showScreen('game');
   fitRenderer();
   state.input.enabled = true;
