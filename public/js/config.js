@@ -133,7 +133,7 @@ export const BUILD = {
   matsStart: 10, matsMax: 30, matsPerKill: 4,
   wallCost: 2, rampCost: 3, floorCost: 2,
   wallHp: 130,
-  placeCd: 0.18,
+  placeCd: 0.12,        // snappy turbo-building like 1v1.lol
   reach: 8,            // how far ahead you can place (metres)
   grid: 3,            // build grid size (Fortnite tile)
   harvestPerHit: 12,  // mats gained per pickaxe hit on a node

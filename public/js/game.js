@@ -783,9 +783,17 @@ export class Game {
       this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 10));
       this.camera.updateProjectionMatrix();
     }
-    // hide the first-person viewmodel in third person
-    this.viewModel.root.visible = !tp;
-    this.viewModel.update(dt, sp, p.reloadT > 0, p.ads, sniper);
+    // first-person viewmodel shows the currently held item (pickaxe while
+    // building/harvesting); hidden entirely in third person
+    this.viewModel.setWeapon(this._heldItem());
+    this.viewModel.update(dt, sp, p.reloadT > 0, p.ads, sniper, tp);
+  }
+
+  // what the local player is "holding" right now (weapon or pickaxe)
+  _heldItem() {
+    const tool = this.canBuild && this.input ? this.input.tool : 'gun';
+    if (tool === 'pick' || tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'edit') return 'pickaxe';
+    return this.me ? this.me.weapon : 'pistol';
   }
 
   // ---------------- shared physics (players + bots) ----------------
@@ -1778,6 +1786,8 @@ export class Game {
       if (isSelf && bar) { bar.bg.visible = false; bar.fg.visible = false; }
       if (isSelf && char.nameSprite) char.nameSprite.visible = false;
       if (!p.alive || !char.group.visible) continue;
+      // keep the held weapon in the character's hand up to date (pickaxe while building)
+      setCharacterWeapon(char, isSelf ? this._heldItem() : p.weapon);
       // crouch/slide squash follows the synced stance
       p.crouchK = lerp(p.crouchK, p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0, 0.2);
       const zs = p.zscale || 1;

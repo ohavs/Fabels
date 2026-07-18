@@ -211,28 +211,59 @@ export class ViewModel {
     if (this.weaponId === id) return;
     this.weaponId = id;
     if (this.gun) this.root.remove(this.gun);
+    if (this.sprite) { this.root.remove(this.sprite); this.sprite = null; }
+    // procedural 3D model shows immediately as a fallback
     this.gun = buildGunMesh(id, 0.9);
     this.root.add(this.gun);
     this.raiseK = 0;
+
+    // if a hand-made weapon image exists (assets/weapons/<id>.png), swap the
+    // 3D model for a crisp 2D sprite viewmodel — matches the generated art.
+    if (!ViewModel._loader) { ViewModel._loader = new THREE.TextureLoader(); ViewModel._noImg = new Set(); }
+    if (ViewModel._noImg.has(id)) return;          // already known to have no image
+    ViewModel._loader.load(
+      `assets/weapons/${id}.png`,
+      (tex) => {
+        if (this.weaponId !== id) return;          // switched away while loading
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        const img = tex.image;
+        const aspect = img && img.height ? img.width / img.height : 1.6;
+        const h = 0.62, w = h * aspect;
+        const plane = new THREE.Mesh(
+          new THREE.PlaneGeometry(w, h),
+          new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }),
+        );
+        plane.renderOrder = 20;
+        plane.position.set(0.02, -0.04, 0.1);      // nudge within the viewmodel root
+        if (this.gun) { this.root.remove(this.gun); this.gun = null; }
+        this.root.add(plane);
+        this.sprite = plane;
+      },
+      undefined,
+      () => { ViewModel._noImg.add(id); /* no image — keep the procedural model */ },
+    );
   }
 
   kick() { this.recoil = Math.min(1, this.recoil + 0.55); }
 
   muzzleWorld(target) {
+    // sprite viewmodel: muzzle ≈ upper-left of the plane; else the model's muzzle
+    if (this.sprite) return this.sprite.localToWorld(target.set(-0.28, 0.12, 0));
     if (!this.gun) return target.set(0, 0, 0);
     target.copy(this.gun.userData.muzzle);
     return this.gun.localToWorld(target);
   }
 
-  update(dt, moveSpeed, reloading, ads = false, sniper = false) {
+  update(dt, moveSpeed, reloading, ads = false, sniper = false, hidden = false) {
     this.swayT += dt * (2 + moveSpeed);
     this.recoil = Math.max(0, this.recoil - dt * 6);
     this.raiseK = Math.min(1, this.raiseK + dt * 4);
     this.reloadK += ((reloading ? 1 : 0) - this.reloadK) * Math.min(1, dt * 8);
     this.adsK = (this.adsK ?? 0) + ((ads ? 1 : 0) - (this.adsK ?? 0)) * Math.min(1, dt * 12);
     const k = this.adsK;
-    // sniper scope replaces the viewmodel entirely
-    this.root.visible = !(sniper && k > 0.7);
+    // hidden (third person) OR sniper scope → no viewmodel
+    this.root.visible = !hidden && !(sniper && k > 0.7);
     const sway = Math.min(1, moveSpeed / 6) * (1 - k * 0.8);
     this.root.position.set(
       0.3 * (1 - k) + Math.sin(this.swayT) * 0.012 * sway,
@@ -240,6 +271,8 @@ export class ViewModel {
         - this.reloadK * 0.22 - (1 - this.raiseK) * 0.35 + this.recoil * 0.03,
       -0.55 + k * 0.12 + this.recoil * 0.09,
     );
-    this.root.rotation.set(this.recoil * 0.16 + this.reloadK * 0.7, 0, this.reloadK * 0.3);
+    // sprite stays flat-ish to the camera; 3D model gets the full recoil tilt
+    const tiltMul = this.sprite ? 0.5 : 1;
+    this.root.rotation.set((this.recoil * 0.16 + this.reloadK * 0.7) * tiltMul, 0, this.reloadK * 0.3 * tiltMul);
   }
 }
