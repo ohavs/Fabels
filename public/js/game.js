@@ -84,6 +84,9 @@ export class Game {
     this.botScore = 0;
     this.hudFlags = { hitmarker: 0, headshot: 0, hurt: 0, tierBanner: '', winBanner: '' };
     this._bobT = 0;
+    this.shake = 0;                 // screen-shake magnitude, decays
+    this.recoilP = 0; this.recoilY = 0;  // visual camera recoil (does not move aim)
+    this.dmgFloats = [];            // floating damage numbers
 
     // hooks (wired by net.js / main.js)
     this.onShot = null;         // (spec) my tracer for others
@@ -570,6 +573,7 @@ export class Game {
     this._updatePickups(dt);
     this._updateViews(dt);
     this._updateGhost();
+    this._updateFeel(dt);
     this.fx.update(dt);
     this._decayHud(dt);
     for (let i = this.feed.length - 1; i >= 0; i--) {
@@ -771,8 +775,17 @@ export class Game {
     } else {
       const bob = Math.sin(this._bobT * 9) * 0.035 * Math.min(1, sp / 6) * (p.ads ? 0.3 : 1);
       this.camera.position.set(p.x, p.y + eye + bob, p.z);
-      this.camera.rotation.y = p.yaw;
-      this.camera.rotation.x = -p.pitch;
+      this.camera.rotation.y = p.yaw + this.recoilY;
+      this.camera.rotation.x = -p.pitch + this.recoilP;   // visual recoil kick
+    }
+    // screen shake (position jitter) — applied in both camera modes
+    if (this.shake > 0.001) {
+      const s = this.shake * 0.14;
+      this.camera.position.x += (Math.random() - 0.5) * s;
+      this.camera.position.y += (Math.random() - 0.5) * s;
+      this.camera.rotation.z = (Math.random() - 0.5) * this.shake * 0.03;
+    } else {
+      this.camera.rotation.z = 0;
     }
 
     // FOV: sprint widens, ADS narrows (sniper = scope)
@@ -901,6 +914,7 @@ export class Game {
     }
     if (p === this.me) {
       this.viewModel.kick();
+      this.addRecoil(p.weapon);
       if (this.onShot) {
         const f = forwardOf(p.yaw, p.pitch);
         this.onShot({ x: +p.x.toFixed(2), y: +(p.y + GAME.eyeHeight).toFixed(2), z: +p.z.toFixed(2), dx: +f.x.toFixed(3), dy: +f.y.toFixed(3), dz: +f.z.toFixed(3), w: p.weapon });
@@ -1053,6 +1067,7 @@ export class Game {
   _explode(pr) {
     const { splash } = pr.w.projectile;
     this.fx.explosion(V1.set(pr.x, pr.y, pr.z), pr.w.color);
+    if (this.me) this.addShake(Math.max(0, 1.2 - Math.hypot(pr.x - this.me.x, pr.z - this.me.z) / 20));
     if (this._nearPoint(pr.x, pr.z, 50)) SFX.explode();
     if (pr.visual) return;
     const owner = this.players.get(pr.owner);
@@ -1077,8 +1092,7 @@ export class Game {
   //   wall  → the grid edge directly in front, facing the player
   //   floor → the tile the player stands on
   //   ramp  → fills the player's cell, rising in the facing direction
-  _buildTarget(kind) {
-    const p = this.me;
+  _buildTarget(kind, p = this.me) {
     const G = BUILD.grid;
     const f = forwardOf(p.yaw);                       // yaw only (ignore pitch)
     const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
@@ -1154,6 +1168,69 @@ export class Game {
     this._addBuild(spec);
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
     SFX.reloadDone();
+  }
+
+  // bot places a piece relative to itself (host/offline authority).
+  // Bots build for free but are rate-limited so they don't spam.
+  botBuild(p, kind) {
+    if (!this.canBuild || !p.alive || (p.bot.buildCd || 0) > 0) return false;
+    const tgt = this._buildTarget(kind, p);
+    const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
+    for (const b of this.builds.values()) if (b.slot === slotKey) return false;
+    p.bot.buildCd = 0.6 + Math.random() * 0.5;
+    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, slot: slotKey, ...tgt };
+    this._addBuild(spec);
+    if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
+    if (this._nearPoint(tgt.x, tgt.z, 40)) SFX.reloadDone();
+    return true;
+  }
+
+  // ---------------- game feel: shake, recoil, damage numbers ----------------
+  addShake(a) { this.shake = Math.min(1.4, this.shake + a); }
+
+  addRecoil(weapon) {
+    const w = WEAPONS[weapon] || {};
+    const base = w.melee ? 0 : (w.dmg >= 80 ? 0.09 : w.dmg >= 40 ? 0.05 : 0.022);
+    this.recoilP += base;                        // kick up
+    this.recoilY += (Math.random() - 0.5) * base * 0.8;
+    this.addShake(base * 3.2);
+  }
+
+  dmgFloat(x, y, z, dmg, hs) {
+    if (!this._dmgMat) this._dmgMat = {};
+    const key = hs ? 'hs' : 'n';
+    // canvas-text sprite, cheap to make; billboarded, floats up and fades
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 64;
+    const g = c.getContext('2d');
+    g.font = '900 46px "Heebo", system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)';
+    g.fillStyle = hs ? '#ff5252' : '#ffe08a';
+    g.strokeText(dmg, 64, 34); g.fillText(dmg, 64, 34);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sp.scale.set(1.1 * (hs ? 1.25 : 1), 0.55 * (hs ? 1.25 : 1), 1);
+    sp.position.set(x + (Math.random() - 0.5) * 0.6, y, z + (Math.random() - 0.5) * 0.6);
+    sp.renderOrder = 30;
+    this.scene.add(sp);
+    this.dmgFloats.push({ sp, life: 0.8, vy: 1.8 });
+    if (this.dmgFloats.length > 30) { const old = this.dmgFloats.shift(); this.scene.remove(old.sp); old.sp.material.map.dispose(); old.sp.material.dispose(); }
+  }
+
+  _updateFeel(dt) {
+    this.shake = Math.max(0, this.shake - dt * 3.5);
+    this.recoilP = Math.max(0, this.recoilP - dt * 0.9);
+    this.recoilY *= Math.pow(0.001, dt);
+    for (let i = this.dmgFloats.length - 1; i >= 0; i--) {
+      const f = this.dmgFloats[i];
+      f.life -= dt;
+      f.sp.position.y += f.vy * dt;
+      f.vy *= Math.pow(0.02, dt);
+      f.sp.material.opacity = Math.min(1, f.life * 2.2);
+      if (f.life <= 0) { this.scene.remove(f.sp); f.sp.material.map.dispose(); f.sp.material.dispose(); this.dmgFloats.splice(i, 1); }
+    }
   }
 
   // ---------------- pickaxe: harvest materials + light melee ----------------
@@ -1350,6 +1427,7 @@ export class Game {
 
   _nadeExplode(g) {
     this.fx.explosion(V1.set(g.x, g.y + 0.3, g.z), 0xffaa33);
+    if (this.me) this.addShake(Math.max(0, 1.4 - Math.hypot(g.x - this.me.x, g.z - this.me.z) / 18));
     if (this._nearPoint(g.x, g.z, 60)) SFX.explode();
     if (g.visual) return;
     const dmgMul = this.players.get(g.owner)?.buffDmgT > 0 ? 1.4 : 1;
@@ -1547,6 +1625,7 @@ export class Game {
     if (q.remote) {
       if (this.onHitRemote) this.onHitRemote(q.uid, Math.round(dmg), { hs, mel, nade, from: fromUid });
       this.hudFlags.hitmarker = 0.25;
+      if (fromUid === this.me?.uid) this.dmgFloat(q.x, q.y + 1.4, q.z, Math.round(dmg), hs);
       if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
       return;
     }
@@ -1557,13 +1636,17 @@ export class Game {
       dmg -= absorbed;
     }
     q.hp -= dmg;
+    if (q.bot) { q.bot.underFire = this.elapsed; q.bot.lastAttacker = fromUid; }
     if (q === this.me) {
       this.hudFlags.hurt = 0.5;
+      this.addShake(0.5);          // getting hit shakes the screen
       SFX.hurt();
     } else {
       const from = this.players.get(fromUid);
       if (from === this.me) {
         this.hudFlags.hitmarker = 0.25;
+        // floating damage number at the hit point
+        this.dmgFloat(q.x, q.y + 1.4, q.z, Math.round(dmg), hs);
         if (hs) { this.hudFlags.headshot = 0.5; SFX.headshot(); } else SFX.hit();
       }
     }
@@ -1708,6 +1791,7 @@ export class Game {
 
   // ---------------- bots (host / offline) ----------------
   _botStep(p, dt) {
+    p.bot.buildCd = Math.max(0, (p.bot.buildCd || 0) - dt);
     if (!p.bot.brain) {
       // lazily import-free: brain assigned by bots.js through attachBrains()
       p.vx = p.vz = 0;
@@ -1720,6 +1804,7 @@ export class Game {
     if (p.y < GAME.fallY && p.alive) this._killPlayer(p, p.uid, false);
     if (p.alive && p.bot.wantJump && p.grounded) { p.vy = GAME.jumpVel; p.grounded = false; p.bot.wantJump = false; }
     if (p.alive && p.bot.wantFire) { this._tryFire(p); p.bot.wantFire = false; }
+    if (p.alive && p.bot.wantBuild) { this.botBuild(p, p.bot.wantBuild); p.bot.wantBuild = null; }
   }
 
   // ---------------- bot net sync ----------------

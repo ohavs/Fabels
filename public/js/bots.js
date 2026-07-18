@@ -196,6 +196,30 @@ class BotBrain {
       }
     }
     if (Math.random() < 0.004 && p.grounded) p.bot.wantJump = true;
+
+    // ---- building AI (build modes only) ----
+    if (this.game.canBuild) this._buildTactics(t, d, dx, dz);
+  }
+
+  // wall up when under fire, ramp toward the target to push high ground
+  _buildTactics(t, d, dx, dz) {
+    const p = this.p, g = this.game;
+    if ((p.bot.buildCd || 0) > 0) return;
+    const recentlyHit = p.bot.underFire && (g.elapsed - p.bot.underFire) < 1.4;
+    const skill = { easy: 0.15, normal: 0.4, hard: 0.75 }[this.game.botLevel] ?? 0.4;
+
+    // face the threat so the wall drops between us and them
+    if (recentlyHit || (d < 22 && this.seenAt >= 0)) {
+      p.yaw = Math.atan2(-dx, -dz);
+      // defensive wall — chance scales with difficulty
+      if (Math.random() < skill) { p.bot.wantBuild = 'w'; return; }
+    }
+    // push: ramp up when the target is higher or far, sometimes rush a ramp
+    if (d > 14 && p.grounded && Math.random() < skill * 0.25) {
+      p.yaw = Math.atan2(-dx, -dz);
+      p.bot.wantBuild = 'r';
+      p.bot.wantJump = true;   // hop onto the ramp
+    }
   }
 
   _roam(dt) {
