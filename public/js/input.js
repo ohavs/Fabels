@@ -62,6 +62,8 @@ export class Input {
     this._padAim = false;
     this._padSprint = false;
     this._padCrouch = false;
+    this._padScore = false;
+    this._kbScore = false;
   }
 
   // pull look/aim prefs from the settings object
@@ -95,7 +97,7 @@ export class Input {
 
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
-      if (e.code === 'Tab') { e.preventDefault(); this.scoreHeld = true; return; }
+      if (e.code === 'Tab') { e.preventDefault(); this._kbScore = true; return; }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._kbSprint = true;
       if (e.code === 'ControlLeft' || e.code === 'KeyC') { e.preventDefault(); this._kbCrouch = true; }
       if (e.repeat) return;
@@ -114,7 +116,7 @@ export class Input {
       if (e.code === 'KeyE') this.setTool(this.tool === 'edit' ? 'gun' : 'edit');
     });
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'Tab') this.scoreHeld = false;
+      if (e.code === 'Tab') this._kbScore = false;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._kbSprint = false;
       if (e.code === 'ControlLeft' || e.code === 'KeyC') this._kbCrouch = false;
       this._keys.delete(e.code);
@@ -122,7 +124,8 @@ export class Input {
     window.addEventListener('blur', () => {
       this._keys.clear(); this._mouseDown = false; this._kbSprint = false;
       this._padActive = false; this._padFire = false; this._padAim = false;
-      this._padSprint = false; this._padCrouch = false;
+      this._padSprint = false; this._padCrouch = false; this._padScore = false;
+      this._kbScore = false;
       if (!this.touchMode) { this._kbCrouch = false; this._rmb = false; this.aiming = false; }
     });
 
@@ -276,6 +279,7 @@ export class Input {
       this.firing = this._mouseDown || this._padFire;
       this.aiming = this._rmb || this._padAim;
       this.crouchHeld = this._kbCrouch || this._padCrouch;
+      this.scoreHeld = this._kbScore || this._padScore;
     }
   }
 }

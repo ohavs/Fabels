@@ -126,7 +126,7 @@ export class GamePad {
     inp._padAim = held('aim');
     inp._padSprint = held('sprint');
     inp._padCrouch = held('crouch');
-    inp.scoreHeld = held('score') || inp.scoreHeld;
+    inp._padScore = held('score');
 
     // edges
     if (hit('jump')) inp.wantJump = true;
@@ -144,7 +144,10 @@ export class GamePad {
 
   // ---- in-menu: spatial focus navigation ----
   _navigate(pad, btns, just) {
-    if (this.input) { this.input._padActive = false; this.input._padFire = false; this.input._padAim = false; }
+    if (this.input) {
+      this.input._padActive = false; this.input._padFire = false;
+      this.input._padAim = false; this.input._padScore = false;
+    }
     const screen = document.querySelector('.screen.active');
     if (!screen) return;
 

@@ -318,8 +318,10 @@ export class Game {
         }
       }
     }
-    // last one standing — every client can see this via state sync
-    if (!this.over && this.elapsed > 5) {
+    // last one standing — every client can see this via state sync.
+    // Require ≥2 combatants ever present so a solo practice run doesn't
+    // instantly declare victory.
+    if (!this.over && this.elapsed > 5 && this.players.size >= 2) {
       const alive = [...this.players.values()].filter((q) => q.alive);
       if (alive.length === 1) {
         const w = alive[0];
