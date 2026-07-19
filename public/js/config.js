@@ -193,7 +193,7 @@ export const PICKUPS = {
   },
 };
 // modes where you start with a pistol and loot weapons from crates
-export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'boxfight'];
+export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'boxfight', 'tactical'];
 
 // ---- Build Battle (Fortnite-style build deathmatch) -------------------------
 export const BUILDDM = {
@@ -251,6 +251,20 @@ export const DUEL = { maxPlayers: 2 };
 
 // ---- CTF --------------------------------------------------------------------
 export const CTF = { captures: 3, timeSec: 360, teamSize: 3, returnSec: 20, carrierSlow: 0.9 };
+
+// ---- Tactical (CS / Fortnite-Ballistic style) -------------------------------
+// Round-based: attackers (r) plant a device at the site, defenders (b) defuse.
+// No respawn within a round; first team to `winRounds` wins the match.
+export const TACTICAL = {
+  teamSize: 3,
+  winRounds: 5,          // best-of-9 → first to 5
+  prepTime: 4,           // seconds at round start before it goes live
+  roundTime: 95,         // time to plant; if it lapses with no plant → defenders win
+  plantTime: 3.2,        // seconds an attacker must hold the site to plant
+  defuseTime: 4.5,       // seconds a defender must hold the bomb to defuse
+  bombTimer: 38,         // seconds from plant to detonation (attackers win)
+  siteR: 4.2,            // plant-site radius, centred on the map
+};
 
 // ---- Battle Royale ----------------------------------------------------------
 export const BR = {

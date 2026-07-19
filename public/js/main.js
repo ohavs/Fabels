@@ -5,7 +5,7 @@
 
 import {
   GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
-  CTF, BR, ZONEWARS, BUILDDM, BOXFIGHT, rewardsZombies, rewardsBr,
+  CTF, TACTICAL, BR, ZONEWARS, BUILDDM, BOXFIGHT, rewardsZombies, rewardsBr,
 } from './config.js';
 import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
@@ -164,7 +164,7 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br', 'zonewars', 'builddm', 'boxfight']) {
+  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'tactical', 'br', 'zonewars', 'builddm', 'boxfight']) {
     $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
   }
   $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
@@ -341,7 +341,7 @@ function enterOnlineLobby(room) {
     const m = room.meta || {};
     UI.renderLobbyOptions({
       map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount ?? 4,
-      showBots: ['team', 'ctf', 'br', 'zonewars'].includes(room.mode),
+      showBots: ['team', 'ctf', 'tactical', 'br', 'zonewars'].includes(room.mode),
       privacy: { value: m.private ? 'private' : 'public' },
       canPick: room.isHost && m.state === 'waiting',
       onPick: (patch) => room.setOptions(patch),
@@ -408,8 +408,8 @@ function beginOnlineMatch() {
     endAt: endAtFor(room.mode, meta.startAt),
   });
 
-  // CTF: humans alternate red/blue by join order
-  const myTeam = room.mode === 'ctf' ? (myIdx % 2 === 0 ? 'r' : 'b') : 'p';
+  // CTF / tactical: humans alternate red/blue by join order
+  const myTeam = (room.mode === 'ctf' || room.mode === 'tactical') ? (myIdx % 2 === 0 ? 'r' : 'b') : 'p';
   game.addLocal(FB.uid, profile.name, profile.skin, myIdx, myTeam);
 
   if (room.isHost) {
@@ -422,6 +422,11 @@ function beginOnlineMatch() {
       const humansB = order.length - humansR;
       for (let i = humansR; i < CTF.teamSize; i++) game.addBot(botName(i), lvl, -1, 'r');
       for (let i = humansB; i < CTF.teamSize; i++) game.addBot(botName(i + 3), lvl, -1, 'b');
+    } else if (room.mode === 'tactical' && wantBots) {
+      const humansR = order.filter((_, i) => i % 2 === 0).length;
+      const humansB = order.length - humansR;
+      for (let i = humansR; i < TACTICAL.teamSize; i++) game.addBot(botName(i), lvl, -1, 'r');
+      for (let i = humansB; i < TACTICAL.teamSize; i++) game.addBot(botName(i + 3), lvl, -1, 'b');
     } else if ((room.mode === 'br' || room.mode === 'zonewars') && wantBots) {
       const total = (room.mode === 'zonewars' ? ZONEWARS : BR).combatants;
       for (let i = order.length; i < total; i++) game.addBot(botName(i), lvl);
@@ -452,7 +457,7 @@ function startOffline() {
     endAt: endAtFor(mode, now),
   });
 
-  const myTeam = mode === 'ctf' ? 'r' : 'p';
+  const myTeam = (mode === 'ctf' || mode === 'tactical') ? 'r' : 'p';
   game.addLocal('me', profile.name, profile.skin, 0, myTeam);
 
   if (mode === 'duel') {
@@ -463,6 +468,10 @@ function startOffline() {
       for (let i = 1; i < CTF.teamSize; i++) game.addBot(botName(i), pr.botLevel, -1, 'r');
       for (let i = 0; i < CTF.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
     }
+  } else if (mode === 'tactical') {
+    // always fill both teams so rounds can play out (min 1 enemy)
+    for (let i = 1; i < TACTICAL.teamSize; i++) game.addBot(botName(i), pr.botLevel, -1, 'r');
+    for (let i = 0; i < TACTICAL.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
   } else if (mode === 'br' || mode === 'zonewars') {
     const total = (mode === 'zonewars' ? ZONEWARS : BR).combatants;
     if (pr.botCount > 0) for (let i = 1; i < total; i++) game.addBot(botName(i), pr.botLevel);
@@ -544,7 +553,7 @@ function finishMatch(results) {
     const myRow = results.placements.find((p) => p.me) || { kills: 0, deaths: 0 };
     const place = Math.max(0, results.placements.indexOf(results.placements.find((p) => p.me)));
     let rw;
-    if (results.mode === 'team' || results.mode === 'ctf') {
+    if (results.mode === 'team' || results.mode === 'ctf' || results.mode === 'tactical') {
       rw = rewardsTeam(myRow.kills, results.win);
       rw.rp = 0;
     } else if (results.mode === 'zombies') {

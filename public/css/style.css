@@ -128,6 +128,7 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 .mode-card.builddm { background: linear-gradient(135deg, #b8791f, #7a4a12 90%); }
 .mode-card.zonewars { background: linear-gradient(135deg, #16a34a, #0f766e 90%); }
 .mode-card.boxfight { background: linear-gradient(135deg, #e11d48, #7f1d1d 90%); }
+.mode-card.tactical { background: linear-gradient(135deg, #334155, #0f172a 90%); }
 .mode-card {
   position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;
   column-gap: 14px; align-items: center; text-align: right;

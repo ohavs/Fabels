@@ -49,6 +49,9 @@
         "flags": {
           ".write": "auth != null"
         },
+        "tac": {
+          ".write": "auth != null"
+        },
         "sig": {
           ".write": "auth != null"
         }

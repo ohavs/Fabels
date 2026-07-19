@@ -15,7 +15,7 @@ import { t } from './i18n.js';
 import { Mesh, rtcSupported } from './rtc.js';
 
 const maxFor = (mode) => (mode === 'duel' ? 2 : mode === 'zonewars' ? 4 : GAME.maxPlayers);
-const teamlike = (mode) => mode === 'team' || mode === 'zombies' || mode === 'ctf';
+const teamlike = (mode) => mode === 'team' || mode === 'zombies' || mode === 'ctf' || mode === 'tactical';
 
 export class Room {
   constructor(id, mode) {
@@ -336,6 +336,14 @@ export class Room {
       game.onCtfEvent = (ev) => pushTransient('events', { k: 'ctf', ...ev });
       this._unsubs.push(d.onValue(this._ref('flags'), (s) => {
         if (!game.isHost) game.setCtfState(s.val());
+      }));
+    }
+
+    // ---- tactical: host-authoritative round/bomb snapshot ----
+    if (this.mode === 'tactical') {
+      game.onTacState = (st) => d.set(this._ref('tac'), st).catch(() => {});
+      this._unsubs.push(d.onValue(this._ref('tac'), (s) => {
+        if (!game.isHost) game.setTacState(s.val());
       }));
     }
 

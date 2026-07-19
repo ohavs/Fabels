@@ -224,7 +224,8 @@ class BotBrain {
 
   _roam(dt) {
     const p = this.p;
-    const goal = this.lastSeenPos || this.wanderPt || (this.wanderPt = this._randomNav());
+    // objective (e.g. tactical plant/defuse site) pulls idle bots toward it
+    const goal = this.lastSeenPos || p.bot.objective || this.wanderPt || (this.wanderPt = this._randomNav());
     const dx = goal.x - p.x, dz = goal.z - p.z;
     const d = Math.hypot(dx, dz);
     if (d < 2.2) {

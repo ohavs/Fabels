@@ -81,7 +81,7 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   const wrap = $('practice-mode-wrap');
   wrap.style.display = practiceMode ? '' : 'none';
   if (practiceMode) {
-    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'boxfight', 'zonewars', 'duel', 'team', 'zombies', 'ctf', 'br'],
+    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'boxfight', 'zonewars', 'tactical', 'duel', 'team', 'zombies', 'ctf', 'br'],
       practiceMode, true, (m) => onPick({ mode: m }), (m) => t('mode_' + m));
   }
   pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
@@ -270,6 +270,13 @@ export function updateHUD(game, input) {
   } else if (game.mode === 'builddm' || game.mode === 'boxfight') {
     const lead = [...game.players.values()].sort((a, b) => b.kills - a.kills)[0];
     $('hud-center').textContent = `${fmtTime(game.timeLeft())}${lead && lead.kills > 0 ? ' · ' + t('dmLeader', { name: lead.name, n: lead.kills }) : ''}`;
+  } else if (game.mode === 'tactical' && game.tac) {
+    const tac = game.tac;
+    const parts = [t('tacScore', { a: tac.score.r, b: tac.score.b }), fmtTime(tac.timer)];
+    if (tac.planted) parts.push(tac.defuseProg > 0 ? t('defusing') : '💣');
+    else if (tac.plantProg > 0) parts.push(t('planting'));
+    else if (tac.phase === 'prep') parts.push(t('tacPrep'));
+    $('hud-center').textContent = parts.join(' · ');
   } else {
     $('hud-center').textContent = `נשק ${Math.min(me.tier + 1, WEAPON_LADDER.length)}/${WEAPON_LADDER.length}`;
   }
@@ -569,6 +576,10 @@ export function renderResults(results, rewards) {
     title.textContent = results.win ? t('ctfWin') : t('ctfLose');
     title.className = results.win ? 'win' : 'lose';
     $('res-sub').textContent = t('ctfScore', { r: results.ctfScoreR ?? '', b: results.ctfScoreB ?? '' }) || t('mode_ctf');
+  } else if (results.mode === 'tactical') {
+    title.textContent = results.win ? t('tacWin') : t('tacLose');
+    title.className = results.win ? 'win' : 'lose';
+    $('res-sub').textContent = t('mode_tactical');
   } else if (results.mode === 'br' || results.mode === 'zonewars') {
     title.textContent = results.win ? t('brWin') : t('brPlace', { n: results.brPlace || myPlace, of: results.brOf || '' });
     title.className = results.win ? 'win' : 'lose';

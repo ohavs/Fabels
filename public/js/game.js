@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES,
+  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -75,7 +75,8 @@ export class Game {
     this.pickups = new Map();          // id → {k, x, y, z, tier?, mesh}
     this.pickupT = PICKUPS.everyMs / 1000;
     this.isLoadout = LOADOUT_MODES.includes(o.mode);
-    this.teamplay = ['team', 'zombies', 'ctf'].includes(o.mode);
+    this.isTactical = o.mode === 'tactical';          // round-based plant/defuse
+    this.teamplay = ['team', 'zombies', 'ctf', 'tactical'].includes(o.mode);
     this.wave = 0;
     this.waveDelay = 3;
     this.startAt = o.startAt || Date.now();
@@ -90,6 +91,7 @@ export class Game {
     if (this.brLike) this._initZone();
     if (this.isBox) this._initArena();
     if (o.mode === 'ctf') this._initCtf();
+    if (this.isTactical) this._initTactical();
     this.feed = [];
     this.over = null;
     this.elapsed = 0;
@@ -119,6 +121,7 @@ export class Game {
     this.onWave = null;         // zombies host → net
     this.onCtfState = null;     // ctf host → net (flags/score snapshot)
     this.onCtfEvent = null;     // ctf host → net (banner events)
+    this.onTacState = null;     // tactical host → net (round/bomb snapshot)
     this.onBuildPlace = null;   // my build → net
     this.onBuildDestroy = null; // build I destroyed → net
   }
@@ -175,6 +178,8 @@ export class Game {
 
   _spawnPos(p, idx = -1) {
     const spawns = this.world.spawns;
+    // Tactical: spawn at your team's side, spread around the base
+    if (this.isTactical && this.tac) return this._tacSpawn(p);
     // Boxfight keeps everyone near the centre so fights stay tight. Pick a
     // central spawn (farthest from enemies among the closest half) and pull
     // it inside the arena ring so nobody spawns in the out-of-bounds zone.
@@ -535,6 +540,183 @@ export class Game {
     }
   }
 
+  // ==================== Tactical (plant / defuse rounds) ====================
+  _initTactical() {
+    // two team spawns = the farthest-apart pair (attackers r vs defenders b)
+    const sp = this.world.spawns;
+    let a = sp[0], b = sp[1], best = 0;
+    for (let i = 0; i < sp.length; i++) for (let j = i + 1; j < sp.length; j++) {
+      const d = (sp[i].x - sp[j].x) ** 2 + (sp[i].z - sp[j].z) ** 2;
+      if (d > best) { best = d; a = sp[i]; b = sp[j]; }
+    }
+    this.tac = {
+      phase: 'prep', round: 1, score: { r: 0, b: 0 }, timer: TACTICAL.prepTime,
+      planted: false, plantProg: 0, defuseProg: 0, bomb: null,
+      site: { x: 0, z: 0, r: TACTICAL.siteR }, spawns: { r: a, b: b }, endReason: '', roundWinner: null,
+    };
+    // plant-site ring
+    const ring = new THREE.Mesh(
+      new THREE.CylinderGeometry(TACTICAL.siteR, TACTICAL.siteR, 0.12, 32, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffcf3f, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false }));
+    ring.position.set(0, 0.12, 0);
+    this.scene.add(ring); this.tac.siteMesh = ring;
+    // bomb (hidden until planted)
+    const bomb = new THREE.Group();
+    bomb.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.3), mat(0x222831)));
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.03), mat(0xff3131, { emissive: 0xff3131 }));
+    led.position.set(0, 0.12, 0.16); bomb.add(led);
+    bomb.visible = false; bomb.position.set(0, 0.2, 0);
+    this.scene.add(bomb); this.tac.bombMesh = bomb; this.tac.bombLed = led;
+  }
+
+  _tacSpawn(p) {
+    const base = this.tac.spawns[p.team === 'r' ? 'r' : 'b'];
+    const idx = [...this.players.values()].filter((q) => q.team === p.team).indexOf(p);
+    const ang = idx * 1.35;
+    return { x: base.x + Math.cos(ang) * 2, y: base.y, z: base.z + Math.sin(ang) * 2 };
+  }
+
+  _tacTeamAlive(team) { let n = 0; for (const p of this.players.values()) if (p.team === team && p.alive) n++; return n; }
+
+  _updateTactical(dt) {
+    const tac = this.tac; if (!tac) return;
+    // shared visuals (all clients)
+    if (tac.bombMesh) tac.bombMesh.visible = tac.planted;
+    if (tac.planted && tac.bombLed) {
+      const fast = tac.timer < 8 ? 16 : 6;
+      tac.bombLed.material.emissiveIntensity = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.elapsed * fast));
+    }
+    if (tac.siteMesh) tac.siteMesh.material.color.setHex(tac.planted ? 0xff4444 : 0xffcf3f);
+
+    if (this.online && !this.isHost) return;   // guests display only; host drives + syncs
+
+    tac.timer = Math.max(0, tac.timer - dt);
+    if (tac.phase === 'prep') {
+      if (tac.timer <= 0) { tac.phase = 'live'; tac.timer = TACTICAL.roundTime; this.hudFlags.tierBanner = t('tacLive'); }
+    } else if (tac.phase === 'live') {
+      this._tacObjectives();
+      this._tacPlantTick(dt);
+      if (!tac.planted) {
+        if (this._tacTeamAlive('r') === 0) return this._endTacRound('b', 'elim');
+        if (this._tacTeamAlive('b') === 0) return this._endTacRound('r', 'elim');
+        if (tac.timer <= 0) return this._endTacRound('b', 'time');
+      }
+    } else if (tac.phase === 'planted') {
+      this._tacObjectives();
+      this._tacDefuseTick(dt);
+      if (tac.timer <= 0) return this._endTacRound('r', 'detonate');
+      if (this._tacTeamAlive('b') === 0) return this._endTacRound('r', 'nodefuse');
+    } else if (tac.phase === 'end') {
+      if (tac.timer <= 0) this._startTacRound();
+    }
+    this._tacSync(dt);
+  }
+
+  // steer idle bots toward the objective (they still break off to fight)
+  _tacObjectives() {
+    const tac = this.tac;
+    for (const p of this.players.values()) {
+      if (!p.bot || !p.alive) continue;
+      if (p.team === 'r') p.bot.objective = tac.planted ? null : { x: tac.site.x, z: tac.site.z };
+      else p.bot.objective = tac.planted && tac.bomb ? { x: tac.bomb.x, z: tac.bomb.z } : { x: tac.site.x, z: tac.site.z };
+    }
+  }
+
+  _tacPlantTick(dt) {
+    const tac = this.tac;
+    let planter = null;
+    for (const p of this.players.values()) {
+      if (!p.alive || p.team !== 'r') continue;
+      if (Math.hypot(p.x - tac.site.x, p.z - tac.site.z) <= tac.site.r) { planter = p; break; }
+    }
+    if (planter) { tac.plantProg += dt; if (tac.plantProg >= TACTICAL.plantTime) this._tacPlant(planter); }
+    else tac.plantProg = Math.max(0, tac.plantProg - dt * 2);
+  }
+
+  _tacPlant(p) {
+    const tac = this.tac;
+    tac.planted = true; tac.phase = 'planted'; tac.timer = TACTICAL.bombTimer;
+    tac.bomb = { x: p.x, z: p.z }; tac.defuseProg = 0; tac.plantProg = 0;
+    if (tac.bombMesh) tac.bombMesh.position.set(p.x, 0.2, p.z);
+    this.hudFlags.winBanner = t('bombPlanted');
+    if (this._near(p, 60)) SFX.tierUp?.();
+  }
+
+  _tacDefuseTick(dt) {
+    const tac = this.tac;
+    const bx = tac.bomb ? tac.bomb.x : tac.site.x, bz = tac.bomb ? tac.bomb.z : tac.site.z;
+    let defuser = null;
+    for (const p of this.players.values()) {
+      if (!p.alive || p.team !== 'b') continue;
+      if (Math.hypot(p.x - bx, p.z - bz) <= 1.8) { defuser = p; break; }
+    }
+    if (defuser) { tac.defuseProg += dt; if (tac.defuseProg >= TACTICAL.defuseTime) this._endTacRound('b', 'defuse'); }
+    else tac.defuseProg = Math.max(0, tac.defuseProg - dt * 1.5);
+  }
+
+  _endTacRound(winner, reason) {
+    const tac = this.tac;
+    if (tac.phase === 'end') return;
+    tac.score[winner]++;
+    tac.phase = 'end'; tac.timer = 4; tac.endReason = reason; tac.roundWinner = winner;
+    tac.planted = false; tac.plantProg = 0; tac.defuseProg = 0;
+    this.hudFlags.winBanner = t(winner === this.myTeam() ? 'roundWon' : 'roundLost');
+    SFX.tierUp?.();
+    if (tac.score[winner] >= TACTICAL.winRounds) {
+      this.forceGameOver({ teamWin: winner === this.myTeam(), tacWinner: winner });
+    }
+    this._tacSync(0, true);
+  }
+
+  _startTacRound() {
+    const tac = this.tac;
+    tac.round++; tac.phase = 'prep'; tac.timer = TACTICAL.prepTime;
+    tac.planted = false; tac.bomb = null; tac.plantProg = 0; tac.defuseProg = 0;
+    if (tac.bombMesh) tac.bombMesh.visible = false;
+    // host respawns bots + itself; remote humans respawn themselves on round++
+    for (const p of this.players.values()) {
+      if (p.remote) continue;
+      p.alive = true; p.hp = p.maxHp; p.armor = 0; p.invulnT = GAME.invulnTime;
+      p.weapon = WEAPON_LADDER[WEAPON_LADDER.length - 1] || p.weapon;
+      if (p.bot) p.bot.objective = null;
+      this._place(p, this._tacSpawn(p));
+    }
+    this.hudFlags.tierBanner = t('tacRound', { n: tac.round });
+    this._tacSync(0, true);
+  }
+
+  _tacSync(dt, force) {
+    if (!this.onTacState) return;
+    this._tacSyncT = (this._tacSyncT || 0) + (dt || 0);
+    if (!force && this._tacSyncT < 0.25) return;
+    this._tacSyncT = 0;
+    this.onTacState(this.getTacState());
+  }
+
+  getTacState() {
+    const tac = this.tac;
+    return {
+      ph: tac.phase, rd: tac.round, sr: tac.score.r, sb: tac.score.b,
+      tm: +tac.timer.toFixed(1), pl: tac.planted ? 1 : 0,
+      pp: +tac.plantProg.toFixed(1), dp: +tac.defuseProg.toFixed(1),
+      bx: tac.bomb ? +tac.bomb.x.toFixed(1) : 0, bz: tac.bomb ? +tac.bomb.z.toFixed(1) : 0,
+    };
+  }
+
+  setTacState(st) {
+    const tac = this.tac; if (!tac || !st) return;
+    const prevRound = tac.round;
+    tac.phase = st.ph; tac.round = st.rd; tac.score.r = st.sr; tac.score.b = st.sb;
+    tac.timer = st.tm; tac.planted = !!st.pl; tac.plantProg = st.pp; tac.defuseProg = st.dp;
+    tac.bomb = st.pl ? { x: st.bx, z: st.bz } : null;
+    if (tac.bomb && tac.bombMesh) tac.bombMesh.position.set(st.bx, 0.2, st.bz);
+    // a new round started → respawn my own player
+    if (st.rd > prevRound && this.me) {
+      this.me.alive = true; this.me.hp = this.me.maxHp; this.me.armor = 0; this.me.invulnT = GAME.invulnTime;
+      this._place(this.me, this._tacSpawn(this.me));
+    }
+  }
+
   // zombie melee swipe (host/offline); spitters go through _tryFire
   zombieAttack(p, target) {
     const Z = p.bot.zdef;
@@ -622,7 +804,7 @@ export class Game {
           if (p === this.me) SFX.reloadDone();
         }
       }
-      if (!p.alive && !p.remote && !this.brLike) {
+      if (!p.alive && !p.remote && !this.brLike && !this.isTactical) {
         p.respawnT -= dt;
         if (p.respawnT <= 0 && !this.over) this._respawn(p);
       }
@@ -637,6 +819,7 @@ export class Game {
     if (this.brLike) this._updateZone(dt);
     if (this.isBox) this._updateArena(dt);
     if (this.mode === 'ctf') this._updateCtf(dt);
+    if (this.isTactical) this._updateTactical(dt);
     this._updateProjectiles(dt);
     this._updateGrenades(dt);
     this._updatePickups(dt);
