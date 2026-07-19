@@ -33,6 +33,14 @@ const forwardOf = (yaw, pitch = 0) => ({
   z: -Math.cos(yaw) * Math.cos(pitch),
 });
 
+// wall edit state → 9-bit mask (bit row*3+col set = that cell is an opening).
+// Accepts a number, or the legacy 'door'/'full' strings.
+const editMask = (e) => {
+  if (typeof e === 'number') return e & 0x1ff;
+  if (e === 'door') return 1 << 1;   // bottom-centre cell removed
+  return 0;
+};
+
 export class Game {
   /**
    * mode 'gungame'|'team' · online bool · isHost bool · mapId string
@@ -1202,6 +1210,13 @@ export class Game {
   _updateGhost() {
     const p = this.me;
     const tool = this.input ? this.input.tool : 'gun';
+    // edit tool → highlight the aimed 3×3 cell of your wall instead
+    if (this.canBuild && tool === 'edit' && p && p.alive && !this.over) {
+      if (this._ghost) this._ghost.visible = false;
+      this._updateEditGhost(p);
+      return;
+    }
+    if (this._editGhost) this._editGhost.visible = false;
     const active = this.canBuild && p && p.alive && !this.over && (tool === 'wall' || tool === 'ramp' || tool === 'floor');
     if (!active) { if (this._ghost) this._ghost.visible = false; return; }
     const kind = { wall: 'w', ramp: 'r', floor: 'f' }[tool];
@@ -1349,21 +1364,62 @@ export class Game {
     SFX.hit();
   }
 
-  // ---------------- edit: cycle the aimed wall (full → doorway → full) ----------------
-  _editAimed(p) {
+  // ---------------- edit: toggle the aimed 3×3 cell of your own wall ----------------
+  // Ray-tests the wall's FULL plane (not just the remaining panels) so you can
+  // punch a hole and fill it back in. Returns {b,row,col} or null.
+  _editHit(p) {
     const f = forwardOf(p.yaw, p.pitch);
-    const eye = { x: p.x, y: p.y + GAME.eyeHeight, z: p.z };
-    let tBest = 9, target = null;
-    for (const c of this.world.colliders) {
-      if (!c.buildId) continue;
-      const tt = rayAABB(eye.x, eye.y, eye.z, f.x, f.y, f.z, c);
-      if (tt < tBest) { tBest = tt; target = c.buildId; }
+    const ex = p.x, ey = p.y + GAME.eyeHeight, ez = p.z;
+    const W = 3.05, H3 = 3, T = 0.25;
+    let tBest = BUILD.reach, best = null;
+    for (const b of this.builds.values()) {
+      if (b.owner !== p.uid || b.t !== 'w') continue;
+      const box = b.ax === 'x'
+        ? { x0: b.x - T, y0: b.y, z0: b.z - W / 2, x1: b.x + T, y1: b.y + H3, z1: b.z + W / 2 }
+        : { x0: b.x - W / 2, y0: b.y, z0: b.z - T, x1: b.x + W / 2, y1: b.y + H3, z1: b.z + T };
+      const tt = rayAABB(ex, ey, ez, f.x, f.y, f.z, box);
+      if (tt >= 0 && tt < tBest) { tBest = tt; best = { b, t: tt }; }
     }
-    if (!target) return;
-    const b = this.builds.get(target);
-    if (!b || b.owner !== p.uid || b.t !== 'w') return;   // only edit your own walls
-    b.edit = b.edit === 'door' ? 'full' : 'door';
-    const spec = { id: b.id, t: 'w', o: b.owner, slot: b.slot, x: b.x, y: b.y, z: b.z, ax: b.ax, dir: b.dir, edit: b.edit };
+    if (!best) return null;
+    const b = best.b, cw = W / 3, ch = H3 / 3;
+    const hy = ey + f.y * best.t;
+    const along = b.ax === 'x' ? (ez + f.z * best.t - b.z) : (ex + f.x * best.t - b.x);
+    const row = clamp(Math.floor((hy - b.y) / ch), 0, 2);
+    const col = clamp(Math.round(along / cw) + 1, 0, 2);
+    return { b, row, col };
+  }
+
+  // highlight the wall cell the crosshair is on while editing
+  _updateEditGhost(p) {
+    const hit = this._editHit(p);
+    if (!this._editGhost) {
+      const m = new THREE.MeshBasicMaterial({ color: 0x37e0ff, transparent: true, opacity: 0.34, depthTest: false, depthWrite: false });
+      this._editGhost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), m);
+      this._editGhost.renderOrder = 6;
+      this._editGhost.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+        new THREE.LineBasicMaterial({ color: 0xffffff })));
+      this.scene.add(this._editGhost);
+    }
+    const gh = this._editGhost;
+    if (!hit) { gh.visible = false; return; }
+    const { b, row, col } = hit;
+    const W = 3.05, H3 = 3, T = 0.25, cw = W / 3, ch = H3 / 3;
+    const cy = b.y + row * ch + ch / 2, off = (col - 1) * cw;
+    const removed = !!(editMask(b.edit) & (1 << (row * 3 + col)));
+    gh.visible = true;
+    gh.material.color.setHex(removed ? 0x8effa0 : 0x37e0ff);   // green = fill, cyan = open
+    if (b.ax === 'x') { gh.position.set(b.x, cy, b.z + off); gh.scale.set(T + 0.12, ch * 0.92, cw * 0.92); }
+    else { gh.position.set(b.x + off, cy, b.z); gh.scale.set(cw * 0.92, ch * 0.92, T + 0.12); }
+  }
+
+  _editAimed(p) {
+    const hit = this._editHit(p);
+    if (!hit) return;
+    const b = hit.b;
+    const mask = editMask(b.edit) ^ (1 << (hit.row * 3 + hit.col));
+    b.edit = mask;
+    const spec = { id: b.id, t: 'w', o: b.owner, slot: b.slot, x: b.x, y: b.y, z: b.z, ax: b.ax, dir: b.dir, edit: mask };
     this.removeBuild(b.id, false);
     this._addBuild(spec);
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
@@ -1390,23 +1446,26 @@ export class Game {
     };
     const W = 3.05, H3 = 3, T = 0.25;
     if (spec.t === 'w') {
-      const door = spec.edit === 'door';
-      // build the wall as (up to) 3 stacked panels along the facing axis,
-      // leaving the centre panel out when edited into a doorway
-      const panelH = H3 / 3;
+      // 3×3 editable grid (1v1.lol): bit row*3+col set → that cell is an
+      // opening. Build a panel for every cell that isn't removed.
+      const mask = editMask(spec.edit);
+      const cw = W / 3, ch = H3 / 3;
       for (let row = 0; row < 3; row++) {
-        if (door && row === 0) continue;  // bottom-centre removed → doorway
-        const py = spec.y + row * panelH;
-        if (spec.ax === 'x') addPiece(spec.x, py, spec.z, T, panelH, W);
-        else addPiece(spec.x, py, spec.z, W, panelH, T);
+        for (let col = 0; col < 3; col++) {
+          if (mask & (1 << (row * 3 + col))) continue;   // removed cell
+          const py = spec.y + row * ch;
+          const off = (col - 1) * cw;
+          if (spec.ax === 'x') addPiece(spec.x, py, spec.z + off, T, ch, cw);
+          else addPiece(spec.x + off, py, spec.z, cw, ch, T);
+        }
       }
-      // frame trim (non-colliding)
+      // decorative top/bottom trim (non-colliding)
       if (spec.ax === 'x') {
         addPiece(spec.x, spec.y + H3 - 0.18, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
-        if (!door) addPiece(spec.x, spec.y, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
+        addPiece(spec.x, spec.y, spec.z, T + 0.1, 0.18, W, { collide: false, m: darkM });
       } else {
         addPiece(spec.x, spec.y + H3 - 0.18, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
-        if (!door) addPiece(spec.x, spec.y, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
+        addPiece(spec.x, spec.y, spec.z, W, 0.18, T + 0.1, { collide: false, m: darkM });
       }
     } else if (spec.t === 'f') {
       // floor tile: full 3×3 slab
@@ -1423,7 +1482,7 @@ export class Game {
     }
     this.builds.set(spec.id, {
       id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o, slot: spec.slot || '',
-      x: spec.x, y: spec.y, z: spec.z, ax: spec.ax, dir: spec.dir, edit: spec.edit || 'full',
+      x: spec.x, y: spec.y, z: spec.z, ax: spec.ax, dir: spec.dir, edit: editMask(spec.edit),
     });
   }
 
