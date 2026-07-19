@@ -10,7 +10,15 @@ import { WEAPONS } from './config.js';
 import { mat } from './world.js';
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
+const UNIT_CYL = new THREE.CylinderGeometry(1, 1, 1, 10);   // unit cylinder along +Y
 
+// shared low-poly gun palette (cached materials, so reuse is cheap)
+const COL = {
+  dark: 0x24272d, metal: 0x3a3f48, black: 0x16181c, steel: 0x8a929e,
+  chrome: 0xbfc6cf, wood: 0x6b4a2f, tan: 0x9c7f52,
+};
+
+// axis-aligned box brick
 function p(parent, w, h, d, color, x, y, z, emissive) {
   const m = new THREE.Mesh(BOX, mat(color, emissive ? { emissive: color } : {}));
   m.scale.set(w, h, d);
@@ -19,89 +27,159 @@ function p(parent, w, h, d, color, x, y, z, emissive) {
   return m;
 }
 
-// each builder returns a Group with muzzle at group.userData.muzzle (local Vector3)
+// cylinder lying along -Z (barrels, shrouds, scope tubes)
+function cyl(parent, r, len, color, x, y, z, emissive) {
+  const m = new THREE.Mesh(UNIT_CYL, mat(color, emissive ? { emissive: color } : {}));
+  m.scale.set(r, len, r);
+  m.rotation.x = Math.PI / 2;
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+
+// cylinder standing along +Y (grips, bipod legs, bolt handles) — caller tilts it
+function post(parent, r, len, color, x, y, z) {
+  const m = new THREE.Mesh(UNIT_CYL, mat(color));
+  m.scale.set(r, len, r);
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+
+// clip-on red-dot optic (rail + housing + glowing lens)
+function reddot(parent, z) {
+  p(parent, 0.03, 0.03, 0.16, COL.black, 0, 0.085, z);
+  p(parent, 0.05, 0.06, 0.08, COL.dark, 0, 0.13, z);
+  p(parent, 0.036, 0.036, 0.012, 0xff4a4a, 0, 0.13, z - 0.045, true);
+}
+
+// each builder returns a Group with muzzle at group.userData.muzzle (local Vector3).
+// Everything points down -Z (forward); sights sit +Y, grip/mag hang -Y.
 export function buildGunMesh(id, scale = 1) {
   const g = new THREE.Group();
   const col = WEAPONS[id]?.color ?? 0x888888;
-  const dark = 0x23272f;
   switch (id) {
-    case 'pistol':
-      p(g, 0.07, 0.1, 0.26, col, 0, 0.02, -0.1);
-      p(g, 0.06, 0.14, 0.07, dark, 0, -0.08, 0.02);
-      g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.24);
+    case 'pistol': {
+      p(g, 0.07, 0.08, 0.30, COL.metal, 0, 0.03, -0.05);   // slide
+      p(g, 0.066, 0.05, 0.24, COL.black, 0, -0.02, -0.03);  // frame
+      cyl(g, 0.02, 0.06, COL.steel, 0, 0.03, -0.22);        // barrel tip
+      const grip = p(g, 0.062, 0.15, 0.085, col, 0, -0.11, 0.05); grip.rotation.x = 0.32;
+      p(g, 0.05, 0.03, 0.09, COL.black, 0, -0.185, 0.07);   // mag floorplate
+      p(g, 0.024, 0.024, 0.02, COL.black, 0, 0.08, -0.17);  // front sight
+      p(g, 0.03, 0.024, 0.02, COL.black, 0, 0.08, 0.07);    // rear sight
+      g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.26);
       break;
-    case 'smg':
-      p(g, 0.08, 0.12, 0.34, col, 0, 0, -0.12);
-      p(g, 0.06, 0.16, 0.07, dark, 0, -0.12, 0.0);
-      p(g, 0.05, 0.14, 0.06, dark, 0, -0.11, -0.16);
-      p(g, 0.04, 0.04, 0.12, dark, 0, 0.02, -0.34);
-      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.42);
+    }
+    case 'smg': {
+      p(g, 0.075, 0.1, 0.34, COL.dark, 0, 0, -0.06);        // body
+      cyl(g, 0.022, 0.18, COL.steel, 0, 0.02, -0.3);        // barrel shroud
+      p(g, 0.05, 0.05, 0.09, COL.black, 0, 0.02, -0.42);    // muzzle collar
+      const mag = p(g, 0.05, 0.19, 0.07, col, 0, -0.15, -0.02); mag.rotation.x = 0.1;
+      const grip = p(g, 0.056, 0.13, 0.08, COL.black, 0, -0.1, 0.09); grip.rotation.x = 0.3;
+      p(g, 0.05, 0.09, 0.14, COL.dark, 0, 0, 0.2);          // collapsible stock
+      cyl(g, 0.018, 0.12, COL.black, 0, 0.0, 0.14);         // stock strut
+      p(g, 0.02, 0.03, 0.16, COL.black, 0, 0.075, -0.06);   // top rail
+      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.44);
       break;
-    case 'shotgun':
-      p(g, 0.09, 0.11, 0.5, col, 0, 0, -0.15);
-      p(g, 0.07, 0.07, 0.44, dark, 0, -0.07, -0.16);
-      p(g, 0.07, 0.13, 0.12, 0x6b4a2f, 0, -0.03, 0.16);
-      g.userData.muzzle = new THREE.Vector3(0, 0, -0.42);
+    }
+    case 'shotgun': {
+      p(g, 0.075, 0.09, 0.4, col, 0, 0, -0.12);             // receiver
+      cyl(g, 0.028, 0.42, COL.steel, 0, 0.05, -0.3);        // barrel
+      cyl(g, 0.03, 0.34, COL.dark, 0, -0.02, -0.26);        // tube magazine
+      p(g, 0.075, 0.06, 0.12, COL.wood, 0, -0.05, -0.2);    // pump grip
+      const stock = p(g, 0.06, 0.12, 0.22, COL.wood, 0, -0.03, 0.2); stock.rotation.x = -0.05;
+      p(g, 0.022, 0.026, 0.02, COL.chrome, 0, 0.11, -0.46); // bead sight
+      g.userData.muzzle = new THREE.Vector3(0, 0.05, -0.52);
       break;
-    case 'rifle':
-      p(g, 0.08, 0.12, 0.42, col, 0, 0, -0.1);
-      p(g, 0.05, 0.05, 0.3, dark, 0, 0.02, -0.4);
-      p(g, 0.06, 0.16, 0.08, dark, 0, -0.12, 0.02);
-      p(g, 0.06, 0.12, 0.1, dark, 0, -0.1, -0.14);
-      p(g, 0.07, 0.1, 0.14, 0x6b4a2f, 0, 0, 0.14);
-      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.56);
+    }
+    case 'rifle': {   // AR — the hero weapon
+      p(g, 0.07, 0.085, 0.3, COL.dark, 0, 0.02, -0.02);     // upper receiver
+      p(g, 0.058, 0.06, 0.26, COL.black, 0, 0.02, -0.32);   // handguard
+      cyl(g, 0.018, 0.34, COL.steel, 0, 0.035, -0.42);      // barrel
+      cyl(g, 0.03, 0.08, COL.black, 0, 0.035, -0.62);       // muzzle brake
+      p(g, 0.024, 0.055, 0.02, COL.black, 0, 0.092, -0.3);  // front sight post
+      reddot(g, -0.02);                                      // optic
+      const m1 = p(g, 0.05, 0.11, 0.07, col, 0, -0.1, 0.0); m1.rotation.x = 0.14;
+      const m2 = p(g, 0.05, 0.1, 0.068, col, 0, -0.17, -0.03); m2.rotation.x = 0.42; // curved mag
+      const grip = p(g, 0.055, 0.12, 0.08, COL.black, 0, -0.1, 0.13); grip.rotation.x = 0.34;
+      cyl(g, 0.022, 0.12, COL.black, 0, 0.02, 0.16);        // buffer tube
+      p(g, 0.05, 0.1, 0.16, COL.dark, 0, 0.0, 0.25);        // stock
+      g.userData.muzzle = new THREE.Vector3(0, 0.035, -0.66);
       break;
-    case 'lmg':
-      p(g, 0.1, 0.15, 0.48, col, 0, 0, -0.1);
-      p(g, 0.06, 0.06, 0.32, dark, 0, 0.02, -0.44);
-      p(g, 0.1, 0.18, 0.1, dark, 0, -0.14, -0.05);
-      p(g, 0.12, 0.12, 0.16, dark, 0, -0.1, 0.1);
-      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.62);
+    }
+    case 'lmg': {
+      p(g, 0.095, 0.13, 0.4, COL.dark, 0, 0, -0.05);        // big receiver
+      cyl(g, 0.025, 0.42, COL.steel, 0, 0.04, -0.44);       // heavy barrel
+      cyl(g, 0.045, 0.08, COL.black, 0, 0.04, -0.64);       // flash hider
+      p(g, 0.11, 0.14, 0.15, col, 0, -0.02, 0.08);          // ammo box
+      const grip = p(g, 0.06, 0.13, 0.08, COL.black, 0, -0.11, 0.16); grip.rotation.x = 0.3;
+      p(g, 0.055, 0.1, 0.16, COL.dark, 0, 0, 0.26);         // stock
+      const l1 = post(g, 0.012, 0.2, COL.black, -0.05, -0.1, -0.46); l1.rotation.z = 0.5;
+      const l2 = post(g, 0.012, 0.2, COL.black, 0.05, -0.1, -0.46); l2.rotation.z = -0.5; // bipod
+      p(g, 0.02, 0.03, 0.16, COL.black, 0, 0.1, -0.08);     // top rail
+      g.userData.muzzle = new THREE.Vector3(0, 0.04, -0.68);
       break;
-    case 'sniper': {
-      p(g, 0.07, 0.11, 0.5, col, 0, 0, -0.05);
-      p(g, 0.045, 0.045, 0.5, dark, 0, 0.02, -0.5);
-      p(g, 0.06, 0.14, 0.08, dark, 0, -0.11, 0.06);
-      const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.2, 8), mat(dark));
-      scope.rotation.x = Math.PI / 2;
-      scope.position.set(0, 0.1, -0.1);
-      g.add(scope);
-      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.76);
+    }
+    case 'sniper': {   // bolt-action — the hero weapon #2
+      p(g, 0.065, 0.09, 0.44, COL.dark, 0, 0, -0.02);       // receiver
+      cyl(g, 0.02, 0.5, COL.steel, 0, 0.03, -0.44);         // long barrel
+      cyl(g, 0.036, 0.09, COL.black, 0, 0.03, -0.7);        // muzzle brake
+      p(g, 0.02, 0.05, 0.03, COL.black, 0, 0.09, -0.14);    // scope mount (front)
+      p(g, 0.02, 0.05, 0.03, COL.black, 0, 0.09, 0.06);     // scope mount (rear)
+      cyl(g, 0.035, 0.28, COL.black, 0, 0.135, -0.04);      // scope tube
+      cyl(g, 0.05, 0.06, COL.dark, 0, 0.135, -0.2);         // objective bell
+      p(g, 0.03, 0.03, 0.008, 0x66ccff, 0, 0.135, 0.11, true); // ocular lens glow
+      const bolt = post(g, 0.012, 0.09, COL.steel, 0.06, 0.0, 0.07); bolt.rotation.z = -0.9;
+      const grip = p(g, 0.05, 0.12, 0.08, col, 0, -0.1, 0.12); grip.rotation.x = 0.32;
+      p(g, 0.055, 0.11, 0.26, COL.dark, 0, -0.02, 0.26);    // stock
+      p(g, 0.05, 0.05, 0.1, COL.dark, 0, 0.06, 0.16);       // cheek riser
+      g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.76);
       break;
     }
     case 'plasma': {
-      p(g, 0.09, 0.12, 0.4, 0x1e3a4a, 0, 0, -0.1);
-      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.34, 8), mat(col, { emissive: col }));
-      core.rotation.x = Math.PI / 2;
-      core.position.set(0, 0.03, -0.18);
-      g.add(core);
-      p(g, 0.06, 0.15, 0.08, 0x23272f, 0, -0.12, 0.04);
+      p(g, 0.09, 0.11, 0.36, 0x1e2a3a, 0, 0, -0.06);        // body
+      cyl(g, 0.052, 0.3, 0x142130, 0, 0.03, -0.2);          // barrel shroud
+      cyl(g, 0.032, 0.34, col, 0, 0.03, -0.18, true);       // glowing core
+      p(g, 0.02, 0.06, 0.14, col, 0.065, 0.02, -0.02, true);  // energy cell R
+      p(g, 0.02, 0.06, 0.14, col, -0.065, 0.02, -0.02, true); // energy cell L
+      const grip = p(g, 0.056, 0.14, 0.08, 0x22303f, 0, -0.11, 0.05); grip.rotation.x = 0.3;
+      p(g, 0.05, 0.05, 0.02, col, 0, 0.03, -0.34, true);    // emitter ring
       g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.42);
       break;
     }
     case 'knife': {
-      const blade = p(g, 0.02, 0.09, 0.3, col, 0, 0.02, -0.18, true);
-      blade.rotation.x = 0.05;
-      p(g, 0.035, 0.035, 0.12, 0x23272f, 0, 0, 0.02);
-      p(g, 0.09, 0.03, 0.03, 0x8a6d1d, 0, 0, -0.04);
-      g.userData.muzzle = new THREE.Vector3(0, 0, -0.3);
+      const blade = p(g, 0.016, 0.06, 0.32, COL.chrome, 0, 0.03, -0.18); blade.rotation.x = 0.04;
+      p(g, 0.006, 0.02, 0.3, COL.steel, 0.008, 0.055, -0.18);  // edge highlight
+      p(g, 0.09, 0.022, 0.03, COL.dark, 0, 0.0, -0.02);      // guard
+      p(g, 0.035, 0.045, 0.13, COL.black, 0, 0.0, 0.06);     // handle
+      g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.34);
+      break;
+    }
+    case 'pickaxe': {  // harvesting tool (building modes)
+      const handle = post(g, 0.02, 0.5, COL.wood, 0, -0.04, -0.08); handle.rotation.x = Math.PI / 2;
+      const head = p(g, 0.05, 0.07, 0.3, COL.steel, 0, 0.07, -0.32); head.rotation.x = 0.32;
+      p(g, 0.045, 0.045, 0.09, COL.chrome, 0, 0.13, -0.44);  // pick tip
+      g.userData.muzzle = new THREE.Vector3(0, 0.08, -0.46);
       break;
     }
     case 'zmelee':
     case 'spit': {
       // zombie claws
       for (let i = -1; i <= 1; i++) {
-        const claw = p(g, 0.02, 0.02, 0.14, 0xd8e6b0, i * 0.035, 0, -0.1);
+        const claw = p(g, 0.02, 0.02, 0.16, 0xd8e6b0, i * 0.038, 0, -0.1);
         claw.rotation.x = 0.2;
       }
       g.userData.muzzle = new THREE.Vector3(0, 0, -0.2);
       break;
     }
-    default: // botgun
-      p(g, 0.08, 0.12, 0.36, 0x5c1f2e, 0, 0, -0.1);
-      p(g, 0.05, 0.05, 0.2, 0xff5964, 0, 0.02, -0.32, true);
-      p(g, 0.06, 0.14, 0.07, 0x23272f, 0, -0.11, 0.02);
-      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.44);
+    default: {  // botgun — alien carbine
+      p(g, 0.08, 0.11, 0.34, 0x4a1824, 0, 0, -0.06);
+      cyl(g, 0.03, 0.22, 0x5c1f2e, 0, 0.02, -0.28);
+      cyl(g, 0.028, 0.2, 0xff5964, 0, 0.02, -0.3, true);     // glowing barrel core
+      const grip = p(g, 0.058, 0.14, 0.08, 0x23272f, 0, -0.11, 0.04); grip.rotation.x = 0.3;
+      p(g, 0.05, 0.05, 0.02, 0xff5964, 0, 0.02, -0.44, true); // muzzle glow
+      g.userData.muzzle = new THREE.Vector3(0, 0.02, -0.48);
+    }
   }
   g.scale.setScalar(scale);
   return g;

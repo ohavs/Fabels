@@ -1,8 +1,14 @@
-# Weapon viewmodel images
+# Weapon viewmodel images (optional override)
 
-Drop transparent-background PNGs here and they replace the procedural
-first-person weapon automatically (the game tries to load each file at
-runtime; if it isn't there, it falls back to the built-in 3D model).
+The game now ships **detailed low-poly 3D weapon models built in code**
+(`buildGunMesh` in `js/weapons.js`). Real 3D is the default because it
+handles aiming-down-sights (ADS) and every camera angle automatically —
+a flat 2D sprite can't rotate when you aim.
+
+This folder is only an **optional override**: drop a transparent-background
+PNG here and it replaces the 3D first-person viewmodel for that weapon.
+If no file is present (the normal case), the 3D model is used. The
+third-person weapon in the character's hand always uses the 3D model.
 
 **Filenames** (one per weapon, exact names):
 
