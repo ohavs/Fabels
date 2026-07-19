@@ -99,6 +99,7 @@ function finishBoot(online) {
     UI.bindHUD(state.input, {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },
+      onSettings: pauseForSettings,
     });
     state.renderer = createRenderer($('game-canvas'));
     window.addEventListener('resize', fitRenderer);
@@ -246,7 +247,8 @@ function wireMenu() {
     SFX.click();
     if (state.input) state.input.applySettings(settings);
     gamepad.clearFocus();
-    UI.showScreen('menu');
+    if (state.paused) resumeFromSettings();   // opened mid-match → resume
+    else UI.showScreen('menu');
   });
 }
 
@@ -339,9 +341,14 @@ function enterOnlineLobby(room) {
 
   const renderOpts = () => {
     const m = room.meta || {};
+    const cap = room.mode === 'duel' ? 2 : 12;   // duel is strictly 1v1
     UI.renderLobbyOptions({
       map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount ?? 4,
       showBots: ['team', 'ctf', 'tactical', 'br', 'zonewars'].includes(room.mode),
+      maxPlayers: room.mode === 'duel' ? null : {
+        value: m.maxPlayers || 6,
+        options: [2, 3, 4, 6, 8, 10, 12].filter((n) => n <= cap),
+      },
       privacy: { value: m.private ? 'private' : 'public' },
       canPick: room.isHost && m.state === 'waiting',
       onPick: (patch) => room.setOptions(patch),
@@ -500,6 +507,7 @@ function startLoop(game) {
   state.input.enabled = true;
   state.input.aiming = false;
   state.input.crouchHeld = false;
+  state.input.canBuildTools = game.canBuild;   // enables the quick-build swap
   state.input.requestLock();
   // mobile: go fullscreen + lock to landscape (best effort)
   if (state.input.touchMode) {
@@ -508,12 +516,19 @@ function startLoop(game) {
       fitRenderer();
     }).catch(() => {});
   }
-  state.lastTs = performance.now();
   startMusic('battle');
+  runLoop();
+}
 
+// the render/update loop, restartable so the settings pause can resume it
+function runLoop() {
+  cancelAnimationFrame(state.raf);
+  state.lastTs = performance.now();
   const frame = (ts) => {
     const dt = Math.min(0.1, (ts - state.lastTs) / 1000) || 0.016;
     state.lastTs = ts;
+    const game = state.game;
+    if (!game) return;
     game.update(dt);
     state.renderer.render(game.scene, game.camera);
     UI.updateHUD(game, state.input);
@@ -525,8 +540,29 @@ function startLoop(game) {
 function stopLoop() {
   cancelAnimationFrame(state.raf);
   state.raf = 0;
+  state.paused = false;
   state.input.enabled = false;
   state.input.exitLock();
+}
+
+// in-game settings: freeze the match, open the settings screen, resume on back
+function pauseForSettings() {
+  if (!state.game) return;
+  cancelAnimationFrame(state.raf); state.raf = 0;
+  state.paused = true;
+  state.input.enabled = false;
+  state.input.exitLock();
+  UI.renderSettings(() => state.input.applySettings(settings));
+  UI.showScreen('settings');
+}
+
+function resumeFromSettings() {
+  state.paused = false;
+  state.input.applySettings(settings);
+  UI.showScreen('game');
+  state.input.enabled = true;
+  state.input.requestLock();
+  runLoop();
 }
 
 async function exitMatch() {

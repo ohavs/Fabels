@@ -77,7 +77,7 @@ function pillRow(el, items, selected, canPick, onPick, labelFn) {
   }
 }
 
-export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, practiceMode, privacy }) {
+export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, practiceMode, privacy, maxPlayers }) {
   const wrap = $('practice-mode-wrap');
   wrap.style.display = practiceMode ? '' : 'none';
   if (practiceMode) {
@@ -89,6 +89,12 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   if (showBots) {
     pillRow($('bot-picker'), BOT_LEVEL_ORDER, botLevel, canPick, (b) => onPick({ botLevel: b }), (b) => t('bots_' + b));
     pillRow($('botcount-picker'), [0, 2, 3, 4, 5, 6], botCount, canPick, (n) => onPick({ botCount: n }), (n) => String(n));
+  }
+  // online host: cap the lobby size (per-map / per-mode, not fixed)
+  $('maxplayers-wrap').style.display = maxPlayers ? '' : 'none';
+  if (maxPlayers) {
+    pillRow($('maxplayers-picker'), maxPlayers.options, maxPlayers.value, canPick,
+      (n) => onPick({ maxPlayers: n }), (n) => String(n));
   }
   // online rooms: host chooses public (matchmaking) or private (code only)
   $('privacy-wrap').style.display = privacy ? '' : 'none';
@@ -467,7 +473,7 @@ function renderScoreboard(game) {
 }
 
 // bind HUD buttons to the input layer
-export function bindHUD(input, { onExit, onChat }) {
+export function bindHUD(input, { onExit, onChat, onSettings }) {
   paintIcons();
   window.addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
 
@@ -521,6 +527,7 @@ export function bindHUD(input, { onExit, onChat }) {
   hold($('btn-score'), () => { sbToggle = !sbToggle; });
   hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
   hold($('btn-emote'), () => $('emote-wheel').classList.toggle('hidden'));
+  if (onSettings) hold($('btn-ingame-settings'), () => onSettings());
 
   // build bar tool selection
   for (const b of document.querySelectorAll('#build-bar .bb')) {

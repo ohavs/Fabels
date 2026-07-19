@@ -793,6 +793,7 @@ export class Game {
       p.nadeCd = Math.max(0, p.nadeCd - dt);
       p.buildCd = Math.max(0, p.buildCd - dt);
       p.pickCd = Math.max(0, p.pickCd - dt);
+      p.mantleCd = Math.max(0, (p.mantleCd || 0) - dt);
       p.buffSpeedT = Math.max(0, p.buffSpeedT - dt);
       p.buffDmgT = Math.max(0, p.buffDmgT - dt);
       p.danceT = Math.max(0, p.danceT - dt);
@@ -1091,26 +1092,32 @@ export class Game {
       return out;
     };
 
-    // X axis (with step-up)
+    // X axis (step-up for low ledges, mantle/hurdle for taller ones)
     let nx = p.x + p.vx * dt;
     let hits = overlaps(nx, p.y, p.z);
     if (hits.length) {
       const stepTop = Math.max(...hits.map((c) => c.y1));
-      if (p.grounded && stepTop - p.y <= 0.6 && !overlaps(nx, stepTop + 0.01, p.z).length) {
-        p.y = stepTop + 0.01;
+      const rise = stepTop - p.y;
+      if (p.grounded && rise <= 0.6 && !overlaps(nx, stepTop + 0.01, p.z).length) {
+        p.y = stepTop + 0.01;                                   // stairs / kerbs
+      } else if (this._canMantle(p, rise, wishX) && !overlaps(nx, stepTop + 0.02, p.z).length) {
+        this._mantle(p, stepTop);                               // hurdle up the ledge
       } else {
         nx = p.x; p.vx = 0;
       }
     }
     p.x = nx;
 
-    // Z axis (with step-up)
+    // Z axis (step-up + mantle)
     let nz = p.z + p.vz * dt;
     hits = overlaps(p.x, p.y, nz);
     if (hits.length) {
       const stepTop = Math.max(...hits.map((c) => c.y1));
-      if (p.grounded && stepTop - p.y <= 0.6 && !overlaps(p.x, stepTop + 0.01, nz).length) {
+      const rise = stepTop - p.y;
+      if (p.grounded && rise <= 0.6 && !overlaps(p.x, stepTop + 0.01, nz).length) {
         p.y = stepTop + 0.01;
+      } else if (this._canMantle(p, rise, wishZ) && !overlaps(p.x, stepTop + 0.02, nz).length) {
+        this._mantle(p, stepTop);
       } else {
         nz = p.z; p.vz = 0;
       }
@@ -1134,6 +1141,21 @@ export class Game {
     if (ny <= 0) { ny = 0; if (p.vy <= 0) { p.vy = 0; p.grounded = true; } }
     p.y = ny;
     if (wasAir && p.grounded && p === this.me) SFX.land();
+  }
+
+  // Mantle / hurdle: climb a ledge that's too tall for the step-up but within
+  // reach — but only when you're actually pushing into it (so you don't
+  // magically climb every wall). Fortnite-style: chest-to-head-high ledges.
+  _canMantle(p, rise, wish) {
+    return (p.mantleCd || 0) <= 0 && rise > 0.6 && rise <= 1.85
+      && Math.abs(wish) > 0.35 && (p.grounded || p.vy > -4);
+  }
+
+  _mantle(p, stepTop) {
+    p.y = stepTop + 0.02;
+    p.vy = Math.max(p.vy, 2.6);      // small pop to settle onto the ledge
+    p.mantleCd = 0.45;
+    if (p === this.me) { this.addShake(0.12); this.onRumble?.(0.3, 90); SFX.jump?.(); }
   }
 
   // Record a timestamped position sample for a remote entity. The interp

@@ -134,7 +134,7 @@ export class GamePad {
     if (hit('nade')) inp.wantNade = true;
     if (hit('camera')) inp.wantCamera = true;
     if (hit('emote')) inp.wantEmote = 0;
-    if (hit('gun')) inp.setTool('gun');
+    if (hit('gun')) inp.toggleBuild();      // Y swaps weapon ↔ build (last piece)
     if (hit('wall')) inp.setTool('wall');
     if (hit('ramp')) inp.setTool('ramp');
     if (hit('floor')) inp.setTool('floor');

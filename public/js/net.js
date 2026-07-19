@@ -68,7 +68,7 @@ export class Room {
       botLevel: options.botLevel || 'normal',
       botCount: options.botCount || 4,
       startAt: 0,
-      createdAt: FB.serverNow(), maxPlayers: maxFor(mode),
+      createdAt: FB.serverNow(), maxPlayers: options.maxPlayers || maxFor(mode),
     };
     await FB.d.set(room._ref('meta'), meta);
     room.meta = meta;

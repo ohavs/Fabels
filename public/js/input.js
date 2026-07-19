@@ -35,7 +35,9 @@ export class Input {
     this.wantNade = false;
     this.wantEmote = -1;       // -1 none, else emote index
     this.wantCamera = false;
-    this.tool = 'gun';         // gun | pick | wall | ramp | floor | edit
+    this.tool = 'gun';         // gun | pick | wall | ramp | floor | cone | edit
+    this.lastPiece = 'wall';   // last build piece, for the quick-build swap
+    this.canBuildTools = false;// set true by the loop in build-capable modes
     this.onTool = null;        // (tool) UI callback when tool changes
     this.wantChat = -1;
     this.scoreHeld = false;
@@ -84,7 +86,18 @@ export class Input {
   consumeCamera() { const v = this.wantCamera; this.wantCamera = false; return v; }
   consumeChat()   { const v = this.wantChat;   this.wantChat = -1;      return v; }
 
-  setTool(tool) { this.tool = tool; if (this.onTool) this.onTool(tool); }
+  setTool(tool) {
+    if (tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone') this.lastPiece = tool;
+    this.tool = tool;
+    if (this.onTool) this.onTool(tool);
+  }
+
+  // one-button swap between weapon and build (1v1.lol-style): jump straight
+  // into build mode with your last-used piece, or back to the gun.
+  toggleBuild() {
+    if (!this.canBuildTools) return;
+    this.setTool(this.tool === 'gun' ? (this.lastPiece || 'wall') : 'gun');
+  }
 
   requestLock() { if (!this.touchMode && this.enabled && !this._locked) this._canvas.requestPointerLock?.(); }
   exitLock() { document.exitPointerLock?.(); }
@@ -108,7 +121,7 @@ export class Input {
       if (e.code === 'KeyB') this.wantEmote = 0;
       if (e.code === 'KeyV') this.wantCamera = true;
       // tool selection (1v1.lol-style): Q=weapon, 1=wall 2=ramp 3=floor 4=pickaxe, E=edit
-      if (e.code === 'KeyQ') this.setTool('gun');
+      if (e.code === 'KeyQ') this.toggleBuild();   // one-key swap weapon↔build
       if (e.code === 'Digit1') this.setTool('wall');
       if (e.code === 'Digit2') this.setTool('ramp');
       if (e.code === 'Digit3') this.setTool('floor');

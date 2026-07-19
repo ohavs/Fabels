@@ -31,6 +31,7 @@ export const ICONS = {
   ramp: svg('<path d="M3 20h18"/><path d="M4 20L18 6"/><path d="M18 6v14"/><path d="M8 20v-5M12 20v-9"/>', { w: 1.7 }),
   floor: svg('<path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v3l9 4 9-4V8"/>', { w: 1.7 }),
   cone: svg('<path d="M12 3L3 20h18z"/><path d="M12 3v17M3 20h18M7.5 11.5h9"/>', { w: 1.6 }),
+  gear: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>', { w: 1.7 }),
   edit: svg('<path d="M14 4l6 6"/><path d="M4 20l1-4L16 5l3 3L8 19z"/>'),
   pickaxe: svg('<path d="M4 20l8-8"/><path d="M4 8c4-3 9-3 13 1M20 8c-3-4-8-4-12-1"/><path d="M11 11l2 2"/>', { w: 1.7 }),
 
