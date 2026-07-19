@@ -32,6 +32,8 @@ export class GamePad {
     this.inMatch = () => false;   // true while a match is running
     this.onConnect = null;        // notify UI (e.g. settings status)
     this.doBack = () => {};        // invoked on B in menus
+    this.onFirstInput = null;     // first button press (e.g. unlock audio on Xbox)
+    this._gotInput = false;
   }
 
   bind(input) { this.input = input; }
@@ -80,6 +82,9 @@ export class GamePad {
 
     const btns = pad.buttons.map(isPressed);
     const just = (i) => btns[i] && !this._prev[i];
+
+    // first controller press → let the app unlock audio (Xbox has no tap)
+    if (!this._gotInput && btns.some(Boolean)) { this._gotInput = true; this.onFirstInput?.(); }
 
     if (this._rebind) {
       const i = btns.findIndex((v, k) => v && !this._prev[k]);

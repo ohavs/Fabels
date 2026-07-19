@@ -349,8 +349,10 @@ export function updateHUD(game, input) {
     ? t('respawnIn', { n: Math.max(1, Math.ceil(me.respawnT)) })
     : '';
 
-  // desktop pointer-lock hint
-  $('lock-hint').classList.toggle('show', !input.touchMode && !document.pointerLockElement);
+  // desktop pointer-lock hint — irrelevant on touch or with a controller
+  // (the Xbox browser has no mouse, so the gamepad drives look directly)
+  $('lock-hint').classList.toggle('show',
+    !input.touchMode && !document.pointerLockElement && !gamepad.connected);
 
   // scoreboard
   const showSb = input.scoreHeld || sbToggle;

@@ -109,6 +109,7 @@ function finishBoot(online) {
     gamepad.inMatch = () => !!state.game && state.input.enabled;
     gamepad.doBack = handleGamepadBack;
     gamepad.onConnect = () => UI.updatePadStatus();
+    gamepad.onFirstInput = () => { unlockAudio(); if (!state.game) startMusic('menu'); };
     gamepad.start();
 
     // drain any settings queued while offline once the network returns
