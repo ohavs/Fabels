@@ -12,6 +12,7 @@ import { FB } from './fb.js';
 import { GAME, QUICK_CHAT } from './config.js';
 import { roomCode } from './util.js';
 import { t } from './i18n.js';
+import { Mesh, rtcSupported } from './rtc.js';
 
 const maxFor = (mode) => (mode === 'duel' ? 2 : GAME.maxPlayers);
 const teamlike = (mode) => mode === 'team' || mode === 'zombies' || mode === 'ctf';
@@ -30,6 +31,7 @@ export class Room {
     this._timers = [];
     this._t0 = 0;
     this._left = false;
+    this.mesh = null;               // WebRTC fast lane (created in bindGame)
   }
 
   get myUid() { return FB.uid; }
@@ -129,6 +131,7 @@ export class Room {
     this._unsubs.push(FB.d.onChildAdded(this._ref('players'), (s) => {
       this.playersCache[s.key] = s.val();
       if (this.game && s.key !== FB.uid) this.game.upsertRemote(s.key, s.val());
+      if (this.mesh && s.key !== FB.uid) this.mesh.addPeer(s.key);
       this._emitLobby();
     }));
     this._unsubs.push(FB.d.onChildChanged(this._ref('players'), (s) => {
@@ -139,6 +142,7 @@ export class Room {
     this._unsubs.push(FB.d.onChildRemoved(this._ref('players'), (s) => {
       delete this.playersCache[s.key];
       if (this.game) this.game.removePlayer(s.key);
+      if (this.mesh) this.mesh.removePeer(s.key);
       this._emitLobby();
       this._maybeMigrateHost(s.key);
     }));
@@ -197,6 +201,24 @@ export class Room {
     this._timers.push(setInterval(() => {
       if (game.me) d.update(meRef, game.getSelfState()).catch(() => {});
     }, GAME.syncMs));
+
+    // ---- WebRTC fast lane: direct P2P position/aim at ~20Hz ----
+    // RTDB above stays the reliable baseline & carries identity/score;
+    // this just delivers movement sooner to peers with a live channel.
+    // Peers where the direct channel never opens keep using RTDB only.
+    if (rtcSupported()) {
+      this.mesh = new Mesh(this.id);
+      this.mesh.onState = (uid, pkt) => { if (pkt && pkt.t === 's') game.applyNetState(uid, pkt); };
+      const humanUids = Object.keys(this.playersCache).filter((u) => u !== FB.uid);
+      this.mesh.start(humanUids).catch(() => {});
+      this._timers.push(setInterval(() => {
+        if (!game.me || !this.mesh) return;
+        const n = this.mesh.connectedCount();
+        // render closer to real-time when the low-latency lane is live
+        game.interpDelayMs = n > 0 ? 85 : 120;
+        if (n > 0) this.mesh.broadcast(game.getNetPacket());
+      }, GAME.rtcMs));
+    }
 
     const pushTransient = (path, val) => {
       const r = d.push(this._ref(path), { ...val, t: FB.serverNow() });
@@ -376,6 +398,7 @@ export class Room {
   async leave() {
     if (this._left) return;
     this._left = true;
+    if (this.mesh) { try { this.mesh.close(); } catch { /* ignore */ } this.mesh = null; }
     for (const u of this._unsubs) { try { u(); } catch { /* ignore */ } }
     for (const tm of this._timers) { clearInterval(tm); clearTimeout(tm); }
     this._unsubs = []; this._timers = [];

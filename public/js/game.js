@@ -87,6 +87,7 @@ export class Game {
     this.shake = 0;                 // screen-shake magnitude, decays
     this.recoilP = 0; this.recoilY = 0;  // visual camera recoil (does not move aim)
     this.dmgFloats = [];            // floating damage numbers
+    this.interpDelayMs = 120;       // render behind newest snapshot (adaptive: lower on WebRTC)
 
     // hooks (wired by net.js / main.js)
     this.onShot = null;         // (spec) my tracer for others
@@ -499,6 +500,7 @@ export class Game {
     p.name = st.name ?? p.name;
     p.netX = st.x; p.netY = st.y; p.netZ = st.z;
     p.netYaw = st.yaw || 0; p.netPitch = st.pitch || 0;
+    if (p.alive) this._pushSnap(p, p.netX, p.netY, p.netZ, p.netYaw, p.netPitch);
     p.hp = st.hp; p.maxHp = st.maxHp || 100;
     p.armor = st.ar || 0;
     p.stance = st.st || 0;
@@ -879,14 +881,62 @@ export class Game {
     if (wasAir && p.grounded && p === this.me) SFX.land();
   }
 
+  // Record a timestamped position sample for a remote entity. The interp
+  // step below renders slightly in the past and slides between samples,
+  // which turns discrete network updates (RTDB ~11Hz, WebRTC ~20Hz) into
+  // smooth constant-velocity motion — the standard "snapshot interpolation".
+  _pushSnap(p, x, y, z, yaw, pitch) {
+    const s = p.snaps || (p.snaps = []);
+    s.push({ t: performance.now(), x, y, z, yaw, pitch });
+    if (s.length > 10) s.shift();
+  }
+
   _interpRemote(p, dt) {
-    const k = 1 - Math.pow(0.00004, dt);
-    p.x = lerp(p.x, p.netX, k);
-    p.y = lerp(p.y, p.netY, k);
-    p.z = lerp(p.z, p.netZ, k);
-    p.yaw = lerpAngle(p.yaw, p.netYaw, k);
-    p.pitch = lerp(p.pitch, p.netPitch, k);
-    if ((p.x - p.netX) ** 2 + (p.z - p.netZ) ** 2 > 64) { p.x = p.netX; p.y = p.netY; p.z = p.netZ; }
+    const s = p.snaps;
+    if (!s || !s.length) {
+      // no buffer yet → fall back to simple exponential smoothing
+      const k = 1 - Math.pow(0.00004, dt);
+      p.x = lerp(p.x, p.netX, k); p.y = lerp(p.y, p.netY, k); p.z = lerp(p.z, p.netZ, k);
+      p.yaw = lerpAngle(p.yaw, p.netYaw, k); p.pitch = lerp(p.pitch, p.netPitch, k);
+      return;
+    }
+    const render = performance.now() - this.interpDelayMs;
+    let a = null, b = null;
+    for (let i = s.length - 1; i >= 0; i--) {
+      if (s[i].t <= render) { a = s[i]; b = s[i + 1] || null; break; }
+    }
+    let tx, ty, tz, tyaw, tpitch;
+    if (a && b) {
+      // between two samples — plain interpolation
+      const f = clamp((render - a.t) / (b.t - a.t || 1), 0, 1);
+      tx = lerp(a.x, b.x, f); ty = lerp(a.y, b.y, f); tz = lerp(a.z, b.z, f);
+      tyaw = lerpAngle(a.yaw, b.yaw, f); tpitch = lerp(a.pitch, b.pitch, f);
+    } else if (a) {
+      // ran past the newest sample — extrapolate briefly from last velocity,
+      // but never across a teleport (a huge prev→a jump gives a bogus velocity)
+      const prev = s[s.length - 2];
+      const ahead = clamp(render - a.t, 0, 160);
+      const jump2 = prev ? (a.x - prev.x) ** 2 + (a.z - prev.z) ** 2 : 0;
+      if (prev && a.t > prev.t && jump2 < 64) {
+        const inv = 1 / (a.t - prev.t);
+        tx = a.x + (a.x - prev.x) * inv * ahead;
+        ty = a.y + (a.y - prev.y) * inv * ahead;
+        tz = a.z + (a.z - prev.z) * inv * ahead;
+      } else { tx = a.x; ty = a.y; tz = a.z; }
+      tyaw = a.yaw; tpitch = a.pitch;
+    } else {
+      // render time predates our oldest sample — clamp to it
+      const f0 = s[0];
+      tx = f0.x; ty = f0.y; tz = f0.z; tyaw = f0.yaw; tpitch = f0.pitch;
+    }
+    if ((p.x - tx) ** 2 + (p.z - tz) ** 2 > 64) { p.x = tx; p.y = ty; p.z = tz; }
+    else {
+      // light smoothing on top removes any residual micro-jitter
+      const k = 1 - Math.pow(0.0001, dt);
+      p.x = lerp(p.x, tx, k); p.y = lerp(p.y, ty, k); p.z = lerp(p.z, tz, k);
+    }
+    p.yaw = lerpAngle(p.yaw, tyaw, Math.min(1, dt * 20));
+    p.pitch = lerp(p.pitch, tpitch, Math.min(1, dt * 20));
   }
 
   // ---------------- firing ----------------
@@ -1849,6 +1899,7 @@ export class Game {
         p.x = p.netX = s.x; p.y = p.netY = s.y; p.z = p.netZ = s.z;
       }
       p.netX = s.x; p.netY = s.y; p.netZ = s.z; p.netYaw = s.yaw;
+      if (p.alive) this._pushSnap(p, s.x, s.y, s.z, s.yaw, 0);
       p.hp = s.hp; p.maxHp = s.m || 100;
     }
   }
@@ -1960,6 +2011,32 @@ export class Game {
       tier: p.tier, w: p.weapon, st: p.stance, tm: p.team,
       kills: p.kills, deaths: p.deaths, score: p.score,
     };
+  }
+
+  // Compact position/aim packet for the WebRTC fast lane (sent ~20Hz).
+  // Only the fast-changing fields; identity/loadout/score still travel on
+  // the slower RTDB full-state so this stays tiny.
+  getNetPacket() {
+    const p = this.me;
+    return {
+      t: 's',
+      x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
+      yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2),
+      hp: Math.round(p.hp), st: p.stance, a: p.alive ? 1 : 0,
+    };
+  }
+
+  // Apply a fast-lane packet from a peer. Position/aim only — alive/death
+  // transitions are left to the authoritative RTDB full-state so their
+  // fx/sfx/feed fire exactly once.
+  applyNetState(uid, s) {
+    const p = this.players.get(uid);
+    if (!p || !p.remote || !p.alive || s.a === 0) return;
+    p.netX = s.x; p.netY = s.y; p.netZ = s.z;
+    p.netYaw = s.yaw; p.netPitch = s.pitch;
+    if (typeof s.hp === 'number') p.hp = s.hp;
+    if (typeof s.st === 'number') p.stance = s.st;
+    this._pushSnap(p, s.x, s.y, s.z, s.yaw, s.pitch);
   }
 
   dispose() {

@@ -48,6 +48,9 @@
         },
         "flags": {
           ".write": "auth != null"
+        },
+        "sig": {
+          ".write": "auth != null"
         }
       }
     }

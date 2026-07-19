@@ -19,7 +19,8 @@ export const firebaseConfigured = () =>
 
 // ---- Core constants ----------------------------------------------------
 export const GAME = {
-  syncMs: 90,               // player state broadcast (~11Hz)
+  syncMs: 90,               // RTDB player state broadcast (~11Hz baseline / fallback)
+  rtcMs: 50,                // WebRTC fast-lane position broadcast (~20Hz, direct P2P)
   botSyncMs: 110,           // host → guests bot snapshot
   respawnTime: 4,
   invulnTime: 2.5,
