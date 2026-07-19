@@ -147,6 +147,16 @@ export const BUILD = {
   harvestPerHit: 12,  // mats gained per pickaxe hit on a node
 };
 
+// Build materials (Fortnite-style): wood is cheap/weak/fast, brick medium,
+// metal expensive/tough. One shared `mats` pool; costMul scales the per-piece
+// cost and hp sets the structure's health. color/trim drive the mesh look.
+export const BUILD_MATERIALS = {
+  wood:  { hp: 130, costMul: 1,   color: 0x9a7148, trim: 0x6f4e2e, ghost: 0xcaa26a },
+  brick: { hp: 250, costMul: 1.5, color: 0xb0584a, trim: 0x7d3b2e, ghost: 0xe08a76 },
+  metal: { hp: 420, costMul: 2,   color: 0x8b95a6, trim: 0x59626f, ghost: 0xc3ccd9 },
+};
+export const MATERIAL_ORDER = ['wood', 'brick', 'metal'];
+
 // modes that play in third person with the build bar & pickaxe
 export const BUILD_MODES = ['builddm', 'boxfight'];
 

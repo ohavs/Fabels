@@ -15,6 +15,7 @@ import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
   ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES, LOADOUT_KIT,
+  BUILD_MATERIALS, MATERIAL_ORDER,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -142,6 +143,7 @@ export class Game {
       ads: false, bloom: 0,
       armor: 0, nades: GRENADE.start, nadeCd: 0,
       mats: this.mode === 'builddm' ? BUILDDM.matsStart : this.mode === 'boxfight' ? BOXFIGHT.matsStart : this.mode === 'zonewars' ? ZONEWARS.matsStart : BUILD.matsStart, buildCd: 0, pickCd: 0,
+      buildMat: 'wood',            // current build material (wood/brick/metal)
       streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
@@ -1501,7 +1503,10 @@ export class Game {
     }
     const gh = this._ghost;
     gh.visible = true;
-    gh.material.color.setHex(p.mats >= this._buildCost(kind) ? 0x8effa0 : 0xff6b6b);
+    const matId = p.buildMat || 'wood';
+    const afford = p.mats >= this._buildCost(kind, matId);
+    // green when affordable (tinted toward the material), red when short on mats
+    gh.material.color.setHex(afford ? (BUILD_MATERIALS[matId]?.ghost || 0x8effa0) : 0xff6b6b);
     const W = 3.05;
     gh.rotation.set(0, 0, 0);
     if (kind === 'f') { gh.position.set(g.x, g.y + 0.14, g.z); gh.scale.set(W, 0.28, W); }
@@ -1517,15 +1522,29 @@ export class Game {
     }
   }
 
-  _buildCost(kind) {
-    return kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost
+  _buildCost(kind, mat = 'wood') {
+    const base = kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost
       : kind === 'c' ? BUILD.coneCost : BUILD.floorCost;
+    return Math.ceil(base * (BUILD_MATERIALS[mat]?.costMul || 1));
   }
+
+  // cycle / pick the active build material (local player)
+  cycleMaterial(dir) {
+    const p = this.me;
+    if (!p) return;
+    const i = MATERIAL_ORDER.indexOf(p.buildMat || 'wood');
+    const n = MATERIAL_ORDER.length;
+    p.buildMat = MATERIAL_ORDER[(((i + dir) % n) + n) % n];
+    SFX.reload?.();
+  }
+
+  setMaterial(m) { if (this.me && BUILD_MATERIALS[m]) { this.me.buildMat = m; SFX.reload?.(); } }
 
   placeBuild(kind) {
     const p = this.me;
     if (!p?.alive || p.buildCd > 0) return;
-    const cost = this._buildCost(kind);
+    const material = p.buildMat || 'wood';
+    const cost = this._buildCost(kind, material);
     if (p.mats < cost) { this.hudFlags.tierBanner = t('noMats'); return; }
     const tgt = this._buildTarget(kind);
     const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
@@ -1533,7 +1552,7 @@ export class Game {
     p.mats -= cost;
     p.buildCd = BUILD.placeCd;
     this.matchStats.builds++;
-    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, slot: slotKey, ...tgt };
+    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, slot: slotKey, mat: material, ...tgt };
     this._addBuild(spec);
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
     SFX.reloadDone();
@@ -1547,7 +1566,7 @@ export class Game {
     const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
     for (const b of this.builds.values()) if (b.slot === slotKey) return false;
     p.bot.buildCd = 0.6 + Math.random() * 0.5;
-    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, slot: slotKey, ...tgt };
+    const spec = { id: 'b' + randId(5), t: kind, o: p.uid, slot: slotKey, mat: 'wood', ...tgt };
     this._addBuild(spec);
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
     if (this._nearPoint(tgt.x, tgt.z, 40)) SFX.reloadDone();
@@ -1695,9 +1714,11 @@ export class Game {
     const b = hit.b;
     const mask = editMask(b.edit) ^ (1 << (hit.row * 3 + hit.col));
     b.edit = mask;
-    const spec = { id: b.id, t: 'w', o: b.owner, slot: b.slot, x: b.x, y: b.y, z: b.z, ax: b.ax, dir: b.dir, edit: mask };
+    const spec = { id: b.id, t: 'w', o: b.owner, slot: b.slot, mat: b.mat, x: b.x, y: b.y, z: b.z, ax: b.ax, dir: b.dir, edit: mask };
+    const keepHp = b.hp;
     this.removeBuild(b.id, false);
     this._addBuild(spec);
+    const nb = this.builds.get(b.id); if (nb) nb.hp = Math.min(keepHp, nb.maxHp);   // editing doesn't heal
     if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
     SFX.reloadDone();
   }
@@ -1705,8 +1726,9 @@ export class Game {
   _addBuild(spec) {
     if (this.builds.has(spec.id)) return;
     const meshes = [];
-    const woodM = mat(0x9a7148);
-    const darkM = mat(0x6f4e2e);
+    const material = BUILD_MATERIALS[spec.mat] || BUILD_MATERIALS.wood;
+    const woodM = mat(material.color);
+    const darkM = mat(material.trim);
     const addPiece = (x, y, z, w, h, d, { collide = true, m: useM = woodM, rz = 0 } = {}) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), useM);
       m.position.set(x, y + h / 2, z);
@@ -1771,7 +1793,8 @@ export class Game {
       }
     }
     this.builds.set(spec.id, {
-      id: spec.id, t: spec.t, meshes, hp: BUILD.wallHp, owner: spec.o, slot: spec.slot || '',
+      id: spec.id, t: spec.t, meshes, hp: material.hp, maxHp: material.hp, mat: spec.mat || 'wood',
+      owner: spec.o, slot: spec.slot || '',
       x: spec.x, y: spec.y, z: spec.z, ax: spec.ax, dir: spec.dir, edit: editMask(spec.edit),
     });
   }

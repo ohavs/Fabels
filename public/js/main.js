@@ -98,6 +98,8 @@ function finishBoot(online) {
     state.input.applySettings(settings);
     state.input.onCycleWeapon = (dir) => state.game?.cycleSlot(dir);
     state.input.onSelectSlot = (i) => state.game?.selectSlot(i);
+    state.input.onCycleMaterial = (dir) => state.game?.cycleMaterial(dir);
+    state.input.onSelectMaterial = (m) => state.game?.setMaterial(m);
     UI.bindHUD(state.input, {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },

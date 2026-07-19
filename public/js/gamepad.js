@@ -134,9 +134,10 @@ export class GamePad {
     if (hit('camera')) inp.wantCamera = true;
     if (hit('emote')) inp.wantEmote = 0;
     if (hit('gun')) inp.toggleBuild();          // Y swaps weapon ↔ build
-    // LB / RB cycle the inventory (weapons in combat, pieces while building)
-    if (hit('slotPrev')) inp.cycleSlot(-1);
-    if (hit('slotNext')) inp.cycleSlot(1);
+    // LB / RB cycle the inventory (weapons in combat, build material while
+    // building — the D-pad already direct-selects the four pieces)
+    if (hit('slotPrev')) inp.padCycle(-1);
+    if (hit('slotNext')) inp.padCycle(1);
     // X is context-sensitive: reload in combat, toggle edit while building
     if (hit('reload')) {
       if (inp.tool !== 'gun') inp.setTool(inp.tool === 'edit' ? (inp.lastPiece || 'wall') : 'edit');

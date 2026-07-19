@@ -776,3 +776,24 @@ body.touch .rstack { display: grid; }
   .hb-slot { width: 54px; height: 40px; }
   .hotbar.raised { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 70px); }
 }
+
+/* ═══════════ build material selector (wood / brick / metal) ═══════════ */
+.mat-bar {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 130px);
+  display: flex; gap: 6px; z-index: 7; pointer-events: auto;
+  background: rgba(10, 6, 30, 0.78); padding: 5px; border-radius: 14px; border: 2px solid var(--line);
+}
+.mat-bar.hidden { display: none; }
+.mb {
+  display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 10px;
+  background: rgba(20, 12, 48, 0.9); border: 2px solid var(--line); color: var(--muted);
+  font-weight: 800; font-size: 0.72rem; touch-action: none;
+}
+.mb .mb-sw { width: 13px; height: 13px; border-radius: 3px; background: var(--mc); box-shadow: 0 0 0 1px rgba(0,0,0,0.4) inset; }
+.mb.sel { border-color: var(--yellow); color: var(--yellow); background: rgba(255, 210, 0, 0.16); box-shadow: 0 0 10px rgba(255,210,0,0.3); }
+.mb:active { transform: scale(0.93); }
+@media (max-height: 430px) {
+  .mat-bar { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 116px); }
+  .mb { padding: 3px 7px; font-size: 0.66rem; }
+}

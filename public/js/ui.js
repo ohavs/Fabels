@@ -6,6 +6,7 @@
 import { t } from './i18n.js';
 import {
   SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel, RETICLE,
+  BUILD, BUILD_MATERIALS,
 } from './config.js';
 import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
@@ -352,14 +353,28 @@ export function updateHUD(game, input) {
   pips.style.display = showLadder ? '' : 'none';
   if (showLadder) [...pips.children].forEach((el, i) => el.classList.toggle('on', i <= me.tier));
 
-  // build bar: highlight the active tool + grey out unaffordable pieces
+  // build bar: highlight the active tool + grey out unaffordable pieces.
+  // costs and the material selector both follow the chosen material.
   if (game.canBuild) {
+    const curMat = me.buildMat || 'wood';
+    const mul = BUILD_MATERIALS[curMat]?.costMul || 1;
+    const baseCost = { wall: BUILD.wallCost, ramp: BUILD.rampCost, floor: BUILD.floorCost, cone: BUILD.coneCost };
     for (const b of document.querySelectorAll('#build-bar .bb')) {
       const tl = b.dataset.tool;
       b.classList.toggle('sel', tl === tool || (tl === 'gun' && tool === 'gun'));
-      const cost = { wall: 2, ramp: 3, floor: 2, cone: 3 }[tl];
-      if (cost) b.classList.toggle('nomats', me.mats < cost);
+      if (baseCost[tl] != null) {
+        const cost = Math.ceil(baseCost[tl] * mul);
+        b.classList.toggle('nomats', me.mats < cost);
+        const cEl = b.querySelector('.bb-cost'); if (cEl) cEl.textContent = cost;
+      }
     }
+    // material selector: visible while a build piece/edit is active, highlight current
+    const isBuilding = tool !== 'gun' && tool !== 'pick';
+    const mb = $('mat-bar');
+    mb.classList.toggle('hidden', !isBuilding);
+    for (const b of mb.querySelectorAll('.mb')) b.classList.toggle('sel', b.dataset.mat === curMat);
+  } else {
+    $('mat-bar').classList.add('hidden');
   }
   $('btn-cam').classList.toggle('on', game.thirdPerson);
 
@@ -566,6 +581,10 @@ export function bindHUD(input, { onExit, onChat, onSettings }) {
   // build bar tool selection
   for (const b of document.querySelectorAll('#build-bar .bb')) {
     hold(b, () => { input.setTool(b.dataset.tool); $('emote-wheel').classList.add('hidden'); });
+  }
+  // material selector (wood / brick / metal)
+  for (const b of document.querySelectorAll('#mat-bar .mb')) {
+    hold(b, () => { input.selectMaterial(b.dataset.mat); });
   }
   // reflect tool changes on the bar
   input.onTool = (tool) => {

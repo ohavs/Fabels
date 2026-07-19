@@ -41,6 +41,8 @@ export class Input {
     this.onTool = null;        // (tool) UI callback when tool changes
     this.onCycleWeapon = null; // (dir) cycle the weapon hotbar
     this.onSelectSlot = null;  // (i) pick a hotbar slot directly
+    this.onCycleMaterial = null; // (dir) cycle the build material
+    this.onSelectMaterial = null; // (m) pick a build material directly
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;
@@ -108,6 +110,17 @@ export class Input {
     else this._cyclePiece(dir);
   }
 
+  // gamepad LB/RB: weapon in combat, but build material while building — the
+  // D-pad already direct-selects the four pieces, so the shoulder buttons are
+  // free to swap wood/brick/metal (like rotating material in Fortnite).
+  padCycle(dir) {
+    if (this.tool === 'gun') { if (this.onCycleWeapon) this.onCycleWeapon(dir); }
+    else this.cycleMaterial(dir);
+  }
+
+  cycleMaterial(dir) { if (this.onCycleMaterial) this.onCycleMaterial(dir); }
+  selectMaterial(m) { if (this.onSelectMaterial) this.onSelectMaterial(m); }
+
   _cyclePiece(dir) {
     const order = ['wall', 'ramp', 'floor', 'cone'];
     let i = order.indexOf(this.tool);
@@ -143,6 +156,7 @@ export class Input {
       if (e.code === 'Digit3') this.setTool('floor');
       if (e.code === 'Digit5') this.setTool('cone');
       if (e.code === 'Digit4') this.setTool('pick');
+      if (e.code === 'KeyF') this.cycleMaterial(1);   // swap build material
       if (e.code === 'KeyE') this.setTool(this.tool === 'edit' ? 'gun' : 'edit');
     });
     window.addEventListener('keyup', (e) => {
