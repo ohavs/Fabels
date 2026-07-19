@@ -675,8 +675,8 @@ export class Game {
 
       // action routed by the selected tool (gun / pickaxe / build piece / edit)
       const tool = this.canBuild ? input.tool : 'gun';
-      if (tool === 'wall' || tool === 'ramp' || tool === 'floor') {
-        if (input.firing) this.placeBuild({ wall: 'w', ramp: 'r', floor: 'f' }[tool]);
+      if (tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone') {
+        if (input.firing) this.placeBuild({ wall: 'w', ramp: 'r', floor: 'f', cone: 'c' }[tool]);
       } else if (tool === 'pick') {
         if (input.firing) this._swingPickaxe(p);
       } else if (tool === 'edit') {
@@ -826,7 +826,7 @@ export class Game {
   // what the local player is "holding" right now (weapon or pickaxe)
   _heldItem() {
     const tool = this.canBuild && this.input ? this.input.tool : 'gun';
-    if (tool === 'pick' || tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'edit') return 'pickaxe';
+    if (tool === 'pick' || tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone' || tool === 'edit') return 'pickaxe';
     return this.me ? this.me.weapon : 'pistol';
   }
 
@@ -1223,9 +1223,9 @@ export class Game {
       return;
     }
     if (this._editGhost) this._editGhost.visible = false;
-    const active = this.canBuild && p && p.alive && !this.over && (tool === 'wall' || tool === 'ramp' || tool === 'floor');
+    const active = this.canBuild && p && p.alive && !this.over && (tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone');
     if (!active) { if (this._ghost) this._ghost.visible = false; return; }
-    const kind = { wall: 'w', ramp: 'r', floor: 'f' }[tool];
+    const kind = { wall: 'w', ramp: 'r', floor: 'f', cone: 'c' }[tool];
     const g = this._buildTarget(kind);
     if (!this._ghost) {
       const mat_ = new THREE.MeshBasicMaterial({ color: 0x8effa0, transparent: true, opacity: 0.32, depthWrite: false });
@@ -1237,14 +1237,15 @@ export class Game {
     }
     const gh = this._ghost;
     gh.visible = true;
-    const cost = kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost : BUILD.floorCost;
-    gh.material.color.setHex(p.mats >= cost ? 0x8effa0 : 0xff6b6b);
+    gh.material.color.setHex(p.mats >= this._buildCost(kind) ? 0x8effa0 : 0xff6b6b);
     const W = 3.05;
     gh.rotation.set(0, 0, 0);
     if (kind === 'f') { gh.position.set(g.x, g.y + 0.14, g.z); gh.scale.set(W, 0.28, W); }
     else if (kind === 'w') {
       if (g.ax === 'x') { gh.position.set(g.x, g.y + 1.5, g.z); gh.scale.set(0.25, 3, W); }
       else { gh.position.set(g.x, g.y + 1.5, g.z); gh.scale.set(W, 3, 0.25); }
+    } else if (kind === 'c') { // cone / roof — box preview capping the cell
+      gh.position.set(g.x, g.y + 0.85, g.z); gh.scale.set(W, 1.7, W);
     } else { // ramp — sloped
       gh.position.set(g.x, g.y + 1.1, g.z);
       if (g.ax === 'x') { gh.scale.set(W, 0.3, W); gh.rotation.z = -g.dir * 0.62; }
@@ -1252,10 +1253,15 @@ export class Game {
     }
   }
 
+  _buildCost(kind) {
+    return kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost
+      : kind === 'c' ? BUILD.coneCost : BUILD.floorCost;
+  }
+
   placeBuild(kind) {
     const p = this.me;
     if (!p?.alive || p.buildCd > 0) return;
-    const cost = kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost : BUILD.floorCost;
+    const cost = this._buildCost(kind);
     if (p.mats < cost) { this.hudFlags.tierBanner = t('noMats'); return; }
     const tgt = this._buildTarget(kind);
     const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
@@ -1477,6 +1483,20 @@ export class Game {
       // floor tile: full 3×3 slab
       addPiece(spec.x, spec.y, spec.z, W, 0.28, W);
       addPiece(spec.x, spec.y, spec.z, W, 0.1, W, { collide: false, m: darkM });
+    } else if (spec.t === 'c') {
+      // cone / roof: a 4-sided pyramid capping the cell
+      const H = 1.7;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.7, H, 4), woodM);
+      cone.rotation.y = Math.PI / 4;
+      cone.position.set(spec.x, spec.y + H / 2, spec.z);
+      cone.castShadow = true; cone.receiveShadow = true;
+      this.scene.add(cone);
+      meshes.push(cone);
+      // solid collider bounding the pyramid so you can stand on / shelter under it
+      this.world.colliders.push({
+        x0: spec.x - W / 2, y0: spec.y, z0: spec.z - W / 2,
+        x1: spec.x + W / 2, y1: spec.y + H, z1: spec.z + W / 2, buildId: spec.id,
+      });
     } else {
       // ramp: 4 rising steps spanning the cell
       for (let i = 0; i < 4; i++) {

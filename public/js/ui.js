@@ -291,7 +291,7 @@ export function updateHUD(game, input) {
 
   // weapon / active tool label
   const tool = game.canBuild ? input.tool : 'gun';
-  const toolName = { wall: 'קיר', ramp: 'רמפה', floor: 'רצפה', pick: 'מכוש', edit: 'עריכה' }[tool];
+  const toolName = { wall: 'קיר', ramp: 'רמפה', floor: 'רצפה', cone: 'גג', pick: 'מכוש', edit: 'עריכה' }[tool];
   $('hud-weapon-name').textContent = toolName || t('weapon_' + me.weapon);
   const ammoEl = $('hud-ammo');
   if (tool !== 'gun') { ammoEl.textContent = ''; ammoEl.className = 'reloading'; }
@@ -310,7 +310,7 @@ export function updateHUD(game, input) {
     for (const b of document.querySelectorAll('#build-bar .bb')) {
       const tl = b.dataset.tool;
       b.classList.toggle('sel', tl === tool || (tl === 'gun' && tool === 'gun'));
-      const cost = { wall: 2, ramp: 3, floor: 2 }[tl];
+      const cost = { wall: 2, ramp: 3, floor: 2, cone: 3 }[tl];
       if (cost) b.classList.toggle('nomats', me.mats < cost);
     }
   }
@@ -607,7 +607,7 @@ export function renderResults(results, rewards) {
 
 // ---------------- settings & controls ----------------
 const PAD_BTN_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu', 'L3', 'R3', '↑', '↓', '←', '→'];
-const padBtnName = (i) => PAD_BTN_NAMES[i] ?? ('#' + i);
+const padBtnName = (i) => (i < 0 ? '—' : (PAD_BTN_NAMES[i] ?? ('#' + i)));
 
 export function updatePadStatus() {
   const el = $('pad-status');

@@ -23,12 +23,13 @@ export const DEFAULT_BINDS = {
   fire: 7, aim: 6, jump: 0, crouch: 1, reload: 2, gun: 3,
   nade: 4, edit: 5, sprint: 10, camera: 11, score: 8, emote: 9,
   wall: 12, ramp: 13, floor: 14, pick: 15,
+  cone: -1,           // no free standard button by default — rebindable
 };
 
 // order shown in the rebinding list
 export const BIND_ORDER = [
   'fire', 'aim', 'jump', 'crouch', 'sprint', 'reload', 'nade',
-  'gun', 'wall', 'ramp', 'floor', 'pick', 'edit', 'camera', 'emote', 'score',
+  'gun', 'wall', 'ramp', 'floor', 'cone', 'pick', 'edit', 'camera', 'emote', 'score',
 ];
 
 function defaults() {

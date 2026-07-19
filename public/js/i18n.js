@@ -239,6 +239,7 @@ export const STR = {
   act_wall: 'קיר',
   act_ramp: 'רמפה',
   act_floor: 'רצפה',
+  act_cone: 'גג',
   act_pick: 'מכוש',
   act_edit: 'עריכה',
   act_gun: 'נשק',

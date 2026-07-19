@@ -138,6 +138,7 @@ export class GamePad {
     if (hit('wall')) inp.setTool('wall');
     if (hit('ramp')) inp.setTool('ramp');
     if (hit('floor')) inp.setTool('floor');
+    if (hit('cone')) inp.setTool('cone');
     if (hit('pick')) inp.setTool('pick');
     if (hit('edit')) inp.setTool(inp.tool === 'edit' ? 'gun' : 'edit');
   }

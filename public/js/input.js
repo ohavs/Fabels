@@ -112,6 +112,7 @@ export class Input {
       if (e.code === 'Digit1') this.setTool('wall');
       if (e.code === 'Digit2') this.setTool('ramp');
       if (e.code === 'Digit3') this.setTool('floor');
+      if (e.code === 'Digit5') this.setTool('cone');
       if (e.code === 'Digit4') this.setTool('pick');
       if (e.code === 'KeyE') this.setTool(this.tool === 'edit' ? 'gun' : 'edit');
     });

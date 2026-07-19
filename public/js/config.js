@@ -132,7 +132,7 @@ export const QUICK_CHAT = ['gg', 'help', 'attack', 'nice'];
 // ---- Building (Fortnite-style walls & ramps) --------------------------------
 export const BUILD = {
   matsStart: 10, matsMax: 30, matsPerKill: 4,
-  wallCost: 2, rampCost: 3, floorCost: 2,
+  wallCost: 2, rampCost: 3, floorCost: 2, coneCost: 3,
   wallHp: 130,
   placeCd: 0.12,        // snappy turbo-building like 1v1.lol
   reach: 8,            // how far ahead you can place (metres)
