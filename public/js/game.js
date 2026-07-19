@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES,
+  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES, LOADOUT_KIT,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -135,6 +135,7 @@ export class Game {
       hp: 100, maxHp: 100, alive: true, respawnT: 0, invulnT: GAME.invulnTime,
       tier: 0, weapon: WEAPON_LADDER[0],
       ammo: WEAPONS[WEAPON_LADDER[0]].mag, reloadT: 0, fireCd: 0,
+      inv: null, slot: 0,          // Fortnite-style hotbar (local player, loadout modes)
       kills: 0, deaths: 0, score: 0,
       // stance: 0 stand · 1 crouch · 2 slide (synced); crouchK = smoothed 0..1
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
@@ -234,9 +235,10 @@ export class Game {
     }
     this.players.set(uid, p);
     this.me = p;
+    if (this.isLoadout) this._giveInventory(p);   // Fortnite-style hotbar
     // own character (shown in third person, hidden in first person)
     this._makeView(p, false);
-    this.viewModel.setWeapon(p.weapon);
+    this.viewModel.setWeapon(this._heldItem());
     this._syncCamera(p);
     return p;
   }
@@ -677,7 +679,8 @@ export class Game {
     for (const p of this.players.values()) {
       if (p.remote) continue;
       p.alive = true; p.hp = p.maxHp; p.armor = 0; p.invulnT = GAME.invulnTime;
-      p.weapon = WEAPON_LADDER[WEAPON_LADDER.length - 1] || p.weapon;
+      if (p.inv) this._giveInventory(p);
+      else p.weapon = WEAPON_LADDER[WEAPON_LADDER.length - 1] || p.weapon;
       if (p.bot) p.bot.objective = null;
       this._place(p, this._tacSpawn(p));
     }
@@ -713,6 +716,7 @@ export class Game {
     // a new round started → respawn my own player
     if (st.rd > prevRound && this.me) {
       this.me.alive = true; this.me.hp = this.me.maxHp; this.me.armor = 0; this.me.invulnT = GAME.invulnTime;
+      if (this.me.inv) this._giveInventory(this.me);
       this._place(this.me, this._tacSpawn(this.me));
     }
   }
@@ -802,6 +806,7 @@ export class Game {
         if (p.reloadT <= 0) {
           p.reloadT = 0;
           p.ammo = WEAPONS[p.weapon].mag;
+          if (p.inv && p.inv[p.slot]) p.inv[p.slot].ammo = p.ammo;
           if (p === this.me) SFX.reloadDone();
         }
       }
@@ -914,7 +919,8 @@ export class Game {
       const tool = this.canBuild ? input.tool : 'gun';
       if (tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone') {
         if (input.firing) this.placeBuild({ wall: 'w', ramp: 'r', floor: 'f', cone: 'c' }[tool]);
-      } else if (tool === 'pick') {
+      } else if (tool === 'pick' || (tool === 'gun' && p.weapon === 'pickaxe')) {
+        // pickaxe — whether picked from the build bar or held as hotbar slot 0
         if (input.firing) this._swingPickaxe(p);
       } else if (tool === 'edit') {
         if (input.firing && !this._editHeld) this._editAimed(p);
@@ -1229,7 +1235,7 @@ export class Game {
     const w = WEAPONS[p.weapon];
     if (p.ammo <= 0) { this._startReload(p); return; }
     p.fireCd = w.rate;
-    if (isFinite(w.mag)) p.ammo--;
+    if (isFinite(w.mag)) { p.ammo--; if (p.inv && p.inv[p.slot]) p.inv[p.slot].ammo = p.ammo; }
     if (p === this.me) p.bloom = Math.min(0.045, p.bloom + w.spread * 0.9 + 0.004);
     this.fireWeapon(p, false);
     if (p.bot && this.online && this.isHost && this.onBotShot) {
@@ -1977,11 +1983,13 @@ export class Game {
       q.mats = Math.min(this.matsMax(), q.mats + PICKUPS.kinds.mats.amount);
       this.feed.push({ text: `+${PICKUPS.kinds.mats.amount} 🧱`, t: 2.5 });
     } else if (pk.k === 'weapon' && this.isLoadout) {
-      q.weapon = pk.w;
-      q.ammo = WEAPONS[pk.w].mag;
-      q.reloadT = 0;
+      if (q.inv) {
+        this._invPickup(q, pk.w);               // slot it into the hotbar
+      } else {
+        q.weapon = pk.w; q.ammo = WEAPONS[pk.w].mag; q.reloadT = 0;
+      }
       if (q === this.me) {
-        this.viewModel.setWeapon(pk.w);
+        this.viewModel.setWeapon(this._heldItem());
         this.hudFlags.tierBanner = t('gotWeapon', { w: t('weapon_' + pk.w) });
       }
     }
@@ -2200,6 +2208,48 @@ export class Game {
     else if (p.view) setCharacterWeapon(p.view.char, p.weapon);
   }
 
+  // ---------------- inventory (Fortnite-style hotbar, local player) ----------------
+  _giveInventory(p) {
+    p.inv = LOADOUT_KIT.map((w) => ({ w, ammo: isFinite(WEAPONS[w]?.mag) ? WEAPONS[w].mag : Infinity }));
+    this._equipSlot(p, Math.min(1, p.inv.length - 1));   // start on the first weapon
+  }
+
+  _equipSlot(p, i) {
+    if (!p.inv || !p.inv.length) return;
+    i = ((i % p.inv.length) + p.inv.length) % p.inv.length;
+    p.slot = i;
+    const it = p.inv[i];
+    p.weapon = it.w;
+    p.ammo = it.ammo;
+    p.reloadT = 0;
+    if (p === this.me) this.viewModel.setWeapon(this._heldItem());
+    else if (p.view) setCharacterWeapon(p.view.char, p.weapon);
+  }
+
+  // local player hotbar controls (bound to LB/RB and the touch slots)
+  cycleSlot(dir) {
+    const p = this.me;
+    if (!p || !p.inv || !p.alive) return;
+    this._equipSlot(p, p.slot + dir);
+    SFX.reload?.();
+  }
+
+  selectSlot(i) {
+    const p = this.me;
+    if (p && p.inv && p.alive) this._equipSlot(p, i);
+  }
+
+  // drop a picked-up weapon into the inventory (replace current weapon slot,
+  // or the first weapon slot if the pickaxe is out) and equip it
+  _invPickup(p, w) {
+    if (!p.inv) return false;
+    let i = p.slot > 0 ? p.slot : p.inv.findIndex((s, k) => k > 0);
+    if (i <= 0) i = Math.min(1, p.inv.length - 1);
+    p.inv[i] = { w, ammo: isFinite(WEAPONS[w]?.mag) ? WEAPONS[w].mag : Infinity };
+    this._equipSlot(p, i);
+    return true;
+  }
+
   _respawn(p) {
     const s = this._spawnPos(p);
     this._place(p, s);
@@ -2208,6 +2258,7 @@ export class Game {
     p.nades = GRENADE.start;
     p.alive = true;
     p.invulnT = GAME.invulnTime;
+    if (p.inv) this._giveInventory(p);            // restock the hotbar
     p.ammo = WEAPONS[p.weapon].mag;
     p.reloadT = 0;
   }

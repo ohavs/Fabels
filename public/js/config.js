@@ -195,6 +195,10 @@ export const PICKUPS = {
 // modes where you start with a pistol and loot weapons from crates
 export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'boxfight', 'tactical'];
 
+// Fortnite-style carried inventory for loadout modes (slot 0 = pickaxe,
+// then weapons). LB/RB cycle these; pickups swap into a weapon slot.
+export const LOADOUT_KIT = ['pickaxe', 'rifle', 'shotgun', 'sniper'];
+
 // ---- Build Battle (Fortnite-style build deathmatch) -------------------------
 export const BUILDDM = {
   timeSec: 600,          // 10 minutes, most kills wins

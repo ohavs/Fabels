@@ -752,3 +752,27 @@ body.touch .rstack { display: grid; }
   box-shadow: 0 0 0 4px rgba(255,210,0,0.25), 0 0 18px rgba(255,210,0,0.4) !important;
   border-radius: 10px;
 }
+
+/* ═══════════ weapon hotbar (Fortnite-style) ═══════════ */
+.hotbar {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 16px);
+  display: flex; gap: 6px; z-index: 7; pointer-events: auto;
+}
+.hotbar.raised { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 78px); }
+.hotbar.hidden { display: none; }
+.hb-slot {
+  position: relative; width: 62px; height: 44px; border-radius: 9px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--wc, #888) 34%, rgba(10,6,30,0.86)), rgba(10,6,30,0.9));
+  border: 2px solid var(--line); color: var(--text);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  touch-action: none; overflow: hidden;
+}
+.hb-slot.on { border-color: var(--yellow); box-shadow: 0 0 12px rgba(255,210,0,0.4); transform: translateY(-3px); }
+.hb-key { position: absolute; top: 1px; right: 4px; font-size: 0.55rem; font-weight: 900; color: var(--muted); }
+.hb-name { font-weight: 800; font-size: 0.74rem; line-height: 1; }
+.hb-ammo { font-weight: 900; font-size: 0.86rem; color: var(--cyan); direction: ltr; }
+@media (max-height: 430px) {
+  .hb-slot { width: 54px; height: 40px; }
+  .hotbar.raised { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 70px); }
+}

@@ -96,6 +96,8 @@ function finishBoot(online) {
       zoneR: $('zone-right'),
     });
     state.input.applySettings(settings);
+    state.input.onCycleWeapon = (dir) => state.game?.cycleSlot(dir);
+    state.input.onSelectSlot = (i) => state.game?.selectSlot(i);
     UI.bindHUD(state.input, {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },

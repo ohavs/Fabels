@@ -130,15 +130,24 @@ export class GamePad {
 
     // edges
     if (hit('jump')) inp.wantJump = true;
-    if (hit('reload')) inp.wantReload = true;
     if (hit('nade')) inp.wantNade = true;
     if (hit('camera')) inp.wantCamera = true;
     if (hit('emote')) inp.wantEmote = 0;
-    if (hit('gun')) inp.toggleBuild();      // Y swaps weapon ↔ build (last piece)
+    if (hit('gun')) inp.toggleBuild();          // Y swaps weapon ↔ build
+    // LB / RB cycle the inventory (weapons in combat, pieces while building)
+    if (hit('slotPrev')) inp.cycleSlot(-1);
+    if (hit('slotNext')) inp.cycleSlot(1);
+    // X is context-sensitive: reload in combat, toggle edit while building
+    if (hit('reload')) {
+      if (inp.tool !== 'gun') inp.setTool(inp.tool === 'edit' ? (inp.lastPiece || 'wall') : 'edit');
+      else inp.wantReload = true;
+    }
+    // direct piece select on the D-pad
     if (hit('wall')) inp.setTool('wall');
     if (hit('ramp')) inp.setTool('ramp');
     if (hit('floor')) inp.setTool('floor');
     if (hit('cone')) inp.setTool('cone');
+    // optional extra binds (unbound by default)
     if (hit('pick')) inp.setTool('pick');
     if (hit('edit')) inp.setTool(inp.tool === 'edit' ? 'gun' : 'edit');
   }

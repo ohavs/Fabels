@@ -260,6 +260,39 @@ export function resetHUD() {
   $('btn-sprint').classList.remove('on');
 }
 
+// Fortnite-style weapon hotbar (local player, loadout modes)
+const WPN_SHORT = { pickaxe: 'מכוש', pistol: 'אקדח', smg: 'SMG', shotgun: 'ציד', rifle: 'AR', lmg: 'LMG', sniper: 'צלף', plasma: 'פלזמה', knife: 'סכין' };
+function renderHotbar(game, input) {
+  const bar = $('hotbar');
+  const me = game.me;
+  if (!me || !me.inv || !me.inv.length) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  bar.classList.toggle('raised', game.canBuild);   // sit above the build bar
+  // (re)build the slot tiles when the inventory size changes
+  if (bar.children.length !== me.inv.length) {
+    bar.innerHTML = '';
+    me.inv.forEach((_, i) => {
+      const el = document.createElement('button');
+      el.className = 'hb-slot';
+      el.innerHTML = `<span class="hb-key">${i + 1}</span><span class="hb-name"></span><span class="hb-ammo"></span>`;
+      const pick = (e) => { e.preventDefault(); e.stopPropagation(); input.onSelectSlot?.(i); };
+      el.addEventListener('touchstart', pick, { passive: false });
+      el.addEventListener('click', pick);
+      bar.appendChild(el);
+    });
+  }
+  const building = game.canBuild && input.tool !== 'gun';
+  [...bar.children].forEach((el, i) => {
+    const it = me.inv[i];
+    const w = WEAPONS[it.w] || {};
+    el.classList.toggle('on', i === me.slot && !building);
+    el.querySelector('.hb-name').textContent = WPN_SHORT[it.w] || it.w;
+    el.querySelector('.hb-ammo').textContent = isFinite(it.ammo) ? it.ammo : '';
+    el.style.borderColor = i === me.slot && !building ? '#ffd200' : '';
+    el.style.setProperty('--wc', '#' + (w.color || 0x888888).toString(16).padStart(6, '0'));
+  });
+}
+
 export function updateHUD(game, input) {
   const me = game.me;
   if (!me) return;
@@ -300,6 +333,7 @@ export function updateHUD(game, input) {
   $('rsc-mats').textContent = `🧱 ${me.mats}`;
   $('rsc-mats').style.display = game.canBuild ? '' : 'none';
 
+  renderHotbar(game, input);
   drawMinimap(game);
 
   // weapon / active tool label

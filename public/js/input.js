@@ -39,6 +39,8 @@ export class Input {
     this.lastPiece = 'wall';   // last build piece, for the quick-build swap
     this.canBuildTools = false;// set true by the loop in build-capable modes
     this.onTool = null;        // (tool) UI callback when tool changes
+    this.onCycleWeapon = null; // (dir) cycle the weapon hotbar
+    this.onSelectSlot = null;  // (i) pick a hotbar slot directly
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;
@@ -97,6 +99,20 @@ export class Input {
   toggleBuild() {
     if (!this.canBuildTools) return;
     this.setTool(this.tool === 'gun' ? (this.lastPiece || 'wall') : 'gun');
+  }
+
+  // LB/RB and the mouse wheel: cycle the weapon hotbar in combat, or the
+  // build pieces while building (Fortnite-style).
+  cycleSlot(dir) {
+    if (this.tool === 'gun') { if (this.onCycleWeapon) this.onCycleWeapon(dir); }
+    else this._cyclePiece(dir);
+  }
+
+  _cyclePiece(dir) {
+    const order = ['wall', 'ramp', 'floor', 'cone'];
+    let i = order.indexOf(this.tool);
+    if (i < 0) { this.setTool(order[dir > 0 ? 0 : order.length - 1]); return; }
+    this.setTool(order[(i + dir + order.length) % order.length]);
   }
 
   requestLock() { if (!this.touchMode && this.enabled && !this._locked) this._canvas.requestPointerLock?.(); }
@@ -161,6 +177,12 @@ export class Input {
       if (e.button === 2) this._rmb = false;
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // mouse wheel cycles the hotbar (weapons) / build pieces
+    canvas.addEventListener('wheel', (e) => {
+      if (!this.enabled) return;
+      e.preventDefault();
+      this.cycleSlot(e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
   }
 
   _makeStickVisual(zone) {
