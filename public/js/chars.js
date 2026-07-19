@@ -47,11 +47,22 @@ export function buildCharacter(skinId) {
   part(shL, 0.17, 0.16, 0.21, s.skin, 0, -0.56, 0);   // hands
   part(shR, 0.17, 0.16, 0.21, s.skin, 0, -0.56, 0);
 
+  // neck (subtle detail on every skin)
+  part(group, 0.22, 0.12, 0.22, s.skin, 0, 1.6, 0);
+
   // head + visor + helmet accent
   const head = new THREE.Group(); head.position.set(0, 1.76, 0); group.add(head);
   part(head, 0.36, 0.36, 0.34, s.skin, 0, 0, 0);
-  part(head, 0.3, 0.09, 0.05, 0x1f2430, 0, 0.04, 0.17);  // visor/eyes
+  const visor = part(head, 0.3, 0.09, 0.05, s.visorGlow || 0x1f2430, 0, 0.04, 0.17);  // visor/eyes
+  if (s.visorGlow) visor.material.emissive?.setHex(s.visorGlow);
   part(head, 0.4, 0.12, 0.38, s.accent, 0, 0.22, 0);      // helmet band
+
+  // optional accessories (premium skins)
+  if (s.pads) {                                            // shoulder pads (static)
+    part(group, 0.26, 0.16, 0.32, s.pads, -0.38, 1.52, 0);
+    part(group, 0.26, 0.16, 0.32, s.pads, 0.38, 1.52, 0);
+  }
+  if (s.pack) part(group, 0.42, 0.5, 0.16, s.pack, 0, 1.24, -0.24);   // backpack
 
   // gun in right hand (swapped on weapon change)
   const gunAnchor = new THREE.Group();
@@ -103,6 +114,26 @@ export function animateCharacter(char, dt, speed, grounded, dance = -1) {
       // bow
       char.group.rotation.x = 0.5 + Math.sin(d * 0.5) * 0.1;
       char.shL.rotation.x = -0.6; char.shR.rotation.x = -0.6;
+    } else if (dance === 6) {
+      // robot: stiff arms stepping up/down in opposite phase, head ticks
+      const step = Math.sign(Math.sin(d));
+      char.shR.rotation.x = -1.6 - step * 0.5; char.shR.rotation.z = 0;
+      char.shL.rotation.x = -1.6 + step * 0.5; char.shL.rotation.z = 0;
+      char.head.rotation.z = Math.sign(Math.sin(d * 0.5)) * 0.14;
+      char.hipL.rotation.x = 0; char.hipR.rotation.x = 0;
+    } else if (dance === 7) {
+      // clap: both arms forward, hands meeting on the beat
+      const c = Math.abs(Math.sin(d * 1.6));
+      char.shR.rotation.x = -1.5; char.shR.rotation.z = -0.5 - c * 0.5;
+      char.shL.rotation.x = -1.5; char.shL.rotation.z = 0.5 + c * 0.5;
+      char.head.rotation.z = Math.sin(d) * 0.06;
+    } else if (dance === 8) {
+      // disco point: one arm punches up-diagonal, hips sway (Saturday night)
+      const up = Math.sin(d) > 0;
+      char.shR.rotation.x = up ? -2.7 : -0.4; char.shR.rotation.z = up ? -0.5 : 0;
+      char.shL.rotation.x = up ? -0.4 : -2.7; char.shL.rotation.z = up ? 0 : 0.5;
+      char.hipL.rotation.x = Math.sin(d) * 0.3; char.hipR.rotation.x = -Math.sin(d) * 0.3;
+      char.group.rotation.z = Math.sin(d) * 0.08;
     } else {
       // floss (0) / laugh (5): flossy arm-wave
       char.shL.rotation.x = -2.6 + Math.sin(d) * 0.8;

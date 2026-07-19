@@ -104,8 +104,15 @@ export const SKINS = {
   shadow:  { body: 0x312e81, accent: 0xa855f7, skin: 0xf1c27d, cost: 900 },
   sunset:  { body: 0xf97316, accent: 0xfde68a, skin: 0xc68642, cost: 900 },
   legend:  { body: 0xfacc15, accent: 0x0ea5e9, skin: 0xf1c27d, cost: 2000 },
+  // new — optional accessories: pads (shoulder pads), pack (backpack), visorGlow (emissive visor)
+  neon:    { body: 0x06b6d4, accent: 0xec4899, skin: 0xf1c27d, visorGlow: 0x22d3ee, cost: 700 },
+  crimson: { body: 0x991b1b, accent: 0xfacc15, skin: 0xe0ac69, pads: 0x111827, cost: 900 },
+  arctic:  { body: 0xe5e7eb, accent: 0x38bdf8, skin: 0xf1c27d, pack: 0x94a3b8, cost: 1100 },
+  toxic:   { body: 0x3f6212, accent: 0x84cc16, skin: 0x8d5524, visorGlow: 0xa3e635, cost: 1300 },
+  royal:   { body: 0x6d28d9, accent: 0xfbbf24, skin: 0xf1c27d, pads: 0x4c1d95, pack: 0xfbbf24, cost: 1800 },
+  galaxy:  { body: 0x1e1b4b, accent: 0xa78bfa, skin: 0xe0ac69, visorGlow: 0xc4b5fd, pack: 0x312e81, cost: 2600 },
 };
-export const SKIN_ORDER = ['scout', 'ember', 'jungle', 'shadow', 'sunset', 'legend'];
+export const SKIN_ORDER = ['scout', 'ember', 'jungle', 'shadow', 'sunset', 'neon', 'crimson', 'arctic', 'toxic', 'legend', 'royal', 'galaxy'];
 
 // ---- Progression --------------------------------------------------------------
 export const RANKS = [
