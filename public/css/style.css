@@ -418,9 +418,8 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 .tier-pips span.on { background: var(--yellow); box-shadow: 0 0 7px rgba(255, 210, 0, 0.8); }
 
 .hud-hp {
-  position: absolute; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 4px);
-  left: 26%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px;
+  position: absolute; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 16px);
+  left: 16px; display: flex; align-items: center; gap: 8px;
 }
 .hp-col { display: flex; flex-direction: column; gap: 3px; }
 .armor-track {
@@ -431,8 +430,8 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 .hud-nades { display: flex; gap: 6px; justify-content: flex-end; margin-top: 3px; }
 .hud-nades .rsc { font-weight: 900; font-size: 0.78rem; color: var(--text); direction: ltr; }
 #minimap {
-  position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 46px); left: 10px;
-  width: 108px; height: 108px; border-radius: 10px; opacity: 0.92; pointer-events: none;
+  position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 46px); left: 12px;
+  width: 96px; height: 96px; border-radius: 10px; opacity: 0.92; pointer-events: none;
 }
 
 /* daily challenges panel */
@@ -552,8 +551,8 @@ body.touch #zone-left::after {
 /* big fire button — bottom-right corner */
 .fire-btn {
   pointer-events: auto; position: absolute;
-  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 14px); right: 20px;
-  width: 88px; height: 88px; border-radius: 50%;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 16px); right: 18px;
+  width: 84px; height: 84px; border-radius: 50%;
   background: rgba(255, 82, 82, 0.22); border: 3px solid rgba(255, 82, 82, 0.85);
   color: #ffd0d0; z-index: 6; display: none; touch-action: none;
   align-items: center; justify-content: center;
@@ -561,23 +560,23 @@ body.touch #zone-left::after {
 }
 .fire-btn:active { background: rgba(255, 82, 82, 0.5); transform: scale(0.94); }
 
-/* action cluster — compact 2×3 grid just left of the fire button */
+/* action cluster — tight 2×3 grid hugging the fire button, same baseline */
 .rstack {
-  position: absolute; right: 120px;
-  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 8px);
-  display: none; grid-template-columns: repeat(2, 1fr); gap: 8px; z-index: 6;
+  position: absolute; right: 112px;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 16px);
+  display: none; grid-template-columns: repeat(2, 1fr); gap: 7px; z-index: 6;
 }
 .tb {
-  pointer-events: auto; width: 52px; height: 52px; border-radius: 50%;
+  pointer-events: auto; width: 48px; height: 48px; border-radius: 50%;
   background: rgba(14, 7, 40, 0.82); border: 2.5px solid var(--line);
   color: var(--cyan); display: flex; align-items: center; justify-content: center; touch-action: none;
 }
 .tb:active { transform: scale(0.9); }
 .tb.on { background: rgba(255, 210, 0, 0.28); border-color: var(--yellow); color: var(--yellow); }
 
-/* build bar — bottom-centre, raised above the HP bar; only in build modes */
+/* build bar — bottom-centre, on the same baseline as fire/actions; build modes only */
 .build-bar {
-  position: absolute; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 44px);
+  position: absolute; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 16px);
   left: 50%; transform: translateX(-50%);
   display: flex; gap: 7px; z-index: 7; pointer-events: auto;
   background: rgba(10, 6, 30, 0.78); padding: 6px; border-radius: 16px; border: 2px solid var(--line);
@@ -593,15 +592,15 @@ body.touch #zone-left::after {
 .bb .bb-cost { position: absolute; bottom: -2px; left: 4px; font-size: 0.6rem; font-weight: 900; color: var(--green); }
 .bb.nomats { opacity: 0.4; }
 
-/* utility buttons — horizontal row centred just below the top bar */
+/* utility buttons — tidy vertical column on the left, tucked under the minimap
+   and out of the right-hand combat zone */
 .action-btns {
-  position: absolute; top: calc(max(8px, env(safe-area-inset-top)) + 50px); left: 50%;
-  transform: translateX(-50%);
-  display: flex; flex-direction: row; gap: 8px; z-index: 6;
+  position: absolute; left: 12px; top: calc(max(8px, env(safe-area-inset-top)) + 150px);
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; z-index: 6;
 }
 #hud .action-btns { pointer-events: auto; }
 .action-btn {
-  width: 42px; height: 42px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: rgba(14, 7, 40, 0.8); border: 2px solid var(--line);
   color: var(--cyan); display: none; align-items: center; justify-content: center; touch-action: none;
 }
@@ -686,18 +685,19 @@ body.touch .rstack { display: grid; }
   .menu-footer { position: static; margin-top: 14px; width: min(760px, 94vw); }
 }
 
-/* compact HUD on small phones — free up play space */
+/* compact HUD on small phones — free up play space, keep the bottom row unified */
 @media (max-height: 430px) {
-  #minimap { width: 92px; height: 92px; left: 58px; }
+  #minimap { width: 84px; height: 84px; }
+  .action-btns { top: calc(max(8px, env(safe-area-inset-top)) + 138px); }
+  .action-btn { width: 36px; height: 36px; }
   .hud-weapon { padding: 5px 10px; min-width: 96px; }
   #hud-ammo { font-size: 1.2rem; }
   .hud-stat { min-width: 52px; padding: 3px 7px; }
   .hud-center { font-size: 0.95rem; padding: 4px 12px; }
-  .hp-track, .armor-track { width: min(30vw, 170px); }
-  .fire-btn { width: 80px; height: 80px; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 14px); }
-  .tb { width: 52px; height: 52px; }
-  .rstack { gap: 8px; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 104px); }
-  .bb { width: 48px; height: 48px; }
+  .hp-track, .armor-track { width: min(28vw, 150px); }
+  .fire-btn { width: 78px; height: 78px; }
+  .tb { width: 46px; height: 46px; }
+  .bb { width: 46px; height: 46px; }
   #hud-feed li { font-size: 0.64rem; }
 }
 
