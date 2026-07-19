@@ -14,7 +14,7 @@ import { roomCode } from './util.js';
 import { t } from './i18n.js';
 import { Mesh, rtcSupported } from './rtc.js';
 
-const maxFor = (mode) => (mode === 'duel' ? 2 : GAME.maxPlayers);
+const maxFor = (mode) => (mode === 'duel' ? 2 : mode === 'zonewars' ? 4 : GAME.maxPlayers);
 const teamlike = (mode) => mode === 'team' || mode === 'zombies' || mode === 'ctf';
 
 export class Room {

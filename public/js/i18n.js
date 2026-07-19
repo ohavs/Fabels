@@ -143,6 +143,7 @@ export const STR = {
   mode_ctf: 'כיבוש הדגל',
   mode_br: 'באטל רויאל',
   mode_builddm: 'קרב בנייה',
+  mode_zonewars: 'זון וורס',
   lobbyTitle_builddm: 'לובי — קרב בנייה',
   dmLeader: 'מוביל: {name} ({n})',
   lobbyTitle_duel: 'לובי — דו-קרב',

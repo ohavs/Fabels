@@ -81,7 +81,7 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   const wrap = $('practice-mode-wrap');
   wrap.style.display = practiceMode ? '' : 'none';
   if (practiceMode) {
-    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'duel', 'team', 'zombies', 'ctf', 'br'],
+    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'zonewars', 'duel', 'team', 'zombies', 'ctf', 'br'],
       practiceMode, true, (m) => onPick({ mode: m }), (m) => t('mode_' + m));
   }
   pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
@@ -265,7 +265,7 @@ export function updateHUD(game, input) {
     $('hud-center').textContent = t('zwave', { n: Math.max(1, game.wave) });
   } else if (game.mode === 'ctf' && game.ctf) {
     $('hud-center').textContent = `${fmtTime(game.timeLeft())} · ${t('ctfScore', { r: game.ctf.score.r, b: game.ctf.score.b })}`;
-  } else if (game.mode === 'br') {
+  } else if (game.brLike) {
     $('hud-center').textContent = t('brAlive', { n: game.brAliveCount() });
   } else if (game.mode === 'builddm') {
     const lead = [...game.players.values()].sort((a, b) => b.kills - a.kills)[0];
@@ -569,10 +569,10 @@ export function renderResults(results, rewards) {
     title.textContent = results.win ? t('ctfWin') : t('ctfLose');
     title.className = results.win ? 'win' : 'lose';
     $('res-sub').textContent = t('ctfScore', { r: results.ctfScoreR ?? '', b: results.ctfScoreB ?? '' }) || t('mode_ctf');
-  } else if (results.mode === 'br') {
+  } else if (results.mode === 'br' || results.mode === 'zonewars') {
     title.textContent = results.win ? t('brWin') : t('brPlace', { n: results.brPlace || myPlace, of: results.brOf || '' });
     title.className = results.win ? 'win' : 'lose';
-    $('res-sub').textContent = results.winnerName ? t('winner', { name: results.winnerName }) : t('mode_br');
+    $('res-sub').textContent = results.winnerName ? t('winner', { name: results.winnerName }) : t('mode_' + results.mode);
   } else {
     title.textContent = results.win ? t('victory') : t('place', { n: myPlace });
     title.className = results.win ? 'win' : (myPlace <= 2 ? '' : 'lose');

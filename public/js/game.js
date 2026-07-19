@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, CTF, BUILD, BUILDDM, BUILD_MODES,
+  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, BUILD, BUILDDM, BUILD_MODES,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -79,11 +79,14 @@ export class Game {
     this.wave = 0;
     this.waveDelay = 3;
     this.startAt = o.startAt || Date.now();
-    this.canBuild = BUILD_MODES.includes(o.mode) || o.mode === 'br';
+    // BR and Zone Wars share the same shrinking-zone / last-standing rules
+    this.brLike = o.mode === 'br' || o.mode === 'zonewars';
+    this.zoneCfg = o.mode === 'zonewars' ? ZONEWARS : BR;
+    this.canBuild = BUILD_MODES.includes(o.mode) || this.brLike;
     this.thirdPerson = BUILD_MODES.includes(o.mode);  // build modes start in 3rd person
     this.me = null;
 
-    if (o.mode === 'br') this._initZone();
+    if (this.brLike) this._initZone();
     if (o.mode === 'ctf') this._initCtf();
     this.feed = [];
     this.over = null;
@@ -132,7 +135,7 @@ export class Game {
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
       ads: false, bloom: 0,
       armor: 0, nades: GRENADE.start, nadeCd: 0,
-      mats: this.mode === 'builddm' ? BUILDDM.matsStart : BUILD.matsStart, buildCd: 0, pickCd: 0,
+      mats: this.mode === 'builddm' ? BUILDDM.matsStart : this.mode === 'zonewars' ? ZONEWARS.matsStart : BUILD.matsStart, buildCd: 0, pickCd: 0,
       streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
@@ -264,7 +267,8 @@ export class Game {
   // ---------------- battle royale: shrinking zone ----------------
   _initZone() {
     const S = this.world.size;
-    this.zone = { r: S * 0.75, r0: S * 0.75 };
+    const r0 = S * this.zoneCfg.startFactor;
+    this.zone = { r: r0, r0 };
     const geo = new THREE.CylinderGeometry(1, 1, 44, 48, 1, true);
     const mat_ = new THREE.MeshBasicMaterial({
       color: 0x39a0ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false,
@@ -278,8 +282,8 @@ export class Game {
   // radius is a pure function of match time → identical on every client
   _zoneRadius(tSec) {
     const S = this.world.size;
-    let r = S * 0.75, elapsed = tSec;
-    for (const [wait, shrink, factor] of BR.zonePhases) {
+    let r = S * this.zoneCfg.startFactor, elapsed = tSec;
+    for (const [wait, shrink, factor] of this.zoneCfg.zonePhases) {
       const target = S * factor;
       if (elapsed < wait) return r;
       elapsed -= wait;
@@ -309,7 +313,7 @@ export class Game {
         if (!q.alive || q.remote) continue;
         if (Math.hypot(q.x, q.z) > this.zone.r) {
           q.invulnT = 0;
-          this._damagePlayer(q, BR.zoneDps * 0.5, 'zone', {});
+          this._damagePlayer(q, this.zoneCfg.zoneDps * 0.5, 'zone', {});
           if (q === this.me) this.hudFlags.hurt = 0.4;
         }
       }
@@ -330,8 +334,8 @@ export class Game {
   }
 
   spawnBrLoot() {
-    if (this.mode !== 'br') return;
-    for (let i = 0; i < BR.lootCount; i++) this._spawnRandomPickup();
+    if (!this.brLike) return;
+    for (let i = 0; i < this.zoneCfg.lootCount; i++) this._spawnRandomPickup();
   }
 
   brAliveCount() {
@@ -564,7 +568,7 @@ export class Game {
           if (p === this.me) SFX.reloadDone();
         }
       }
-      if (!p.alive && !p.remote && this.mode !== 'br') {
+      if (!p.alive && !p.remote && !this.brLike) {
         p.respawnT -= dt;
         if (p.respawnT <= 0 && !this.over) this._respawn(p);
       }
@@ -576,7 +580,7 @@ export class Game {
     }
 
     if (this.mode === 'zombies' && (!this.online || this.isHost)) this._zombieWaves(dt);
-    if (this.mode === 'br') this._updateZone(dt);
+    if (this.brLike) this._updateZone(dt);
     if (this.mode === 'ctf') this._updateCtf(dt);
     this._updateProjectiles(dt);
     this._updateGrenades(dt);
@@ -1821,7 +1825,7 @@ export class Game {
     const killerName = killer ? killer.name : '?';
 
     // battle royale: my elimination is final — queue my personal results
-    if (this.mode === 'br' && q === this.me && !this.over) {
+    if (this.brLike && q === this.me && !this.over) {
       this._brMyPlace = this.brAliveCount() + 1;
       this._brEndT = 2.2;
       this.hudFlags.winBanner = t('brDead', { n: this._brMyPlace });
@@ -2079,7 +2083,7 @@ export class Game {
       teamScore: this.teamScore,
       botScore: this.botScore,
       ctfScoreR: this.ctf?.score.r, ctfScoreB: this.ctf?.score.b,
-      brOf: this.mode === 'br' ? Math.max(BR.combatants, this.players.size) : undefined,
+      brOf: this.brLike ? Math.max(this.zoneCfg.combatants, this.players.size) : undefined,
       winnerName: extra.winnerName || (placements[0] && placements[0].name),
       win: extra.winnerUid ? extra.winnerUid === this.me?.uid
         : extra.teamWin !== undefined ? extra.teamWin

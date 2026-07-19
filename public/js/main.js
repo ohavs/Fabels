@@ -5,7 +5,7 @@
 
 import {
   GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
-  CTF, BR, BUILDDM, rewardsZombies, rewardsBr,
+  CTF, BR, ZONEWARS, BUILDDM, rewardsZombies, rewardsBr,
 } from './config.js';
 import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
@@ -164,7 +164,7 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br', 'builddm']) {
+  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br', 'zonewars', 'builddm']) {
     $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
   }
   $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
@@ -341,7 +341,7 @@ function enterOnlineLobby(room) {
     const m = room.meta || {};
     UI.renderLobbyOptions({
       map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount ?? 4,
-      showBots: ['team', 'ctf', 'br'].includes(room.mode),
+      showBots: ['team', 'ctf', 'br', 'zonewars'].includes(room.mode),
       privacy: { value: m.private ? 'private' : 'public' },
       canPick: room.isHost && m.state === 'waiting',
       onPick: (patch) => room.setOptions(patch),
@@ -421,8 +421,9 @@ function beginOnlineMatch() {
       const humansB = order.length - humansR;
       for (let i = humansR; i < CTF.teamSize; i++) game.addBot(botName(i), lvl, -1, 'r');
       for (let i = humansB; i < CTF.teamSize; i++) game.addBot(botName(i + 3), lvl, -1, 'b');
-    } else if (room.mode === 'br' && wantBots) {
-      for (let i = order.length; i < BR.combatants; i++) game.addBot(botName(i), lvl);
+    } else if ((room.mode === 'br' || room.mode === 'zonewars') && wantBots) {
+      const total = (room.mode === 'zonewars' ? ZONEWARS : BR).combatants;
+      for (let i = order.length; i < total; i++) game.addBot(botName(i), lvl);
     }
     attachBrains(game);
   }
@@ -461,8 +462,9 @@ function startOffline() {
       for (let i = 1; i < CTF.teamSize; i++) game.addBot(botName(i), pr.botLevel, -1, 'r');
       for (let i = 0; i < CTF.teamSize; i++) game.addBot(botName(i + 3), pr.botLevel, -1, 'b');
     }
-  } else if (mode === 'br') {
-    if (pr.botCount > 0) for (let i = 1; i < BR.combatants; i++) game.addBot(botName(i), pr.botLevel);
+  } else if (mode === 'br' || mode === 'zonewars') {
+    const total = (mode === 'zonewars' ? ZONEWARS : BR).combatants;
+    if (pr.botCount > 0) for (let i = 1; i < total; i++) game.addBot(botName(i), pr.botLevel);
   } else if (mode === 'builddm') {
     for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
   } else if (mode !== 'zombies') {
@@ -547,7 +549,7 @@ function finishMatch(results) {
     } else if (results.mode === 'zombies') {
       rw = rewardsZombies(results.wave, myRow.kills);
       rw.rp = 0;
-    } else if (results.mode === 'br') {
+    } else if (results.mode === 'br' || results.mode === 'zonewars') {
       const brPlace = results.win ? 1 : (results.brPlace || place + 1);
       rw = rewardsBr(brPlace, myRow.kills, results.brOf || BR.combatants);
       rw.rp = wasOnline ? (brPlace === 1 ? 30 : brPlace <= 3 ? 10 : -4) : 0;

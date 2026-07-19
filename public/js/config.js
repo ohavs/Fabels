@@ -186,7 +186,7 @@ export const PICKUPS = {
   },
 };
 // modes where you start with a pistol and loot weapons from crates
-export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm'];
+export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars'];
 
 // ---- Build Battle (Fortnite-style build deathmatch) -------------------------
 export const BUILDDM = {
@@ -238,6 +238,7 @@ export const CTF = { captures: 3, timeSec: 360, teamSize: 3, returnSec: 20, carr
 // ---- Battle Royale ----------------------------------------------------------
 export const BR = {
   combatants: 8,             // humans + bot fill
+  startFactor: 0.75,         // zone start radius as a factor of map size
   zonePhases: [              // [delay s, shrink s, radius factor of map size]
     [20, 20, 0.38], [15, 18, 0.26], [12, 15, 0.16], [10, 12, 0.08], [8, 10, 0.02],
   ],
@@ -248,3 +249,16 @@ export const rewardsBr = (place, kills, of) => ({
   xp: 30 + kills * 12 + Math.max(0, (of - place)) * 10 + (place === 1 ? 70 : 0),
   shards: 10 + kills * 6 + (place === 1 ? 60 : place <= 3 ? 25 : 0),
 });
+
+// Zone Wars — a tight, fast, build-heavy BR: small arena, quick shrinks,
+// everyone starts loaded with materials. Last one standing wins.
+export const ZONEWARS = {
+  combatants: 4,
+  startFactor: 0.42,         // arena starts much smaller than BR (0.75)
+  zonePhases: [              // [delay s, shrink s, radius factor of map size]
+    [8, 10, 0.28], [6, 8, 0.18], [5, 7, 0.10], [5, 6, 0.045],
+  ],
+  zoneDps: 8,
+  lootCount: 8,
+  matsStart: 400,            // build-focused → start rich
+};
