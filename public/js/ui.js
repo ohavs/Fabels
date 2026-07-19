@@ -10,12 +10,14 @@ import {
 import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
-import { SFX } from './audio.js';
+import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled } from './audio.js';
+import { settings, saveSettings, resetBinds, BIND_ORDER } from './settings.js';
+import { gamepad } from './gamepad.js';
 
 const $ = (id) => document.getElementById(id);
 
 // ---------------- screens ----------------
-const SCREENS = ['load', 'menu', 'lobby', 'shop', 'board', 'game', 'results'];
+const SCREENS = ['load', 'menu', 'lobby', 'shop', 'board', 'settings', 'game', 'results'];
 export function showScreen(name) {
   for (const s of SCREENS) $('scr-' + s).classList.toggle('active', s === name);
 }
@@ -599,6 +601,114 @@ export function renderResults(results, rewards) {
   chip(t('rewardXp', { n: rewards.xp }), 'xp');
   chip(t('rewardShards', { n: rewards.shards }));
   if (rewards.rp) chip(t('rewardRp', { n: (rewards.rp > 0 ? '+' : '') + rewards.rp }), 'rp');
+}
+
+// ---------------- settings & controls ----------------
+const PAD_BTN_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', 'Menu', 'L3', 'R3', '↑', '↓', '←', '→'];
+const padBtnName = (i) => PAD_BTN_NAMES[i] ?? ('#' + i);
+
+export function updatePadStatus() {
+  const el = $('pad-status');
+  if (!el) return;
+  el.textContent = gamepad.connected ? t('padConnected') : t('padNone');
+  el.classList.toggle('on', gamepad.connected);
+}
+
+export function renderSettings(onInputApply) {
+  const body = $('settings-body');
+  body.innerHTML = '';
+  $('settings-title').textContent = t('settingsTitle');
+  updatePadStatus();
+
+  const commit = () => { saveSettings(); if (onInputApply) onInputApply(); };
+
+  const section = (titleKey) => {
+    const h = document.createElement('h3');
+    h.className = 'settings-sec';
+    h.textContent = t(titleKey);
+    body.appendChild(h);
+  };
+
+  const sliderRow = (labelKey, key, min, max, step, fmt) => {
+    const row = document.createElement('div');
+    row.className = 'set-row';
+    const lab = document.createElement('span'); lab.className = 'set-label'; lab.textContent = t(labelKey);
+    const val = document.createElement('span'); val.className = 'set-val';
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = settings[key];
+    inp.className = 'set-slider';
+    const show = () => { val.textContent = fmt ? fmt(settings[key]) : settings[key]; };
+    inp.addEventListener('input', () => { settings[key] = +inp.value; show(); commit(); });
+    show();
+    row.append(lab, inp, val);
+    body.appendChild(row);
+  };
+
+  const toggleRow = (labelKey, get, set) => {
+    const row = document.createElement('div');
+    row.className = 'set-row';
+    const lab = document.createElement('span'); lab.className = 'set-label'; lab.textContent = t(labelKey);
+    const btn = document.createElement('button');
+    btn.className = 'set-toggle';
+    const paint = () => { const on = get(); btn.textContent = on ? t('on') : t('off'); btn.classList.toggle('on', on); };
+    btn.addEventListener('click', () => { set(!get()); paint(); commit(); SFX.click(); });
+    paint();
+    row.append(lab, btn);
+    body.appendChild(row);
+  };
+
+  // --- controls ---
+  section('secControls');
+  sliderRow('sensX', 'sensX', 0.2, 3, 0.05, (v) => v.toFixed(2) + '×');
+  sliderRow('sensY', 'sensY', 0.2, 3, 0.05, (v) => v.toFixed(2) + '×');
+  sliderRow('deadzone', 'deadzone', 0.02, 0.45, 0.01, (v) => Math.round(v * 100) + '%');
+  toggleRow('invertY', () => settings.invertY, (v) => { settings.invertY = v; });
+  toggleRow('aimAssist', () => settings.aimAssist, (v) => { settings.aimAssist = v; });
+  toggleRow('vibration', () => settings.vibration, (v) => { settings.vibration = v; if (v) gamepad.rumble(0.5, 150); });
+  toggleRow('autoFire', () => settings.autoFire, (v) => { settings.autoFire = v; });
+
+  // --- audio ---
+  section('secAudio');
+  toggleRow('sound', () => soundEnabled(), (v) => { setSoundEnabled(v); settings.sound = v; });
+  toggleRow('music', () => musicEnabled(), (v) => { setMusicEnabled(v); settings.music = v; });
+
+  // --- gamepad binds ---
+  section('secBinds');
+  const bindsWrap = document.createElement('div');
+  bindsWrap.className = 'binds-wrap';
+  body.appendChild(bindsWrap);
+  const drawBinds = () => {
+    bindsWrap.innerHTML = '';
+    for (const action of BIND_ORDER) {
+      const row = document.createElement('div');
+      row.className = 'set-row bind-row';
+      const lab = document.createElement('span'); lab.className = 'set-label'; lab.textContent = t('act_' + action);
+      const btn = document.createElement('button');
+      btn.className = 'bind-btn';
+      btn.textContent = padBtnName(settings.binds[action]);
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('listening')) return;
+        btn.classList.add('listening');
+        btn.textContent = t('pressBtn');
+        gamepad.captureBind().then((idx) => {
+          settings.binds[action] = idx;
+          btn.classList.remove('listening');
+          btn.textContent = padBtnName(idx);
+          commit();
+          gamepad.rumble(0.4, 90);
+        });
+      });
+      row.append(lab, btn);
+      bindsWrap.appendChild(row);
+    }
+  };
+  drawBinds();
+
+  const reset = document.createElement('button');
+  reset.className = 'ghost-btn slim';
+  reset.textContent = t('resetBinds');
+  reset.addEventListener('click', () => { resetBinds(); drawBinds(); SFX.click(); });
+  body.appendChild(reset);
 }
 
 export { $ };

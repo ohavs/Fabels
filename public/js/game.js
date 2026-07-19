@@ -591,8 +591,9 @@ export class Game {
     input.update();
     const look = input.consumeLook();
     if (p.alive && !this.over) {
-      // sticky aim assist on touch: slow the look while over an enemy
-      const assist = input.touchMode && this._aimNearEnemy(p) ? 0.45 : 1;
+      // sticky aim assist (touch + gamepad): slow the look while over an enemy
+      const assist = input.aimAssistOn && (input.touchMode || input._padActive)
+        && this._aimNearEnemy(p) ? 0.45 : 1;
       p.yaw -= look.dx * assist;
       p.pitch = clamp(p.pitch + look.dy * assist, -1.45, 1.45);
     }
@@ -969,6 +970,8 @@ export class Game {
     if (p === this.me) {
       this.viewModel.kick();
       this.addRecoil(p.weapon);
+      const rw = WEAPONS[p.weapon] || {};
+      this.onRumble?.(rw.melee ? 0.35 : Math.min(0.6, 0.15 + (rw.dmg || 20) / 200), 55);
       if (this.onShot) {
         const f = forwardOf(p.yaw, p.pitch);
         this.onShot({ x: +p.x.toFixed(2), y: +(p.y + GAME.eyeHeight).toFixed(2), z: +p.z.toFixed(2), dx: +f.x.toFixed(3), dy: +f.y.toFixed(3), dz: +f.z.toFixed(3), w: p.weapon });
@@ -1693,6 +1696,7 @@ export class Game {
     if (q.bot) { q.bot.underFire = this.elapsed; q.bot.lastAttacker = fromUid; }
     if (q === this.me) {
       this.hudFlags.hurt = 0.5;
+      this.onRumble?.(0.7, 160);   // controller kick when you take a hit
       this.addShake(0.5);          // getting hit shakes the screen
       SFX.hurt();
     } else {

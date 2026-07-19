@@ -22,10 +22,11 @@ import {
   SFX, unlockAudio, setSoundEnabled, soundEnabled,
   startMusic, stopMusic, setMusicEnabled, musicEnabled,
 } from './audio.js';
+import { settings, loadSettings, saveSettings, flushSettingsOutbox } from './settings.js';
+import { gamepad } from './gamepad.js';
 import * as UI from './ui.js';
 
 const $ = UI.$;
-const SETTINGS_KEY = 'starshards.settings';
 
 const state = {
   input: null,
@@ -59,7 +60,6 @@ async function boot() {
   }, 10000);
 
   try {
-    loadSettings();
     document.addEventListener('pointerdown', () => {
       unlockAudio();
       if (!state.game) startMusic('menu');
@@ -69,6 +69,8 @@ async function boot() {
     const online = await withTimeout(initFirebase(), 5000, false);
     UI.setLoadStatus(t('loading'));
     await withTimeout(loadProfile(), 4000, null);   // Firestore getDoc can hang → cap it
+    await withTimeout(loadSettings(), 3000, null);  // controls: local first, then cloud
+    applyLoadedSettings();
     clearTimeout(failSafe);
     finishBoot(online);
   } catch (e) {
@@ -93,6 +95,7 @@ function finishBoot(online) {
       zoneL: $('zone-left'),
       zoneR: $('zone-right'),
     });
+    state.input.applySettings(settings);
     UI.bindHUD(state.input, {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },
@@ -100,6 +103,16 @@ function finishBoot(online) {
     state.renderer = createRenderer($('game-canvas'));
     window.addEventListener('resize', fitRenderer);
     wireMenu();
+
+    // physical controller: drives gameplay in a match, menu navigation otherwise
+    gamepad.bind(state.input);
+    gamepad.inMatch = () => !!state.game && state.input.enabled;
+    gamepad.doBack = handleGamepadBack;
+    gamepad.onConnect = () => UI.updatePadStatus();
+    gamepad.start();
+
+    // drain any settings queued while offline once the network returns
+    window.addEventListener('online', () => { flushSettingsOutbox(); });
   }
 
   UI.refreshMenu();
@@ -113,6 +126,17 @@ function finishBoot(online) {
     history.replaceState(null, '', location.pathname);   // clean the URL
     joinRoomByCode(roomCode.trim().toUpperCase());
   }
+}
+
+// B button in the menus → click whatever "back / leave" action the active
+// screen offers, so the whole UI is escapable with the controller alone
+function handleGamepadBack() {
+  const scr = document.querySelector('.screen.active');
+  if (!scr) return;
+  const back = scr.querySelector(
+    '#btn-back-settings, #btn-back-shop, #btn-back-board, #btn-leave-lobby, #btn-menu',
+  );
+  if (back) { SFX.click(); back.click(); }
 }
 
 async function joinRoomByCode(code) {
@@ -196,6 +220,7 @@ function wireMenu() {
 
   $('btn-sound').addEventListener('click', () => {
     setSoundEnabled(!soundEnabled());
+    settings.sound = soundEnabled();
     $('btn-sound').textContent = soundEnabled() ? '🔊' : '🔇';
     $('btn-sound').classList.toggle('off', !soundEnabled());
     saveSettings();
@@ -203,22 +228,35 @@ function wireMenu() {
   });
   $('btn-music').addEventListener('click', () => {
     setMusicEnabled(!musicEnabled());
+    settings.music = musicEnabled();
     $('btn-music').classList.toggle('off', !musicEnabled());
     if (musicEnabled()) startMusic(state.game ? 'battle' : 'menu');
     saveSettings();
     SFX.click();
   });
+
+  // settings / controls screen
+  $('btn-settings').addEventListener('click', () => {
+    SFX.click();
+    UI.renderSettings(() => state.input?.applySettings(settings));
+    UI.showScreen('settings');
+  });
+  $('btn-back-settings').addEventListener('click', () => {
+    SFX.click();
+    if (state.input) state.input.applySettings(settings);
+    gamepad.clearFocus();
+    UI.showScreen('menu');
+  });
 }
 
-function loadSettings() {
-  try {
-    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    if (s.sound === false) { setSoundEnabled(false); $('btn-sound').textContent = '🔇'; $('btn-sound').classList.add('off'); }
-    if (s.music === false) { setMusicEnabled(false); $('btn-music').classList.add('off'); }
-  } catch { /* defaults */ }
-}
-function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ sound: soundEnabled(), music: musicEnabled() })); } catch { /* ignore */ }
+// push the loaded control/audio settings into the live systems
+function applyLoadedSettings() {
+  setSoundEnabled(settings.sound);
+  setMusicEnabled(settings.music);
+  $('btn-sound').textContent = settings.sound ? '🔊' : '🔇';
+  $('btn-sound').classList.toggle('off', !settings.sound);
+  $('btn-music').classList.toggle('off', !settings.music);
+  state.input?.applySettings(settings);
 }
 
 const lobbyInfo = () => ({ name: profile.name, skin: profile.skin, lvl: playerLevel() });
@@ -441,6 +479,7 @@ function startOffline() {
 function startLoop(game) {
   stopLoop();
   state.game = game;
+  game.onRumble = (s, ms) => gamepad.rumble(s, ms);
   UI.resetHUD();
   UI.setupHudForMode(game, state.input);
   UI.showScreen('game');

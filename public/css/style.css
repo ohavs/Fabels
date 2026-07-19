@@ -701,3 +701,45 @@ body.touch .rstack { display: grid; }
   .mode-card.wide2 { grid-column: span 3; }
   .menu-row, .join-row { width: min(520px, 92vw); }
 }
+
+/* ═══════════ settings & controls ═══════════ */
+.settings-body { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.settings-sec {
+  color: var(--yellow); font-size: 1rem; font-weight: 800; margin: 12px 0 2px;
+  border-bottom: 1px solid var(--line); padding-bottom: 4px;
+}
+.pad-status {
+  text-align: center; font-weight: 700; font-size: 0.9rem; color: var(--muted);
+  background: rgba(0,0,0,0.25); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; margin: 6px 0;
+}
+.pad-status.on { color: var(--green); border-color: rgba(61,255,139,0.5); }
+.set-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0,0,0,0.18); border: 1px solid var(--line);
+  border-radius: 9px; padding: 8px 12px;
+}
+.set-label { flex: 1; font-weight: 600; }
+.set-val { min-width: 54px; text-align: left; color: var(--cyan); font-weight: 700; }
+.set-slider { flex: 1.4; accent-color: var(--cyan); height: 26px; }
+.set-toggle, .bind-btn {
+  min-width: 74px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  font-weight: 800; font-size: 0.9rem; color: var(--text);
+  background: var(--panel); border: 2px solid var(--line);
+}
+.set-toggle.on { background: linear-gradient(var(--green), #27c46b); color: #062; border-color: transparent; }
+.bind-btn { min-width: 86px; font-family: monospace; letter-spacing: 0.5px; }
+.bind-btn.listening { background: var(--yellow); color: #300; border-color: transparent; animation: bindPulse 0.8s infinite; }
+@keyframes bindPulse { 50% { opacity: 0.55; } }
+.binds-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.bind-row { padding: 6px 10px; }
+.ghost-btn.slim { margin-top: 8px; align-self: center; padding: 6px 16px; }
+@media (max-width: 560px) { .binds-wrap { grid-template-columns: 1fr; } }
+
+/* gamepad focus highlight — used to navigate the whole UI with a controller */
+.gp-focus {
+  outline: 3px solid var(--yellow) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(255,210,0,0.25), 0 0 18px rgba(255,210,0,0.4) !important;
+  border-radius: 10px;
+}

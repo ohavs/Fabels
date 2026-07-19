@@ -41,14 +41,37 @@ export class Input {
     this.scoreHeld = false;
     this.touchMode = false;
     this.autoFire = true;
-    this.sensitivity = 1;
+    this.sensitivity = 1;      // kept as the touch/legacy horizontal sens
+    this.sensX = 1; this.sensY = 1; this.invertY = false;
+    this.deadzone = 0.14; this.aimAssistOn = true;
 
     this._keys = new Set();
     this._stick = null;
     this._look = null;
     this._mouseDown = false;
+    this._rmb = false;         // right mouse button held (ADS on desktop)
+    this._kbSprint = false;
+    this._kbCrouch = false;
     this._locked = false;
     this.enabled = false;
+
+    // gamepad-driven inputs (written by gamepad.js each poll; merged in update)
+    this.padMove = { x: 0, y: 0 };
+    this._padActive = false;
+    this._padFire = false;
+    this._padAim = false;
+    this._padSprint = false;
+    this._padCrouch = false;
+  }
+
+  // pull look/aim prefs from the settings object
+  applySettings(s) {
+    this.sensX = s.sensX; this.sensY = s.sensY;
+    this.sensitivity = s.sensX;
+    this.invertY = s.invertY;
+    this.deadzone = s.deadzone;
+    this.autoFire = s.autoFire;
+    this.aimAssistOn = s.aimAssist;
   }
 
   consumeLook() { const d = { dx: this.lookDX, dy: this.lookDY }; this.lookDX = 0; this.lookDY = 0; return d; }
@@ -73,8 +96,8 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
       if (e.code === 'Tab') { e.preventDefault(); this.scoreHeld = true; return; }
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.sprintHeld = true;
-      if (e.code === 'ControlLeft' || e.code === 'KeyC') { e.preventDefault(); this.crouchHeld = true; }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._kbSprint = true;
+      if (e.code === 'ControlLeft' || e.code === 'KeyC') { e.preventDefault(); this._kbCrouch = true; }
       if (e.repeat) return;
       this._keys.add(e.code);
       if (e.code === 'Space') { e.preventDefault(); this.wantJump = true; }
@@ -92,31 +115,33 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => {
       if (e.code === 'Tab') this.scoreHeld = false;
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.sprintHeld = false;
-      if (e.code === 'ControlLeft' || e.code === 'KeyC') this.crouchHeld = false;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._kbSprint = false;
+      if (e.code === 'ControlLeft' || e.code === 'KeyC') this._kbCrouch = false;
       this._keys.delete(e.code);
     });
     window.addEventListener('blur', () => {
-      this._keys.clear(); this._mouseDown = false; this.sprintHeld = false;
-      if (!this.touchMode) { this.crouchHeld = false; this.aiming = false; }
+      this._keys.clear(); this._mouseDown = false; this._kbSprint = false;
+      this._padActive = false; this._padFire = false; this._padAim = false;
+      this._padSprint = false; this._padCrouch = false;
+      if (!this.touchMode) { this._kbCrouch = false; this._rmb = false; this.aiming = false; }
     });
 
     document.addEventListener('pointerlockchange', () => { this._locked = document.pointerLockElement === canvas; });
     canvas.addEventListener('mousemove', (e) => {
       if (!this._locked || !this.enabled) return;
-      const sens = 0.0022 * this.sensitivity * (this.aiming ? 0.55 : 1);
-      this.lookDX += e.movementX * sens;
-      this.lookDY += e.movementY * sens;
+      const adsMul = this.aiming ? 0.55 : 1;
+      this.lookDX += e.movementX * 0.0022 * this.sensX * adsMul;
+      this.lookDY += e.movementY * 0.0022 * this.sensY * adsMul * (this.invertY ? -1 : 1);
     });
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled || this.touchMode) return;
       if (!this._locked) { this.requestLock(); return; }
       if (e.button === 0) this._mouseDown = true;
-      if (e.button === 2) this.aiming = true;
+      if (e.button === 2) this._rmb = true;
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this._mouseDown = false;
-      if (e.button === 2 && !this.touchMode) this.aiming = false;
+      if (e.button === 2) this._rmb = false;
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
@@ -201,7 +226,7 @@ export class Input {
         e.preventDefault();
         const sens = 0.0052 * this.sensitivity * (this.aiming ? 0.5 : 1);
         this.lookDX += (t.clientX - s.px) * sens;
-        this.lookDY += (t.clientY - s.py) * sens;
+        this.lookDY += (t.clientY - s.py) * sens * (this.invertY ? -1 : 1);
         s.px = t.clientX; s.py = t.clientY;
       }
     };
@@ -217,11 +242,11 @@ export class Input {
   }
 
   update() {
+    let stickSprint = false;
     if (this._stick) {
       this.move.x = curve(this._stick.dx);
       this.move.y = -curve(this._stick.dy);
-      this.sprintHeld = this.sprintToggle
-        || (this._stick.mag > SPRINT_AT && this.move.y > 0.4);
+      stickSprint = this._stick.mag > SPRINT_AT && this.move.y > 0.4;
     } else {
       let x = 0, y = 0;
       if (this._keys.has('KeyW') || this._keys.has('ArrowUp')) y += 1;
@@ -233,6 +258,24 @@ export class Input {
       this.move.y = len > 1 ? y / len : y;
       if (this.touchMode) { this.move.x = 0; this.move.y = 0; }
     }
-    if (!this.touchMode) this.firing = this._mouseDown;
+
+    // gamepad left stick wins whenever it's engaged (non-touch surfaces)
+    if (this._padActive && !this.touchMode
+        && (Math.abs(this.padMove.x) > 0.02 || Math.abs(this.padMove.y) > 0.02)) {
+      const len = Math.hypot(this.padMove.x, this.padMove.y);
+      this.move.x = len > 1 ? this.padMove.x / len : this.padMove.x;
+      this.move.y = len > 1 ? this.padMove.y / len : this.padMove.y;
+    }
+
+    // combine sprint sources (keyboard hold / touch toggle / stick push / pad)
+    this.sprintHeld = this.sprintToggle || this._kbSprint || this._padSprint || stickSprint;
+
+    if (this.touchMode) {
+      // touch: firing / aiming / crouch owned by the on-screen buttons
+    } else {
+      this.firing = this._mouseDown || this._padFire;
+      this.aiming = this._rmb || this._padAim;
+      this.crouchHeld = this._kbCrouch || this._padCrouch;
+    }
   }
 }
