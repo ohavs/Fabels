@@ -144,6 +144,7 @@ export const STR = {
   mode_br: 'באטל רויאל',
   mode_builddm: 'קרב בנייה',
   mode_zonewars: 'זון וורס',
+  mode_boxfight: 'בוקספייט',
   lobbyTitle_builddm: 'לובי — קרב בנייה',
   dmLeader: 'מוביל: {name} ({n})',
   lobbyTitle_duel: 'לובי — דו-קרב',

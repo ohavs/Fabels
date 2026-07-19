@@ -81,7 +81,7 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   const wrap = $('practice-mode-wrap');
   wrap.style.display = practiceMode ? '' : 'none';
   if (practiceMode) {
-    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'zonewars', 'duel', 'team', 'zombies', 'ctf', 'br'],
+    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'boxfight', 'zonewars', 'duel', 'team', 'zombies', 'ctf', 'br'],
       practiceMode, true, (m) => onPick({ mode: m }), (m) => t('mode_' + m));
   }
   pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
@@ -267,7 +267,7 @@ export function updateHUD(game, input) {
     $('hud-center').textContent = `${fmtTime(game.timeLeft())} · ${t('ctfScore', { r: game.ctf.score.r, b: game.ctf.score.b })}`;
   } else if (game.brLike) {
     $('hud-center').textContent = t('brAlive', { n: game.brAliveCount() });
-  } else if (game.mode === 'builddm') {
+  } else if (game.mode === 'builddm' || game.mode === 'boxfight') {
     const lead = [...game.players.values()].sort((a, b) => b.kills - a.kills)[0];
     $('hud-center').textContent = `${fmtTime(game.timeLeft())}${lead && lead.kills > 0 ? ' · ' + t('dmLeader', { name: lead.name, n: lead.kills }) : ''}`;
   } else {

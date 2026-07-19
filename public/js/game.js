@@ -14,7 +14,7 @@ import * as THREE from './vendor/three.module.js';
 import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
-  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, BUILD, BUILDDM, BUILD_MODES,
+  ZOMBIES, zombieWave, BR, ZONEWARS, CTF, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -84,9 +84,11 @@ export class Game {
     this.zoneCfg = o.mode === 'zonewars' ? ZONEWARS : BR;
     this.canBuild = BUILD_MODES.includes(o.mode) || this.brLike;
     this.thirdPerson = BUILD_MODES.includes(o.mode);  // build modes start in 3rd person
+    this.isBox = o.mode === 'boxfight';               // small bounded build-fight
     this.me = null;
 
     if (this.brLike) this._initZone();
+    if (this.isBox) this._initArena();
     if (o.mode === 'ctf') this._initCtf();
     this.feed = [];
     this.over = null;
@@ -135,7 +137,7 @@ export class Game {
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
       ads: false, bloom: 0,
       armor: 0, nades: GRENADE.start, nadeCd: 0,
-      mats: this.mode === 'builddm' ? BUILDDM.matsStart : this.mode === 'zonewars' ? ZONEWARS.matsStart : BUILD.matsStart, buildCd: 0, pickCd: 0,
+      mats: this.mode === 'builddm' ? BUILDDM.matsStart : this.mode === 'boxfight' ? BOXFIGHT.matsStart : this.mode === 'zonewars' ? ZONEWARS.matsStart : BUILD.matsStart, buildCd: 0, pickCd: 0,
       streak: 0, buffSpeedT: 0, buffDmgT: 0, danceT: 0, lastShotAt: -99,
       local: false, remote: false, bot: null,
       netX: 0, netY: 0, netZ: 0, netYaw: 0, netPitch: 0,
@@ -143,8 +145,58 @@ export class Game {
     };
   }
 
+  // Boxfight: a fixed small arena ring at map centre, with out-of-bounds
+  // damage (no shrink, no last-standing — it's a timed deathmatch).
+  _initArena() {
+    const r = this.world.size * BOXFIGHT.arenaFactor;
+    this.arena = { r };
+    const geo = new THREE.CylinderGeometry(1, 1, 40, 40, 1, true);
+    const m = new THREE.MeshBasicMaterial({ color: 0xff5aa0, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.position.y = 20; mesh.scale.set(r, 1, r);
+    this.scene.add(mesh);
+    this.arena.mesh = mesh;
+  }
+
+  _updateArena(dt) {
+    if (!this.arena) return;
+    this._arenaTick = (this._arenaTick || 0) + dt;
+    if (this._arenaTick < 0.5) return;
+    this._arenaTick = 0;
+    for (const q of this.players.values()) {
+      if (!q.alive || q.remote) continue;
+      if (Math.hypot(q.x, q.z) > this.arena.r) {
+        q.invulnT = 0;
+        this._damagePlayer(q, BOXFIGHT.arenaDps * 0.5, 'zone', {});
+        if (q === this.me) this.hudFlags.hurt = 0.4;
+      }
+    }
+  }
+
   _spawnPos(p, idx = -1) {
     const spawns = this.world.spawns;
+    // Boxfight keeps everyone near the centre so fights stay tight. Pick a
+    // central spawn (farthest from enemies among the closest half) and pull
+    // it inside the arena ring so nobody spawns in the out-of-bounds zone.
+    if (this.isBox && spawns.length) {
+      const central = [...spawns]
+        .sort((a, b) => (a.x * a.x + a.z * a.z) - (b.x * b.x + b.z * b.z))
+        .slice(0, Math.max(4, Math.ceil(spawns.length / 2)));
+      let best = central[0], bestD = -1;
+      for (const s of central) {
+        let d = Infinity;
+        for (const q of this.players.values()) {
+          if (q === p || !q.alive) continue;
+          d = Math.min(d, (q.x - s.x) ** 2 + (q.z - s.z) ** 2);
+        }
+        if (d === Infinity) d = Math.random() * 1e6;
+        if (d > bestD) { bestD = d; best = s; }
+      }
+      const ringR = (this.arena ? this.arena.r : this.world.size * BOXFIGHT.arenaFactor) * 0.65;
+      const d = Math.hypot(best.x, best.z);
+      if (d > ringR) { const k = ringR / d; return { x: best.x * k, y: best.y, z: best.z * k }; }
+      return best;
+    }
     if (idx >= 0) return spawns[idx % spawns.length];
     // farthest spawn from living enemies
     let best = spawns[0], bestD = -1;
@@ -583,6 +635,7 @@ export class Game {
 
     if (this.mode === 'zombies' && (!this.online || this.isHost)) this._zombieWaves(dt);
     if (this.brLike) this._updateZone(dt);
+    if (this.isBox) this._updateArena(dt);
     if (this.mode === 'ctf') this._updateCtf(dt);
     this._updateProjectiles(dt);
     this._updateGrenades(dt);
@@ -1731,13 +1784,14 @@ export class Game {
   }
 
   // ---------------- killstreaks & emotes ----------------
-  matsMax() { return this.mode === 'builddm' ? BUILDDM.matsMax : BUILD.matsMax; }
+  matsMax() { return this.mode === 'builddm' ? BUILDDM.matsMax : this.mode === 'boxfight' ? BOXFIGHT.matsMax : BUILD.matsMax; }
+
+  _matsPerKill() { return this.mode === 'builddm' ? BUILDDM.matsPerKill : this.mode === 'boxfight' ? BOXFIGHT.matsPerKill : BUILD.matsPerKill; }
 
   _myKillFx() {
     const me = this.me;
     me.streak++;
-    me.mats = Math.min(this.matsMax(), me.mats
-      + (this.mode === 'builddm' ? BUILDDM.matsPerKill : BUILD.matsPerKill));
+    me.mats = Math.min(this.matsMax(), me.mats + this._matsPerKill());
     for (const ks of KILLSTREAKS) {
       if (me.streak !== ks.at) continue;
       if (ks.k === 'speed') { me.buffSpeedT = ks.dur; this.hudFlags.tierBanner = t('streak3'); }
@@ -2086,8 +2140,8 @@ export class Game {
         this.forceGameOver({ teamWin: false });
       }
     }
-    // build deathmatch: pure timer — every client ends at the same clock
-    if (this.mode === 'builddm' && this.endAt && this.timeFn() >= this.endAt) {
+    // build deathmatch / boxfight: pure timer — every client ends at the same clock
+    if ((this.mode === 'builddm' || this.isBox) && this.endAt && this.timeFn() >= this.endAt) {
       this.forceGameOver();
     }
   }

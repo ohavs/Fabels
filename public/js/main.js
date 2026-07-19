@@ -5,7 +5,7 @@
 
 import {
   GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
-  CTF, BR, ZONEWARS, BUILDDM, rewardsZombies, rewardsBr,
+  CTF, BR, ZONEWARS, BUILDDM, BOXFIGHT, rewardsZombies, rewardsBr,
 } from './config.js';
 import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
@@ -164,7 +164,7 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br', 'zonewars', 'builddm']) {
+  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'br', 'zonewars', 'builddm', 'boxfight']) {
     $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
   }
   $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
@@ -385,6 +385,7 @@ const endAtFor = (mode, startAt) =>
   mode === 'team' ? startAt + GAME.matchTimeTeam * 1000
     : mode === 'ctf' ? startAt + CTF.timeSec * 1000
     : mode === 'builddm' ? startAt + BUILDDM.timeSec * 1000
+    : mode === 'boxfight' ? startAt + BOXFIGHT.timeSec * 1000
     : 0;
 
 function beginOnlineMatch() {

@@ -141,7 +141,7 @@ export const BUILD = {
 };
 
 // modes that play in third person with the build bar & pickaxe
-export const BUILD_MODES = ['builddm'];
+export const BUILD_MODES = ['builddm', 'boxfight'];
 
 // ---- Daily challenges -------------------------------------------------------
 export const CHALLENGE_POOL = [
@@ -186,7 +186,7 @@ export const PICKUPS = {
   },
 };
 // modes where you start with a pistol and loot weapons from crates
-export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars'];
+export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'boxfight'];
 
 // ---- Build Battle (Fortnite-style build deathmatch) -------------------------
 export const BUILDDM = {
@@ -194,6 +194,16 @@ export const BUILDDM = {
   matsStart: 30,
   matsMax: 60,
   matsPerKill: 8,
+};
+// Boxfight — a tight, fast build-fight in a small bounded arena: constant
+// close-quarters combat, respawns, most kills in the time limit wins.
+export const BOXFIGHT = {
+  timeSec: 240,          // 4 minutes
+  matsStart: 500,
+  matsMax: 999,
+  matsPerKill: 40,
+  arenaFactor: 0.24,     // arena radius as a factor of map size (small box)
+  arenaDps: 12,          // out-of-bounds damage per second
 };
 export const CRATE_TIERS = [
   { weapons: ['smg', 'shotgun'], color: 0x9db4c8, weight: 5 },   // common
