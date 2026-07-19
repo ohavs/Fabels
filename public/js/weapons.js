@@ -338,19 +338,24 @@ export class ViewModel {
     this.recoil = Math.max(0, this.recoil - dt * 6);
     this.raiseK = Math.min(1, this.raiseK + dt * 4);
     this.reloadK += ((reloading ? 1 : 0) - this.reloadK) * Math.min(1, dt * 8);
-    this.adsK = (this.adsK ?? 0) + ((ads ? 1 : 0) - (this.adsK ?? 0)) * Math.min(1, dt * 12);
+    this.adsK = (this.adsK ?? 0) + ((ads ? 1 : 0) - (this.adsK ?? 0)) * Math.min(1, dt * 14);
     const k = this.adsK;
+    const lp = (a, b) => a + (b - a) * k;   // hip → ADS blend
     // hidden (third person) OR sniper scope → no viewmodel
-    this.root.visible = !hidden && !(sniper && k > 0.7);
-    const sway = Math.min(1, moveSpeed / 6) * (1 - k * 0.8);
+    this.root.visible = !hidden && !(sniper && k > 0.6);
+    // sway all but vanishes at ADS so the sight stays glued to centre
+    const sway = Math.min(1, moveSpeed / 6) * (1 - k * 0.92);
+    // hip pose (0.3,-0.3,-0.55) blends to a centred pose where the model's
+    // sights line up on screen centre (x→0, raised, pulled in)
     this.root.position.set(
-      0.3 * (1 - k) + Math.sin(this.swayT) * 0.012 * sway,
-      -0.3 + k * 0.08 + Math.abs(Math.cos(this.swayT)) * 0.02 * sway
-        - this.reloadK * 0.22 - (1 - this.raiseK) * 0.35 + this.recoil * 0.03,
-      -0.55 + k * 0.12 + this.recoil * 0.09,
+      lp(0.3, 0.0) + Math.sin(this.swayT) * 0.012 * sway,
+      lp(-0.3, -0.055) + Math.abs(Math.cos(this.swayT)) * 0.02 * sway
+        - this.reloadK * 0.22 - (1 - this.raiseK) * 0.35 + this.recoil * 0.03 * (1 - k * 0.6),
+      lp(-0.55, -0.42) + this.recoil * 0.09 * (1 - k * 0.5),
     );
-    // sprite stays flat-ish to the camera; 3D model gets the full recoil tilt
-    const tiltMul = this.sprite ? 0.5 : 1;
+    // sprite stays flat-ish to the camera; 3D model gets the recoil tilt,
+    // damped while aiming so the shot doesn't throw the sight off target
+    const tiltMul = (this.sprite ? 0.5 : 1) * (1 - k * 0.55);
     this.root.rotation.set((this.recoil * 0.16 + this.reloadK * 0.7) * tiltMul, 0, this.reloadK * 0.3 * tiltMul);
   }
 }

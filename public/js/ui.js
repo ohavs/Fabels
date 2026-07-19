@@ -316,7 +316,7 @@ export function updateHUD(game, input) {
 
   // dynamic crosshair: gap follows the real bullet spread, style per weapon
   const ch = $('crosshair');
-  const sniperScoped = me.weapon === 'sniper' && me.ads && tool === 'gun';
+  const sniperScoped = game._scoped && tool === 'gun';
   ch.dataset.w = RETICLE[me.weapon] || 'cross';
   if (tool !== 'gun') ch.dataset.w = tool === 'pick' ? 'dot' : 'build';
   ch.classList.toggle('hidden', sniperScoped || !me.alive);

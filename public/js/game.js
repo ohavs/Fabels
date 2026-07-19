@@ -730,12 +730,12 @@ export class Game {
   // effective spread: base × stance/motion/ADS modifiers + bloom
   effectiveSpread(p) {
     const w = WEAPONS[p.weapon];
-    let s = w.spread;
-    if (p.ads) s *= 0.35;
-    if (p.stance === 1) s *= 0.7;
     const sp = Math.hypot(p.vx, p.vz);
-    if (sp > GAME.moveSpeed * 0.6) s *= 1.5;
-    if (!p.grounded) s *= 1.9;
+    let s = w.spread;
+    if (p.ads) s *= (sp < 0.5 ? 0.26 : 0.42);   // standing-still ADS is pin-point
+    if (p.stance === 1) s *= 0.7;                // crouch bonus
+    if (sp > GAME.moveSpeed * 0.6) s *= 1.5;     // running penalty
+    if (!p.grounded) s *= 1.9;                   // airborne penalty
     return s + p.bloom;
   }
 
@@ -790,14 +790,18 @@ export class Game {
       this.camera.rotation.z = 0;
     }
 
-    // FOV: sprint widens, ADS narrows (sniper = scope)
+    // FOV: sprint widens, ADS narrows to the weapon's own zoom
+    const w = WEAPONS[p.weapon];
     const sniper = p.weapon === 'sniper';
-    const targetFov = p.ads ? (sniper ? 24 : 55)
+    const targetFov = p.ads ? (w.adsFov || 55)
       : tp ? 70 : sp > GAME.moveSpeed * 1.1 ? 82 : 75;
     if (Math.abs(this.camera.fov - targetFov) > 0.1) {
-      this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 10));
+      this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 12));
       this.camera.updateProjectionMatrix();
     }
+    // scoped weapons (sniper) show a full-screen scope overlay once the
+    // zoom is nearly complete — the viewmodel is already hidden by then
+    this._scoped = !!w.scope && p.ads && Math.abs(this.camera.fov - targetFov) < 6;
     // first-person viewmodel shows the currently held item (pickaxe while
     // building/harvesting); hidden entirely in third person
     this.viewModel.setWeapon(this._heldItem());

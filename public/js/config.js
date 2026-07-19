@@ -53,13 +53,13 @@ export const GAME = {
 export const WEAPON_LADDER = ['pistol', 'smg', 'shotgun', 'rifle', 'lmg', 'sniper', 'plasma', 'knife'];
 
 export const WEAPONS = {
-  pistol:  { dmg: 26, rate: 0.34, mag: 12, reload: 1.1, spread: 0.012, auto: false, pellets: 1, range: 60, hsMult: 2.0, color: 0x9db4c8 },
-  smg:     { dmg: 14, rate: 0.09, mag: 30, reload: 1.5, spread: 0.035, auto: true,  pellets: 1, range: 45, hsMult: 1.6, color: 0xf4a259 },
-  shotgun: { dmg: 9,  rate: 0.85, mag: 6,  reload: 1.9, spread: 0.075, auto: false, pellets: 8, range: 26, hsMult: 1.4, color: 0xc25b4e },
-  rifle:   { dmg: 22, rate: 0.125, mag: 25, reload: 1.7, spread: 0.02, auto: true,  pellets: 1, range: 75, hsMult: 1.8, color: 0x5fa8d3 },
-  lmg:     { dmg: 16, rate: 0.08, mag: 60, reload: 2.6, spread: 0.05, auto: true,  pellets: 1, range: 60, hsMult: 1.5, color: 0x7a8b5c },
-  sniper:  { dmg: 95, rate: 1.5,  mag: 5,  reload: 2.2, spread: 0.002, auto: false, pellets: 1, range: 150, hsMult: 2.0, color: 0x8d6cab },
-  plasma:  { dmg: 46, rate: 0.7,  mag: 8,  reload: 1.8, spread: 0.008, auto: false, pellets: 1, range: 100, hsMult: 1.0, color: 0x39e6c8, projectile: { speed: 38, radius: 0.22, splash: 3.2 } },
+  pistol:  { dmg: 26, rate: 0.34, mag: 12, reload: 1.1, spread: 0.012, auto: false, pellets: 1, range: 60, hsMult: 2.0, color: 0x9db4c8, adsFov: 58 },
+  smg:     { dmg: 14, rate: 0.09, mag: 30, reload: 1.5, spread: 0.035, auto: true,  pellets: 1, range: 45, hsMult: 1.6, color: 0xf4a259, adsFov: 60 },
+  shotgun: { dmg: 9,  rate: 0.85, mag: 6,  reload: 1.9, spread: 0.075, auto: false, pellets: 8, range: 26, hsMult: 1.4, color: 0xc25b4e, adsFov: 66 },
+  rifle:   { dmg: 22, rate: 0.125, mag: 25, reload: 1.7, spread: 0.02, auto: true,  pellets: 1, range: 75, hsMult: 1.8, color: 0x5fa8d3, adsFov: 50 },
+  lmg:     { dmg: 16, rate: 0.08, mag: 60, reload: 2.6, spread: 0.05, auto: true,  pellets: 1, range: 60, hsMult: 1.5, color: 0x7a8b5c, adsFov: 56 },
+  sniper:  { dmg: 95, rate: 1.5,  mag: 5,  reload: 2.2, spread: 0.002, auto: false, pellets: 1, range: 150, hsMult: 2.0, color: 0x8d6cab, adsFov: 20, scope: true },
+  plasma:  { dmg: 46, rate: 0.7,  mag: 8,  reload: 1.8, spread: 0.008, auto: false, pellets: 1, range: 100, hsMult: 1.0, color: 0x39e6c8, adsFov: 56, projectile: { speed: 38, radius: 0.22, splash: 3.2 } },
   knife:   { dmg: 100, rate: 0.5, mag: Infinity, reload: 0, spread: 0, auto: false, pellets: 1, range: 2.4, hsMult: 1.0, color: 0xffd166, melee: true },
   // bots' fixed weapon
   botgun:  { dmg: 11, rate: 0.42, mag: Infinity, reload: 0, spread: 0.05, auto: true, pellets: 1, range: 55, hsMult: 1.0, color: 0xff5964 },
