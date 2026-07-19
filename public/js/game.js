@@ -1149,32 +1149,53 @@ export class Game {
   //   wall  → the grid edge directly in front, facing the player
   //   floor → the tile the player stands on
   //   ramp  → fills the player's cell, rising in the facing direction
+  // Where the next build piece lands. 1v1.lol / Fortnite model: you build
+  // where you AIM, snapped to a single global lattice at any height —
+  // *not* relative to the cell you happen to stand in. That is what makes
+  // it feel deterministic instead of random.
   _buildTarget(kind, p = this.me) {
-    const G = BUILD.grid;
-    const f = forwardOf(p.yaw);                       // yaw only (ignore pitch)
-    const ax = Math.abs(f.x) > Math.abs(f.z) ? 'x' : 'z';
-    const dir = ax === 'x' ? (f.x >= 0 ? 1 : -1) : (f.z >= 0 ? 1 : -1);
-    // the cell the player is standing in
-    const cellX = Math.floor(p.x / G) * G + G / 2;
-    const cellZ = Math.floor(p.z / G) * G + G / 2;
-    // floor level under the player (snap down to a grid multiple)
-    const by = Math.max(0, Math.round(p.y / G) * G);
+    const G = BUILD.grid;                         // 3m tile
+    const reach = BUILD.reach;
+    const eyeY = p.y + GAME.eyeHeight;
+    const f = forwardOf(p.yaw, p.pitch);          // full look ray (incl. pitch)
+
+    // march the look ray to the first surface (world or a placed build) so
+    // you can build snug against what you're looking at; else clamp to reach
+    let tHit = reach;
+    for (const c of this.world.colliders) {
+      const tt = rayAABB(p.x, eyeY, p.z, f.x, f.y, f.z, c);
+      if (tt >= 0 && tt < tHit) tHit = tt;
+    }
+    const t = Math.max(0.6, Math.min(reach, tHit - 0.05));
+    const aimX = p.x + f.x * t, aimY = eyeY + f.y * t, aimZ = p.z + f.z * t;
+
+    // horizontal facing decides piece orientation
+    const h = forwardOf(p.yaw);
+    const ax = Math.abs(h.x) > Math.abs(h.z) ? 'x' : 'z';
+    const dir = ax === 'x' ? (h.x >= 0 ? 1 : -1) : (h.z >= 0 ? 1 : -1);
+
+    // the grid cell the crosshair points at
+    const ix = Math.floor(aimX / G), iz = Math.floor(aimZ / G);
+    const cx = ix * G + G / 2, cz = iz * G + G / 2;
 
     if (kind === 'f') {
-      // floor tile under my feet
-      return { kind, ax, dir, x: cellX, y: by, z: cellZ };
+      // floor tile at the aimed cell, snapped to the nearest grid height
+      const fy = Math.max(0, Math.round(aimY / G) * G);
+      return { kind, ax, dir, x: cx, y: fy, z: cz };
     }
+    // walls & ramps occupy a full cell → base sits on the grid level below aim
+    const base = Math.max(0, Math.floor(aimY / G) * G);
     if (kind === 'w') {
-      // wall on the grid line at the front edge of my cell, facing me
+      // wall on the face of the aimed cell nearest the player (blocks the way)
       if (ax === 'x') {
-        const lineX = (Math.floor(p.x / G) + (dir > 0 ? 1 : 0)) * G;
-        return { kind, ax, dir, x: lineX, y: by, z: cellZ };
+        const lineX = (dir > 0 ? ix : ix + 1) * G;
+        return { kind, ax: 'x', dir, x: lineX, y: base, z: cz };
       }
-      const lineZ = (Math.floor(p.z / G) + (dir > 0 ? 1 : 0)) * G;
-      return { kind, ax, dir, x: cellX, y: by, z: lineZ };
+      const lineZ = (dir > 0 ? iz : iz + 1) * G;
+      return { kind, ax: 'z', dir, x: cx, y: base, z: lineZ };
     }
-    // ramp fills my cell, rising forward
-    return { kind, ax, dir, x: cellX, y: by, z: cellZ };
+    // ramp fills the aimed cell, rising forward
+    return { kind, ax, dir, x: cx, y: base, z: cz };
   }
 
   // translucent preview of where the current build piece will land
