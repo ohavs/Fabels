@@ -19,11 +19,19 @@ const PENDING_KEY = 'starshards.settings.pending';
 // Default binds use the W3C "standard gamepad" button indices, i.e. an
 // Xbox controller: 0=A 1=B 2=X 3=Y 4=LB 5=RB 6=LT 7=RT 8=View 9=Menu
 // 10=L3 11=R3 12=D-up 13=D-down 14=D-left 15=D-right
+// Controller-first, build-fight layout (the gamepad is the primary input):
+// the D-pad holds all four placeable pieces so building is fully thumb-driven,
+// bumpers hold pickaxe/edit, triggers fire/aim. Grenade is secondary in a
+// 1v1-style build fight, so it ships unbound (rebindable) rather than eating a
+// core button.
+//   0 A jump · 1 B crouch · 2 X reload · 3 Y weapon · 4 LB pickaxe · 5 RB edit
+//   6 LT aim · 7 RT fire · 8 View score · 9 Menu emote · 10 L3 sprint
+//   11 R3 camera · 12 D-up wall · 13 D-down floor · 14 D-left ramp · 15 D-right cone
 export const DEFAULT_BINDS = {
-  fire: 7, aim: 6, jump: 0, crouch: 1, reload: 2, gun: 3,
-  nade: 4, edit: 5, sprint: 10, camera: 11, score: 8, emote: 9,
-  wall: 12, ramp: 13, floor: 14, pick: 15,
-  cone: -1,           // no free standard button by default — rebindable
+  fire: 7, aim: 6, jump: 0, crouch: 1, sprint: 10, reload: 2,
+  gun: 3, pick: 4, edit: 5, camera: 11, score: 8, emote: 9,
+  wall: 12, floor: 13, ramp: 14, cone: 15,
+  nade: -1,           // secondary in a build fight — rebindable
 };
 
 // order shown in the rebinding list
