@@ -43,6 +43,7 @@ export class Input {
     this.onSelectSlot = null;  // (i) pick a hotbar slot directly
     this.onCycleMaterial = null; // (dir) cycle the build material
     this.onSelectMaterial = null; // (m) pick a build material directly
+    this.onBuy = null;         // (item) tactical buy-menu purchase
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;

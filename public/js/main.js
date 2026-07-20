@@ -100,6 +100,7 @@ function finishBoot(online) {
     state.input.onSelectSlot = (i) => state.game?.selectSlot(i);
     state.input.onCycleMaterial = (dir) => state.game?.cycleMaterial(dir);
     state.input.onSelectMaterial = (m) => state.game?.setMaterial(m);
+    state.input.onBuy = (item) => state.game?.tacBuy(item);
     UI.bindHUD(state.input, {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },
@@ -112,6 +113,7 @@ function finishBoot(online) {
     // physical controller: drives gameplay in a match, menu navigation otherwise
     gamepad.bind(state.input);
     gamepad.inMatch = () => !!state.game && state.input.enabled;
+    gamepad.buyUi = UI.buyMenuCtl;   // tactical buy panel controls
     gamepad.doBack = handleGamepadBack;
     gamepad.onConnect = () => UI.updatePadStatus();
     gamepad.onFirstInput = () => { unlockAudio(); if (!state.game) startMusic('menu'); };

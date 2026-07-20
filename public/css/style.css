@@ -802,3 +802,34 @@ body.touch .rstack { display: grid; }
   .mat-bar { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 116px); }
   .mb { padding: 3px 7px; font-size: 0.66rem; }
 }
+
+/* ═══════════ tactical buy menu (prep phase) ═══════════ */
+.buy-menu {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%);
+  width: min(400px, 88vw); z-index: 9; pointer-events: auto;
+  background: rgba(10, 6, 30, 0.93); border: 2px solid var(--line); border-radius: 18px;
+  padding: 10px 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.buy-menu.hidden { display: none; }
+.buy-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.buy-title { font-weight: 900; font-size: 0.95rem; color: var(--text); }
+.buy-cash { font-weight: 900; font-size: 1.05rem; color: var(--green); direction: ltr; }
+.buy-head button { width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.08); color: var(--muted); font-weight: 900; }
+.buy-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+.buy-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 9px 11px; border-radius: 11px; border: 2px solid var(--line);
+  background: rgba(20, 12, 48, 0.92); color: var(--text); font-size: 0.82rem;
+}
+.buy-item b { font-weight: 800; }
+.buy-item s { text-decoration: none; font-weight: 900; color: var(--green); direction: ltr; }
+.buy-item.focus { border-color: var(--yellow); box-shadow: 0 0 12px rgba(255,210,0,0.35); }
+.buy-item.cant { opacity: 0.38; }
+.buy-item.cant s { color: var(--red); }
+.buy-item.owned { border-color: var(--green); opacity: 0.55; }
+.buy-item:active { transform: scale(0.96); }
+.buy-hint { margin-top: 8px; text-align: center; font-size: 0.66rem; color: var(--muted); }
+@media (max-height: 430px) {
+  .buy-menu { padding: 7px 9px; }
+  .buy-item { padding: 6px 9px; font-size: 0.74rem; }
+}

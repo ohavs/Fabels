@@ -6,7 +6,7 @@
 import { t } from './i18n.js';
 import {
   SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel, RETICLE,
-  BUILD, BUILD_MATERIALS,
+  BUILD, BUILD_MATERIALS, TAC_PRICES,
 } from './config.js';
 import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
@@ -312,7 +312,7 @@ export function updateHUD(game, input) {
     $('hud-center').textContent = `${fmtTime(game.timeLeft())}${lead && lead.kills > 0 ? ' · ' + t('dmLeader', { name: lead.name, n: lead.kills }) : ''}`;
   } else if (game.mode === 'tactical' && game.tac) {
     const tac = game.tac;
-    const parts = [t('tacScore', { a: tac.score.r, b: tac.score.b }), fmtTime(tac.timer)];
+    const parts = [t('tacScore', { a: tac.score.r, b: tac.score.b }), fmtTime(tac.timer), '$' + me.cash];
     if (tac.planted) parts.push(tac.defuseProg > 0 ? t('defusing') : '💣');
     else if (tac.plantProg > 0) parts.push(t('planting'));
     else if (tac.phase === 'prep') parts.push(t('tacPrep'));
@@ -337,6 +337,7 @@ export function updateHUD(game, input) {
   renderHotbar(game, input);
   drawMinimap(game);
   drawDmgDirs(game);
+  updateBuyMenu(game, input);
 
   // weapon / active tool label
   const tool = game.canBuild ? input.tool : 'gun';
@@ -422,6 +423,40 @@ export function updateHUD(game, input) {
   $('scoreboard').classList.toggle('hidden', !showSb);
   if (showSb) renderScoreboard(game);
 }
+
+// ---------------- tactical buy menu ----------------
+let buyClosed = false;   // user dismissed it for this prep phase
+let buyFocus = 0;        // gamepad-highlighted item index
+
+function updateBuyMenu(game, input) {
+  const panel = $('buy-menu');
+  const can = game.tacCanBuy && game.tacCanBuy();
+  if (!can) { buyClosed = false; panel.classList.add('hidden'); return; }
+  if (buyClosed) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  const me = game.me;
+  $('buy-cash').textContent = '$' + me.cash;
+  const items = panel.querySelectorAll('.buy-item');
+  items.forEach((el, i) => {
+    const it = el.dataset.buy;
+    const owned = it !== 'armor' && it !== 'nade' && me.inv && me.inv.some((s) => s.w === it);
+    el.classList.toggle('cant', me.cash < TAC_PRICES[it] && !owned);
+    el.classList.toggle('owned', !!owned);
+    el.classList.toggle('focus', i === buyFocus);
+  });
+}
+
+// gamepad hooks for the buy panel (registered on the gamepad by main.js)
+export const buyMenuCtl = {
+  isOpen: () => !$('buy-menu').classList.contains('hidden'),
+  move(d) {
+    const n = document.querySelectorAll('#buy-menu .buy-item').length;
+    buyFocus = ((buyFocus + d) % n + n) % n;
+    SFX.click?.();
+  },
+  buy() { document.querySelectorAll('#buy-menu .buy-item')[buyFocus]?.click(); },
+  close() { buyClosed = true; $('buy-menu').classList.add('hidden'); },
+};
 
 // ---------------- incoming-damage direction arcs ----------------
 // red arc segments around the crosshair pointing at whoever hit you,
@@ -662,6 +697,11 @@ export function bindHUD(input, { onExit, onChat, onSettings }) {
   for (const b of document.querySelectorAll('#mat-bar .mb')) {
     hold(b, () => { input.selectMaterial(b.dataset.mat); });
   }
+  // tactical buy menu
+  for (const b of document.querySelectorAll('#buy-menu .buy-item')) {
+    hold(b, () => input.onBuy?.(b.dataset.buy));
+  }
+  hold($('buy-close'), () => buyMenuCtl.close());
   // reflect tool changes on the bar
   input.onTool = (tool) => {
     for (const b of document.querySelectorAll('#build-bar .bb')) {

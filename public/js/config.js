@@ -209,6 +209,12 @@ export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'bo
 // then weapons). LB/RB cycle these; pickups swap into a weapon slot.
 export const LOADOUT_KIT = ['pickaxe', 'rifle', 'shotgun', 'sniper'];
 
+// Tactical mode economy (CS / Fortnite-Ballistic): rounds start with just a
+// pickaxe + pistol; credits buy gear during the prep phase.
+export const TAC_KIT = ['pickaxe', 'pistol'];
+export const TAC_ECON = { start: 800, win: 1000, lose: 650, kill: 200, plant: 300, max: 9000 };
+export const TAC_PRICES = { smg: 400, shotgun: 500, rifle: 800, lmg: 1000, sniper: 1200, armor: 400, nade: 200 };
+
 // ---- Build Battle (Fortnite-style build deathmatch) -------------------------
 export const BUILDDM = {
   timeSec: 600,          // 10 minutes, most kills wins
@@ -272,7 +278,7 @@ export const CTF = { captures: 3, timeSec: 360, teamSize: 3, returnSec: 20, carr
 export const TACTICAL = {
   teamSize: 3,
   winRounds: 5,          // best-of-9 → first to 5
-  prepTime: 4,           // seconds at round start before it goes live
+  prepTime: 9,           // seconds at round start before it goes live (buy phase)
   roundTime: 95,         // time to plant; if it lapses with no plant → defenders win
   plantTime: 3.2,        // seconds an attacker must hold the site to plant
   defuseTime: 4.5,       // seconds a defender must hold the bomb to defuse

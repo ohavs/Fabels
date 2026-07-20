@@ -305,6 +305,25 @@
         <button id="btn-ingame-settings" class="action-btn small" aria-label="הגדרות"><span data-icon="gear"></span></button>
       </div>
 
+      <!-- tactical buy menu (prep phase) -->
+      <div id="buy-menu" class="buy-menu hidden">
+        <div class="buy-head">
+          <span id="buy-cash" class="buy-cash">$800</span>
+          <span class="buy-title">🛒 חנות הסבב</span>
+          <button id="buy-close" aria-label="סגירה">✕</button>
+        </div>
+        <div class="buy-grid">
+          <button class="buy-item" data-buy="smg"><b>תת־מקלע</b><s>$400</s></button>
+          <button class="buy-item" data-buy="shotgun"><b>רובה ציד</b><s>$500</s></button>
+          <button class="buy-item" data-buy="rifle"><b>רובה סער</b><s>$800</s></button>
+          <button class="buy-item" data-buy="lmg"><b>מקלע כבד</b><s>$1000</s></button>
+          <button class="buy-item" data-buy="sniper"><b>רובה צלפים</b><s>$1200</s></button>
+          <button class="buy-item" data-buy="armor"><b>🛡️ שריון</b><s>$400</s></button>
+          <button class="buy-item" data-buy="nade"><b>💣 רימון</b><s>$200</s></button>
+        </div>
+        <div class="buy-hint">A קנייה · B סגירה · LB/RB ניווט</div>
+      </div>
+
       <div id="chat-panel" class="chat-panel hidden">
         <button data-chat="0">קרב מעולה!</button>
         <button data-chat="1">צריך עזרה כאן!</button>

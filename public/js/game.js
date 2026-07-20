@@ -15,7 +15,7 @@ import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
   ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES, LOADOUT_KIT,
-  BUILD_MATERIALS, MATERIAL_ORDER,
+  BUILD_MATERIALS, MATERIAL_ORDER, TAC_KIT, TAC_ECON, TAC_PRICES,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -138,6 +138,7 @@ export class Game {
       tier: 0, weapon: WEAPON_LADDER[0],
       ammo: WEAPONS[WEAPON_LADDER[0]].mag, reloadT: 0, fireCd: 0,
       inv: null, slot: 0,          // Fortnite-style hotbar (local player, loadout modes)
+      cash: this.isTactical ? TAC_ECON.start : 0,   // tactical round economy
       kills: 0, deaths: 0, score: 0,
       // stance: 0 stand · 1 crouch · 2 slide (synced); crouchK = smoothed 0..1
       stance: 0, crouchK: 0, slideT: 0, slideCd: 0, slideDirX: 0, slideDirZ: 0,
@@ -642,6 +643,7 @@ export class Game {
     const tac = this.tac;
     tac.planted = true; tac.phase = 'planted'; tac.timer = TACTICAL.bombTimer;
     tac.bomb = { x: p.x, z: p.z }; tac.defuseProg = 0; tac.plantProg = 0;
+    if (p === this.me) p.cash = Math.min(TAC_ECON.max, p.cash + TAC_ECON.plant);
     if (tac.bombMesh) tac.bombMesh.position.set(p.x, 0.2, p.z);
     this.hudFlags.winBanner = t('bombPlanted');
     if (this._near(p, 60)) SFX.tierUp?.();
@@ -665,6 +667,7 @@ export class Game {
     tac.score[winner]++;
     tac.phase = 'end'; tac.timer = 4; tac.endReason = reason; tac.roundWinner = winner;
     tac.planted = false; tac.plantProg = 0; tac.defuseProg = 0;
+    this._tacPay(winner === this.myTeam());          // round credits (host/offline)
     this.hudFlags.winBanner = t(winner === this.myTeam() ? 'roundWon' : 'roundLost');
     SFX.tierUp?.();
     if (tac.score[winner] >= TACTICAL.winRounds) {
@@ -683,7 +686,14 @@ export class Game {
       if (p.remote) continue;
       p.alive = true; p.hp = p.maxHp; p.armor = 0; p.invulnT = GAME.invulnTime;
       if (p.inv) this._giveInventory(p);
-      else p.weapon = WEAPON_LADDER[WEAPON_LADDER.length - 1] || p.weapon;
+      else if (p.bot) {
+        // bots "buy" with a scripted economy: pistols round 1, better gear later
+        const shop = ['smg', 'shotgun', 'rifle', 'rifle', 'lmg', 'sniper'];
+        p.weapon = tac.round <= 1 ? 'pistol' : shop[(Math.random() * shop.length) | 0];
+        p.ammo = WEAPONS[p.weapon].mag;
+        if (tac.round > 1 && Math.random() < 0.6) p.armor = 50;
+        if (p.view) setCharacterWeapon(p.view.char, p.weapon);
+      }
       if (p.bot) p.bot.objective = null;
       this._place(p, this._tacSpawn(p));
     }
@@ -706,13 +716,17 @@ export class Game {
       tm: +tac.timer.toFixed(1), pl: tac.planted ? 1 : 0,
       pp: +tac.plantProg.toFixed(1), dp: +tac.defuseProg.toFixed(1),
       bx: tac.bomb ? +tac.bomb.x.toFixed(1) : 0, bz: tac.bomb ? +tac.bomb.z.toFixed(1) : 0,
+      rw: tac.roundWinner || '',
     };
   }
 
   setTacState(st) {
     const tac = this.tac; if (!tac || !st) return;
     const prevRound = tac.round;
+    // round just ended → pay my round credits (guests mirror the host's econ)
+    if (st.ph === 'end' && tac.phase !== 'end' && st.rw) this._tacPay(st.rw === this.myTeam());
     tac.phase = st.ph; tac.round = st.rd; tac.score.r = st.sr; tac.score.b = st.sb;
+    tac.roundWinner = st.rw || tac.roundWinner;
     tac.timer = st.tm; tac.planted = !!st.pl; tac.plantProg = st.pp; tac.defuseProg = st.dp;
     tac.bomb = st.pl ? { x: st.bx, z: st.bz } : null;
     if (tac.bomb && tac.bombMesh) tac.bombMesh.position.set(st.bx, 0.2, st.bz);
@@ -2219,6 +2233,7 @@ export class Game {
     if (killer === this.me) {
       this.feed.push({ text: t('youKilled', { name: victim.name }), t: 4 });
       this._myKillFx();
+      if (this.isTactical) killer.cash = Math.min(TAC_ECON.max, killer.cash + TAC_ECON.kill);
       if (!this.isLoadout) this._advanceTier(killer);
     }
   }
@@ -2228,6 +2243,7 @@ export class Game {
     if (!this.me) return;
     this.me.kills++;
     this.me.score += 100;
+    if (this.isTactical) this.me.cash = Math.min(TAC_ECON.max, this.me.cash + TAC_ECON.kill);
     if (nade) this.matchStats.nadeKills++;
     this.feed.push({ text: t('youKilled', { name: victimName }), t: 4 });
     this._myKillFx();
@@ -2283,8 +2299,9 @@ export class Game {
   }
 
   // ---------------- inventory (Fortnite-style hotbar, local player) ----------------
-  _giveInventory(p) {
-    p.inv = LOADOUT_KIT.map((w) => ({ w, ammo: isFinite(WEAPONS[w]?.mag) ? WEAPONS[w].mag : Infinity }));
+  _giveInventory(p, kit) {
+    const items = kit || (this.isTactical ? TAC_KIT : LOADOUT_KIT);
+    p.inv = items.map((w) => ({ w, ammo: isFinite(WEAPONS[w]?.mag) ? WEAPONS[w].mag : Infinity }));
     this._equipSlot(p, Math.min(1, p.inv.length - 1));   // start on the first weapon
   }
 
@@ -2322,6 +2339,39 @@ export class Game {
     p.inv[i] = { w, ammo: isFinite(WEAPONS[w]?.mag) ? WEAPONS[w].mag : Infinity };
     this._equipSlot(p, i);
     return true;
+  }
+
+  // ---------------- tactical economy (buy phase) ----------------
+  tacCanBuy() {
+    return this.isTactical && !!this.tac && this.tac.phase === 'prep' && !!this.me?.alive;
+  }
+
+  // buy 'smg'|'shotgun'|'rifle'|'lmg'|'sniper'|'armor'|'nade' during prep
+  tacBuy(item) {
+    const p = this.me;
+    if (!this.tacCanBuy() || !p) return false;
+    const price = TAC_PRICES[item];
+    if (price == null || p.cash < price) return false;
+    if (item === 'armor') {
+      if (p.armor >= ARMOR_MAX) return false;
+      p.armor = Math.min(ARMOR_MAX, p.armor + 50);
+    } else if (item === 'nade') {
+      if (p.nades >= GRENADE.max) return false;
+      p.nades++;
+    } else {
+      if (!p.inv || p.inv.some((s) => s.w === item)) return false;   // already own it
+      const it = { w: item, ammo: WEAPONS[item].mag };
+      if (p.inv.length < 4) { p.inv.push(it); this._equipSlot(p, p.inv.length - 1); }
+      else { const i = p.slot > 0 ? p.slot : 1; p.inv[i] = it; this._equipSlot(p, i); }
+    }
+    p.cash -= price;
+    SFX.reloadDone();
+    return true;
+  }
+
+  _tacPay(won) {
+    if (!this.me) return;
+    this.me.cash = Math.min(TAC_ECON.max, this.me.cash + (won ? TAC_ECON.win : TAC_ECON.lose));
   }
 
   _respawn(p) {

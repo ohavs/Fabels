@@ -30,6 +30,7 @@ export class GamePad {
     this._rumbleT = 0;
     // supplied by main.js
     this.inMatch = () => false;   // true while a match is running
+    this.buyUi = null;            // tactical buy panel controls {isOpen, move, buy, close}
     this.onConnect = null;        // notify UI (e.g. settings status)
     this.doBack = () => {};        // invoked on B in menus
     this.onFirstInput = null;     // first button press (e.g. unlock audio on Xbox)
@@ -120,6 +121,18 @@ export class GamePad {
     const adsMul = inp.aiming ? 0.5 : 1;
     inp.lookDX += curve(rx) * 0.05 * settings.sensX * adsMul;
     inp.lookDY += curve(ry) * 0.05 * settings.sensY * adsMul * (settings.invertY ? -1 : 1);
+
+    // buy menu open (tactical prep): sticks still walk/look, but the face
+    // buttons drive the shop — D-pad/LB/RB move, A buys, B closes.
+    if (this.buyUi && this.buyUi.isOpen()) {
+      if (just(12) || just(2)) this.buyUi.move(-1);            // up / X
+      if (just(13)) this.buyUi.move(1);                        // down
+      if (just(14) || just(b.slotPrev)) this.buyUi.move(-1);   // left / LB
+      if (just(15) || just(b.slotNext)) this.buyUi.move(1);    // right / RB
+      if (just(0)) this.buyUi.buy();                           // A
+      if (just(1)) this.buyUi.close();                         // B
+      return;
+    }
 
     // continuous
     inp._padFire = held('fire');
