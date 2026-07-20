@@ -917,7 +917,14 @@ export class Game {
       if (this.ctf && (this.ctf.flags.r.carrier === p.uid || this.ctf.flags.b.carrier === p.uid)) speed *= CTF.carrierSlow;
 
       if (input.consumeJump() && p.grounded) {
-        if (p.stance !== 0 && p.slideT <= 0) { p.stance = 0; input.crouchHeld = input.touchMode ? false : input.crouchHeld; }
+        if (p.slideT > 0) {
+          // slide-jump: convert the slide into a boosted leap (momentum carries)
+          p.vx = p.slideDirX * GAME.slideSpeed * 1.12;
+          p.vz = p.slideDirZ * GAME.slideSpeed * 1.12;
+          p.vy = GAME.jumpVel * 1.05;
+          p.slideT = 0; p.stance = 0; p.grounded = false;
+          SFX.jump();
+        } else if (p.stance !== 0) { p.stance = 0; input.crouchHeld = input.touchMode ? false : input.crouchHeld; }
         else {
           p.vy = GAME.jumpVel;
           p.grounded = false;
@@ -956,6 +963,16 @@ export class Game {
 
     this._physics(p, wishX, wishZ, speed, dt);
     if (p.y < GAME.fallY && p.alive) this._killPlayer(p, p.uid, false);
+
+    // footsteps: soft rhythmic taps while running (faster cadence sprinting)
+    this._stepT = (this._stepT || 0) - dt;
+    const spd = Math.hypot(p.vx, p.vz);
+    if (p.alive && p.grounded && p.stance !== 2 && spd > 2.4 && this._stepT <= 0) {
+      const fast = spd > GAME.moveSpeed + 0.5;
+      SFX.step(fast);
+      this._stepT = fast ? 0.27 : 0.36;
+    }
+
     this._syncCamera(p, dt);
   }
 
@@ -1150,6 +1167,7 @@ export class Game {
     // Y axis
     let ny = p.y + p.vy * dt;
     const wasAir = !p.grounded;
+    const impactVy = p.vy;                 // captured before landing zeroes it
     p.grounded = false;
     hits = overlaps(p.x, ny, p.z);
     if (hits.length) {
@@ -1163,7 +1181,26 @@ export class Game {
     }
     if (ny <= 0) { ny = 0; if (p.vy <= 0) { p.vy = 0; p.grounded = true; } }
     p.y = ny;
-    if (wasAir && p.grounded && p === this.me) SFX.land();
+    if (wasAir && p.grounded) this._onLand(p, Math.max(0, -impactVy));
+  }
+
+  // landing: thud/shake scaled by impact speed + Fortnite-style fall damage
+  _onLand(p, impact) {
+    if (p === this.me) {
+      if (impact > GAME.safeFall) SFX.thud();
+      else SFX.land();
+      if (impact > 10) this.addShake(Math.min(0.6, impact / 45));
+    }
+    if (impact <= GAME.safeFall || p.invulnT > 0 || !p.alive || p.remote) return;
+    if (p.bot && p.bot.zdef) return;              // zombies lunge around freely
+    const dmg = Math.min(75, Math.round((impact - GAME.safeFall) * GAME.fallDmg));
+    p.hp -= dmg;
+    if (p === this.me) {
+      this.hudFlags.hurt = 0.5;
+      this.onRumble?.(0.6, 140);
+      SFX.grunt();
+    }
+    if (p.hp <= 0) this._killPlayer(p, p.uid, false);
   }
 
   // Mantle / hurdle: climb a ledge that's too tall for the step-up but within
@@ -2209,7 +2246,7 @@ export class Game {
     }
 
     if (!this.online) {
-      this.feed.push({ text: t(mel ? 'killKnife' : 'kill', { a: killerName, b: q.name }), t: 5 });
+      this.feed.push({ text: killer === q ? t('fellDown', { name: q.name }) : t(mel ? 'killKnife' : 'kill', { a: killerName, b: q.name }), t: 5 });
       if (killer && killer !== q) {
         this._creditLocal(killer, q, mel);
         if (killer === this.me && nade) this.matchStats.nadeKills++;

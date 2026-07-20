@@ -204,6 +204,7 @@ export const STR = {
 
   // kill-cam
   killedByCam: 'חוסלתם על ידי {name}',
+  fellDown: '{name} נפל מגובה! 💀',
 
   // daily challenges
   challengesTitle: '🎯 אתגרים יומיים',

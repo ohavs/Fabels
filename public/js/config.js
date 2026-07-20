@@ -46,6 +46,8 @@ export const GAME = {
   playerHeight: 1.8,
   headY: 1.38,              // hits above this local height = headshot
   fallY: -25,               // below this = death
+  safeFall: 14,             // landing speed (m/s) above this hurts (≈ >4m drop)
+  fallDmg: 6,               // damage per m/s above the safe landing speed
 };
 
 // ---- Gun-Game weapon ladder (index = tier) ------------------------------

@@ -60,17 +60,18 @@ function noise({ dur = 0.2, vol = 0.4, f = 1200, delay = 0, hp = 0 }) {
   src.start(t0);
 }
 
-// gunshot profiles per weapon
+// gunshot profiles per weapon — `k` is a per-shot pitch jitter so bursts and
+// autofire don't sound like a copy-pasted sample
 const GUNS = {
-  pistol:  () => { noise({ dur: 0.09, vol: 0.5, f: 2400 }); tone({ type: 'square', f0: 240, f1: 90, dur: 0.07, vol: 0.3 }); },
-  smg:     () => { noise({ dur: 0.06, vol: 0.38, f: 2800 }); tone({ type: 'square', f0: 320, f1: 140, dur: 0.05, vol: 0.22 }); },
-  shotgun: () => { noise({ dur: 0.28, vol: 0.7, f: 1600 }); tone({ type: 'sine', f0: 110, f1: 40, dur: 0.25, vol: 0.5 }); },
-  rifle:   () => { noise({ dur: 0.09, vol: 0.45, f: 3000 }); tone({ type: 'sawtooth', f0: 260, f1: 100, dur: 0.07, vol: 0.26 }); },
-  lmg:     () => { noise({ dur: 0.08, vol: 0.42, f: 2200 }); tone({ type: 'square', f0: 200, f1: 80, dur: 0.07, vol: 0.3 }); },
-  sniper:  () => { noise({ dur: 0.4, vol: 0.75, f: 2000 }); tone({ type: 'sine', f0: 160, f1: 40, dur: 0.35, vol: 0.5 }); },
-  plasma:  () => { tone({ type: 'sawtooth', f0: 900, f1: 240, dur: 0.22, vol: 0.4 }); tone({ type: 'sine', f0: 1400, f1: 500, dur: 0.16, vol: 0.25, delay: 0.02 }); },
-  knife:   () => { noise({ dur: 0.12, vol: 0.3, hp: 3000 }); tone({ type: 'sine', f0: 700, f1: 1400, dur: 0.09, vol: 0.2 }); },
-  botgun:  () => { noise({ dur: 0.07, vol: 0.3, f: 2000 }); tone({ type: 'triangle', f0: 300, f1: 130, dur: 0.06, vol: 0.2 }); },
+  pistol:  (k) => { noise({ dur: 0.09, vol: 0.5, f: 2400 * k }); tone({ type: 'square', f0: 240 * k, f1: 90 * k, dur: 0.07, vol: 0.3 }); },
+  smg:     (k) => { noise({ dur: 0.06, vol: 0.38, f: 2800 * k }); tone({ type: 'square', f0: 320 * k, f1: 140 * k, dur: 0.05, vol: 0.22 }); },
+  shotgun: (k) => { noise({ dur: 0.28, vol: 0.7, f: 1600 * k }); tone({ type: 'sine', f0: 110 * k, f1: 40 * k, dur: 0.25, vol: 0.5 }); },
+  rifle:   (k) => { noise({ dur: 0.09, vol: 0.45, f: 3000 * k }); tone({ type: 'sawtooth', f0: 260 * k, f1: 100 * k, dur: 0.07, vol: 0.26 }); },
+  lmg:     (k) => { noise({ dur: 0.08, vol: 0.42, f: 2200 * k }); tone({ type: 'square', f0: 200 * k, f1: 80 * k, dur: 0.07, vol: 0.3 }); },
+  sniper:  (k) => { noise({ dur: 0.4, vol: 0.75, f: 2000 * k }); tone({ type: 'sine', f0: 160 * k, f1: 40 * k, dur: 0.35, vol: 0.5 }); },
+  plasma:  (k) => { tone({ type: 'sawtooth', f0: 900 * k, f1: 240 * k, dur: 0.22, vol: 0.4 }); tone({ type: 'sine', f0: 1400 * k, f1: 500 * k, dur: 0.16, vol: 0.25, delay: 0.02 }); },
+  knife:   (k) => { noise({ dur: 0.12, vol: 0.3, hp: 3000 * k }); tone({ type: 'sine', f0: 700 * k, f1: 1400 * k, dur: 0.09, vol: 0.2 }); },
+  botgun:  (k) => { noise({ dur: 0.07, vol: 0.3, f: 2000 * k }); tone({ type: 'triangle', f0: 300 * k, f1: 130 * k, dur: 0.06, vol: 0.2 }); },
 };
 
 // ============================================================
@@ -187,7 +188,7 @@ export function stopMusic() {
 }
 
 export const SFX = {
-  shoot(w) { (GUNS[w] || GUNS.pistol)(); },
+  shoot(w) { (GUNS[w] || GUNS.pistol)(0.93 + Math.random() * 0.14); },
   reload()   { tone({ type: 'square', f0: 500, f1: 300, dur: 0.05, vol: 0.2 }); tone({ type: 'square', f0: 350, f1: 550, dur: 0.06, vol: 0.2, delay: 0.14 }); },
   reloadDone(){ tone({ type: 'square', f0: 650, f1: 900, dur: 0.06, vol: 0.25 }); },
   hit()      { tone({ type: 'triangle', f0: 900, f1: 600, dur: 0.05, vol: 0.3 }); },
@@ -197,6 +198,9 @@ export const SFX = {
   explode()  { noise({ dur: 0.5, vol: 0.65, f: 1600 }); tone({ type: 'sine', f0: 110, f1: 28, dur: 0.45, vol: 0.55 }); },
   jump()     { tone({ type: 'sine', f0: 260, f1: 420, dur: 0.09, vol: 0.16 }); },
   land()     { noise({ dur: 0.07, vol: 0.18, f: 500 }); },
+  thud()     { noise({ dur: 0.13, vol: 0.42, f: 320 }); tone({ type: 'sine', f0: 95, f1: 40, dur: 0.13, vol: 0.34 }); },
+  grunt()    { tone({ type: 'sawtooth', f0: 150, f1: 65, dur: 0.15, vol: 0.35 }); noise({ dur: 0.1, vol: 0.16, f: 550 }); },
+  step(fast) { noise({ dur: 0.04, vol: fast ? 0.085 : 0.055, f: 380 + Math.random() * 120 }); },
   tierUp()   { [520, 660, 880].forEach((f, i) => tone({ type: 'triangle', f0: f, f1: f, dur: 0.12, vol: 0.3, delay: i * 0.07 })); },
   tierDown() { [440, 330].forEach((f, i) => tone({ type: 'triangle', f0: f, f1: f * 0.9, dur: 0.16, vol: 0.3, delay: i * 0.1 })); },
   pickup()   { tone({ type: 'sine', f0: 660, f1: 990, dur: 0.09, vol: 0.3 }); },
