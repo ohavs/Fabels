@@ -11,7 +11,7 @@ import { t } from './i18n.js';
 import { FB, initFirebase } from './fb.js';
 import {
   profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, fetchLeaderboard,
-  trackChallenges,
+  trackChallenges, saveProfile,
 } from './profile.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
@@ -105,6 +105,9 @@ function finishBoot(online) {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },
       onSettings: pauseForSettings,
+      onSaveMap: () => saveCreativeMap(state.game),
+      onLoadMap: () => loadCreativeMap(state.game),
+      onClearMap: () => { state.game?.clearBuilds(); UI.toast(t('mapCleared')); },
     });
     state.renderer = createRenderer($('game-canvas'));
     window.addEventListener('resize', fitRenderer);
@@ -171,7 +174,7 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'tactical', 'br', 'zonewars', 'builddm', 'boxfight']) {
+  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'tactical', 'br', 'zonewars', 'builddm', 'boxfight', 'creative']) {
     $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
   }
   $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
@@ -393,6 +396,23 @@ function enterOnlineLobby(room) {
   if (room.meta) room.onMeta(room.meta);
 }
 
+// ---------------- creative: save / load my island ----------------
+function saveCreativeMap(game, silent) {
+  if (!game?.isCreative) return;
+  profile.myMap = JSON.stringify({ map: game.mapId, b: game.exportBuilds() });
+  saveProfile();
+  if (!silent) UI.toast(t('mapSaved'), 'gold');
+}
+
+function loadCreativeMap(game, silent) {
+  if (!game?.isCreative || !profile.myMap) return;
+  try {
+    const m = JSON.parse(profile.myMap);
+    const n = game.importBuilds(m.b);
+    if (!silent && n) UI.toast(t('mapLoaded', { n }));
+  } catch { /* corrupt save — ignore */ }
+}
+
 // ---------------- match setup ----------------
 const endAtFor = (mode, startAt) =>
   mode === 'team' ? startAt + GAME.matchTimeTeam * 1000
@@ -450,6 +470,8 @@ function beginOnlineMatch() {
   room.onGameOver((results) => finishMatch(results));
   room.bindGame(game);
   if (room.isHost) game.spawnBrLoot();
+  // creative online: the host restores their island; builds sync to everyone
+  if (room.mode === 'creative' && room.isHost) loadCreativeMap(game, true);
   startLoop(game);
   SFX.go();
 }
@@ -490,11 +512,12 @@ function startOffline() {
     if (pr.botCount > 0) for (let i = 1; i < total; i++) game.addBot(botName(i), pr.botLevel);
   } else if (mode === 'builddm') {
     for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
-  } else if (mode !== 'zombies') {
+  } else if (mode !== 'zombies' && mode !== 'creative') {
     for (let i = 0; i < pr.botCount; i++) game.addBot(botName(i), pr.botLevel);
   }
   attachBrains(game);
   game.spawnBrLoot();
+  if (mode === 'creative') loadCreativeMap(game, true);   // restore my saved island
   game.onChat = (idx) => game.showChat('me', QUICK_CHAT[idx]);
   game.onOver = (results) => finishMatch(results);
   startLoop(game);
@@ -573,6 +596,7 @@ function resumeFromSettings() {
 
 async function exitMatch() {
   SFX.click();
+  if (state.game?.isCreative) saveCreativeMap(state.game, true);   // auto-save the island
   stopLoop();
   startMusic('menu');
   if (state.room) { await state.room.leave(); state.room = null; }

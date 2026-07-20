@@ -80,7 +80,7 @@ export const RETICLE = {
 };
 
 // ---- Maps ----------------------------------------------------------------
-export const MAP_ORDER = ['town', 'mine', 'port', 'canyon', 'city', 'ice'];
+export const MAP_ORDER = ['town', 'mine', 'port', 'canyon', 'city', 'ice', 'island'];
 export const MAPS = {
   town:   { size: 72, sky: 0x87ceeb, fog: 0xbfe3f2, sun: 0xfff2cc, ground: 0x7ec850, accent: '#e0b23e' },
   mine:   { size: 64, sky: 0x1a1033, fog: 0x241645, sun: 0xb28dff, ground: 0x3d2f57, accent: '#b478ff' },
@@ -88,6 +88,7 @@ export const MAPS = {
   canyon: { size: 76, sky: 0xffb347, fog: 0xf7c873, sun: 0xffe0b3, ground: 0xd9a066, accent: '#e07a5f' },
   city:   { size: 78, sky: 0x151538, fog: 0x252550, sun: 0xb8c4ff, ground: 0x3a3a52, accent: '#ff3e8a' },
   ice:    { size: 70, sky: 0xcfe8ff, fog: 0xe6f2ff, sun: 0xffffff, ground: 0xe8f4ff, accent: '#7db4ff' },
+  island: { size: 80, sky: 0x8fd7f0, fog: 0xcdeef8, sun: 0xfff6d8, ground: 0x8ed06a, accent: '#3ec9a7' },
 };
 
 // ---- Bot difficulty --------------------------------------------------------
@@ -160,7 +161,10 @@ export const BUILD_MATERIALS = {
 export const MATERIAL_ORDER = ['wood', 'brick', 'metal'];
 
 // modes that play in third person with the build bar & pickaxe
-export const BUILD_MODES = ['builddm', 'boxfight'];
+export const BUILD_MODES = ['builddm', 'boxfight', 'creative'];
+
+// Creative: free building on your own island — no cost, no timer, save/load
+export const CREATIVE = { maxPieces: 400 };
 
 // ---- Daily challenges -------------------------------------------------------
 export const CHALLENGE_POOL = [
@@ -205,7 +209,7 @@ export const PICKUPS = {
   },
 };
 // modes where you start with a pistol and loot weapons from crates
-export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'boxfight', 'tactical'];
+export const LOADOUT_MODES = ['zombies', 'br', 'ctf', 'builddm', 'zonewars', 'boxfight', 'tactical', 'creative'];
 
 // Fortnite-style carried inventory for loadout modes (slot 0 = pickaxe,
 // then weapons). LB/RB cycle these; pickups swap into a weapon slot.

@@ -15,7 +15,7 @@ import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
   ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES, LOADOUT_KIT,
-  BUILD_MATERIALS, MATERIAL_ORDER, TAC_KIT, TAC_ECON, TAC_PRICES,
+  BUILD_MATERIALS, MATERIAL_ORDER, TAC_KIT, TAC_ECON, TAC_PRICES, CREATIVE,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -77,6 +77,7 @@ export class Game {
     this.pickupT = PICKUPS.everyMs / 1000;
     this.isLoadout = LOADOUT_MODES.includes(o.mode);
     this.isTactical = o.mode === 'tactical';          // round-based plant/defuse
+    this.isCreative = o.mode === 'creative';          // free build canvas, save/load
     this.teamplay = ['team', 'zombies', 'ctf', 'tactical'].includes(o.mode);
     this.wave = 0;
     this.waveDelay = 3;
@@ -1575,6 +1576,7 @@ export class Game {
   }
 
   _buildCost(kind, mat = 'wood') {
+    if (this.isCreative) return 0;                    // creative builds are free
     const base = kind === 'w' ? BUILD.wallCost : kind === 'r' ? BUILD.rampCost
       : kind === 'c' ? BUILD.coneCost : BUILD.floorCost;
     return Math.ceil(base * (BUILD_MATERIALS[mat]?.costMul || 1));
@@ -1705,7 +1707,10 @@ export class Game {
       this._damagePlayer(victim, WEAPONS.pickaxe.dmg, p.uid, { mel: true });
       this.fx.impact(hit, 0xffd166, 8, 4);
     } else if (kind === 'build') {
-      if (!this.online || this.isHost || true) this.damageBuild(buildId, 25);
+      // creative: your own pieces break in one swing (fast canvas cleanup)
+      const bld = this.builds.get(buildId);
+      const instant = this.isCreative && bld && bld.owner === p.uid;
+      this.damageBuild(buildId, instant ? 1e6 : 25);   // damageBuild broadcasts the destroy
       this.fx.impact(hit, 0x9a7148, 8, 4);
     } else if (kind === 'world') {
       // harvest: every hit yields materials (arcade-simple, infinite)
@@ -1897,6 +1902,38 @@ export class Game {
 
   applyRemoteBuild(spec) { this._addBuild(spec); }
 
+  // ---------------- creative: save / load the whole build canvas ----------------
+  exportBuilds() {
+    const out = [];
+    for (const b of this.builds.values()) {
+      out.push({ t: b.t, x: +b.x.toFixed(2), y: +b.y.toFixed(2), z: +b.z.toFixed(2), ax: b.ax, dir: b.dir, mat: b.mat, edit: editMask(b.edit) });
+    }
+    return out;
+  }
+
+  importBuilds(list) {
+    let n = 0;
+    for (const s of list || []) {
+      if (this.builds.size >= CREATIVE.maxPieces) break;
+      const slotKey = `${s.t}:${(+s.x).toFixed(1)}:${(+s.y).toFixed(1)}:${(+s.z).toFixed(1)}:${s.ax}`;
+      let dup = false;
+      for (const b of this.builds.values()) if (b.slot === slotKey) { dup = true; break; }
+      if (dup) continue;
+      const spec = { id: 'b' + randId(5), o: this.me?.uid || 'map', slot: slotKey, ...s };
+      this._addBuild(spec);
+      if (this.online && this.onBuildPlace) this.onBuildPlace(spec);
+      n++;
+    }
+    return n;
+  }
+
+  clearBuilds() {
+    for (const id of [...this.builds.keys()]) {
+      this.removeBuild(id, false);
+      if (this.online && this.onBuildDestroy) this.onBuildDestroy(id);
+    }
+  }
+
   removeBuild(id, withFx = true) {
     const b = this.builds.get(id);
     if (!b) return;
@@ -2001,7 +2038,7 @@ export class Game {
   // ---------------- pickups ----------------
   _updatePickups(dt) {
     const authoritative = !this.online || this.isHost;
-    if (authoritative && !this.over) {
+    if (authoritative && !this.over && !this.isCreative) {   // creative: clean canvas
       this.pickupT -= dt;
       if (this.pickupT <= 0 && this.pickups.size < PICKUPS.max) {
         this.pickupT = PICKUPS.everyMs / 1000;

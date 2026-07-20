@@ -321,6 +321,7 @@ export class World {
     ({
       town: this._town, mine: this._mine, port: this._port,
       canyon: this._canyon, city: this._city, ice: this._ice,
+      island: this._island,
     })[this.mapId].call(this, r);
     // scatter nav points between spawns
     const S = this.size;
@@ -649,5 +650,32 @@ export class World {
     this.box(0, 0.01, 22, this.size, 0.02, 6, 0xcaa472, { collide: false, shadow: false });
     this.spawn(-30, -28); this.spawn(30, 28); this.spawn(-30, 28); this.spawn(30, -28);
     this.spawn(0, -30); this.spawn(0, 30); this.spawn(-30, 0); this.spawn(30, 0);
+  }
+
+  // ═══════════ MAP 7: האי שלי — flat creative island (a build canvas) ═══════════
+  _island(r) {
+    const S = this.size, half = S / 2;
+    // sandy beach ring just inside the border (flat decal)
+    this.box(0, 0.01, -half + 3, S, 0.02, 6, 0xf0dfa8, { collide: false, shadow: false });
+    this.box(0, 0.01, half - 3, S, 0.02, 6, 0xf0dfa8, { collide: false, shadow: false });
+    this.box(-half + 3, 0.01, 0, 6, 0.02, S, 0xf0dfa8, { collide: false, shadow: false });
+    this.box(half - 3, 0.01, 0, 6, 0.02, S, 0xf0dfa8, { collide: false, shadow: false });
+    // faint 3m build-grid decals so builders can line pieces up
+    for (let i = -4; i <= 4; i++) {
+      this.box(i * 9, 0.005, 0, 0.14, 0.01, S - 14, 0x79b95a, { collide: false, shadow: false });
+      this.box(0, 0.005, i * 9, S - 14, 0.01, 0.14, 0x79b95a, { collide: false, shadow: false });
+    }
+    // central marker plaza
+    this.cyl(0, 0, 0, 2.4, 0.18, 0x9fd9b8, { collide: false, seg: 16 });
+    // palms around the beach + a few rocks — decoration only, canvas stays clear
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2;
+      this.tree(Math.cos(a) * (half - 5) + (r() - 0.5) * 3, Math.sin(a) * (half - 5) + (r() - 0.5) * 3, 0.9 + r() * 0.5);
+    }
+    this.rock(-half + 7, half - 9, 0.8, 0x9aa8b0); this.rock(half - 8, -half + 8, 0.7, 0x9aa8b0);
+    this.lamp(-6, -6, 0xffe9a0); this.lamp(6, 6, 0xffe9a0);
+    // spawns spread around the canvas
+    this.spawn(-12, -12); this.spawn(12, 12); this.spawn(-12, 12); this.spawn(12, -12);
+    this.spawn(0, -20); this.spawn(0, 20); this.spawn(-20, 0); this.spawn(20, 0);
   }
 }

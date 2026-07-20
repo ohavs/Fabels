@@ -129,6 +129,7 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 .mode-card.zonewars { background: linear-gradient(135deg, #16a34a, #0f766e 90%); }
 .mode-card.boxfight { background: linear-gradient(135deg, #e11d48, #7f1d1d 90%); }
 .mode-card.tactical { background: linear-gradient(135deg, #334155, #0f172a 90%); }
+.mode-card.creative { background: linear-gradient(135deg, #0ea5a0, #065f5b 90%); }
 .mode-card {
   position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;
   column-gap: 14px; align-items: center; text-align: right;
@@ -833,3 +834,16 @@ body.touch .rstack { display: grid; }
   .buy-menu { padding: 7px 9px; }
   .buy-item { padding: 6px 9px; font-size: 0.74rem; }
 }
+
+/* ═══════════ creative island tools ═══════════ */
+.creative-tools {
+  position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 8px; z-index: 7; pointer-events: auto;
+}
+.creative-tools.hidden { display: none; }
+.creative-tools button {
+  width: 46px; height: 46px; border-radius: 12px; font-size: 1.25rem;
+  background: rgba(10, 6, 30, 0.8); border: 2px solid var(--line);
+  display: flex; align-items: center; justify-content: center; touch-action: none;
+}
+.creative-tools button:active { transform: scale(0.92); }

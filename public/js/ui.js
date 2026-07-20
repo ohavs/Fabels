@@ -6,7 +6,7 @@
 import { t } from './i18n.js';
 import {
   SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel, RETICLE,
-  BUILD, BUILD_MATERIALS, TAC_PRICES,
+  BUILD, BUILD_MATERIALS, TAC_PRICES, CREATIVE,
 } from './config.js';
 import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
@@ -317,6 +317,8 @@ export function updateHUD(game, input) {
     else if (tac.plantProg > 0) parts.push(t('planting'));
     else if (tac.phase === 'prep') parts.push(t('tacPrep'));
     $('hud-center').textContent = parts.join(' · ');
+  } else if (game.isCreative) {
+    $('hud-center').textContent = `🏝️ ${t('mode_creative')} · ${game.builds.size}/${CREATIVE.maxPieces}`;
   } else {
     $('hud-center').textContent = `נשק ${Math.min(me.tier + 1, WEAPON_LADDER.length)}/${WEAPON_LADDER.length}`;
   }
@@ -332,7 +334,7 @@ export function updateHUD(game, input) {
   $('hud-hp-text').textContent = Math.max(0, Math.round(me.hp));
   $('rsc-nade').textContent = `💣 ${me.nades}`;
   $('rsc-mats').textContent = `🧱 ${me.mats}`;
-  $('rsc-mats').style.display = game.canBuild ? '' : 'none';
+  $('rsc-mats').style.display = game.canBuild && !game.isCreative ? '' : 'none';
 
   renderHotbar(game, input);
   drawMinimap(game);
@@ -633,7 +635,7 @@ function renderScoreboard(game) {
 }
 
 // bind HUD buttons to the input layer
-export function bindHUD(input, { onExit, onChat, onSettings }) {
+export function bindHUD(input, { onExit, onChat, onSettings, onSaveMap, onLoadMap, onClearMap }) {
   paintIcons();
   window.addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
 
@@ -702,6 +704,10 @@ export function bindHUD(input, { onExit, onChat, onSettings }) {
     hold(b, () => input.onBuy?.(b.dataset.buy));
   }
   hold($('buy-close'), () => buyMenuCtl.close());
+  // creative island tools
+  if (onSaveMap) hold($('btn-map-save'), onSaveMap);
+  if (onLoadMap) hold($('btn-map-load'), onLoadMap);
+  if (onClearMap) hold($('btn-map-clear'), onClearMap);
   // reflect tool changes on the bar
   input.onTool = (tool) => {
     for (const b of document.querySelectorAll('#build-bar .bb')) {
@@ -727,6 +733,7 @@ export function bindHUD(input, { onExit, onChat, onSettings }) {
 export function setupHudForMode(game, input) {
   const bar = $('build-bar');
   bar.classList.toggle('hidden', !game.canBuild);
+  $('creative-tools').classList.toggle('hidden', !game.isCreative);
   input.setTool('gun');
   input.sprintToggle = false;
   $('btn-sprint').classList.remove('on');
