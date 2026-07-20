@@ -743,6 +743,12 @@ body.touch .rstack { display: grid; }
   background: var(--panel); border: 2px solid var(--line);
 }
 .set-toggle.on { background: linear-gradient(var(--green), #27c46b); color: #062; border-color: transparent; }
+.set-choices { display: flex; gap: 6px; }
+.set-choice {
+  padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 0.84rem;
+  color: var(--muted); background: var(--panel); border: 2px solid var(--line); cursor: pointer;
+}
+.set-choice.on { background: linear-gradient(var(--cyan), #2aa8c4); color: #023; border-color: transparent; }
 .bind-btn { min-width: 86px; font-family: monospace; letter-spacing: 0.5px; }
 .bind-btn.listening { background: var(--yellow); color: #300; border-color: transparent; animation: bindPulse 0.8s infinite; }
 @keyframes bindPulse { 50% { opacity: 0.55; } }

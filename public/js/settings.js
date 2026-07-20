@@ -49,6 +49,9 @@ function defaults() {
     sensX: 1.0, sensY: 1.0, invertY: false, deadzone: 0.14,
     vibration: true, aimAssist: true, autoFire: true,
     sound: true, music: true,
+    sfxVol: 100, musicVol: 80,       // 0..100
+    fov: 75,                          // hip-fire field of view
+    quality: 'high',                  // low | medium | high
     binds: { ...DEFAULT_BINDS },
   };
 }
@@ -65,6 +68,10 @@ function normalize(s) {
   for (const k of ['invertY', 'vibration', 'aimAssist', 'autoFire', 'sound', 'music']) {
     out[k] = !!out[k];
   }
+  out.sfxVol = Number.isFinite(+out.sfxVol) ? clamp(Math.round(+out.sfxVol), 0, 100) : 100;
+  out.musicVol = Number.isFinite(+out.musicVol) ? clamp(Math.round(+out.musicVol), 0, 100) : 80;
+  out.fov = clamp(Math.round(+out.fov || 75), 60, 110);
+  if (!['low', 'medium', 'high'].includes(out.quality)) out.quality = 'high';
   return out;
 }
 

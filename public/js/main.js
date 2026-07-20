@@ -21,6 +21,7 @@ import { attachBrains, botName } from './bots.js';
 import {
   SFX, unlockAudio, setSoundEnabled, soundEnabled,
   startMusic, stopMusic, setMusicEnabled, musicEnabled,
+  setSfxVolume, setMusicVolume,
 } from './audio.js';
 import { settings, loadSettings, saveSettings, flushSettingsOutbox } from './settings.js';
 import { gamepad } from './gamepad.js';
@@ -164,8 +165,11 @@ async function joinRoomByCode(code) {
 
 function fitRenderer() {
   const c = $('game-canvas');
-  // phones: cap the pixel ratio for a solid frame rate
-  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, state.input?.touchMode ? 1.5 : 2));
+  // pixel-ratio cap follows the quality setting (phones cap harder on high)
+  const cap = settings.quality === 'low' ? 1
+    : settings.quality === 'medium' ? 1.25
+    : state.input?.touchMode ? 1.5 : 2;
+  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap));
   state.renderer.setSize(c.clientWidth, c.clientHeight, false);
   if (state.game) {
     state.game.camera.aspect = c.clientWidth / c.clientHeight;
@@ -249,7 +253,7 @@ function wireMenu() {
   // settings / controls screen
   $('btn-settings').addEventListener('click', () => {
     SFX.click();
-    UI.renderSettings(() => state.input?.applySettings(settings));
+    UI.renderSettings(() => state.input?.applySettings(settings), applyDisplaySettings);
     UI.showScreen('settings');
   });
   $('btn-back-settings').addEventListener('click', () => {
@@ -265,10 +269,27 @@ function wireMenu() {
 function applyLoadedSettings() {
   setSoundEnabled(settings.sound);
   setMusicEnabled(settings.music);
+  setSfxVolume(settings.sfxVol);
+  setMusicVolume(settings.musicVol);
   $('btn-sound').textContent = settings.sound ? '🔊' : '🔇';
   $('btn-sound').classList.toggle('off', !settings.sound);
   $('btn-music').classList.toggle('off', !settings.music);
   state.input?.applySettings(settings);
+  applyDisplaySettings();
+}
+
+// FOV + graphics quality — safe to call any time, applies live where possible
+function applyDisplaySettings() {
+  if (state.game) state.game.baseFov = settings.fov;
+  if (state.renderer) {
+    const wantShadows = settings.quality !== 'low';
+    if (state.renderer.shadowMap.enabled !== wantShadows) {
+      state.renderer.shadowMap.enabled = wantShadows;
+      // force a material refresh so a live scene picks the change up
+      state.game?.scene?.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+    }
+    fitRenderer();
+  }
 }
 
 const lobbyInfo = () => ({ name: profile.name, skin: profile.skin, lvl: playerLevel() });
@@ -440,6 +461,7 @@ function beginOnlineMatch() {
     startAt: meta.startAt,
     endAt: endAtFor(room.mode, meta.startAt),
     myFace: profile.facePhoto || null,
+    baseFov: settings.fov,
   });
 
   // CTF / tactical: humans alternate red/blue by join order
@@ -492,6 +514,7 @@ function startOffline() {
     startAt: now,
     endAt: endAtFor(mode, now),
     myFace: profile.facePhoto || null,
+    baseFov: settings.fov,
   });
 
   const myTeam = (mode === 'ctf' || mode === 'tactical') ? 'r' : 'p';
@@ -583,7 +606,7 @@ function pauseForSettings() {
   state.paused = true;
   state.input.enabled = false;
   state.input.exitLock();
-  UI.renderSettings(() => state.input.applySettings(settings));
+  UI.renderSettings(() => state.input.applySettings(settings), applyDisplaySettings);
   UI.showScreen('settings');
 }
 

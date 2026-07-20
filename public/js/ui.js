@@ -12,7 +12,7 @@ import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges } from './profile.js';
 import { packCustomSkin, parseCustomSkin } from './chars.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
-import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled } from './audio.js';
+import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled, setSfxVolume, setMusicVolume } from './audio.js';
 import { settings, saveSettings, resetBinds, BIND_ORDER } from './settings.js';
 import { gamepad } from './gamepad.js';
 
@@ -888,7 +888,7 @@ export function updatePadStatus() {
   el.classList.toggle('on', gamepad.connected);
 }
 
-export function renderSettings(onInputApply) {
+export function renderSettings(onInputApply, onDisplayApply) {
   const body = $('settings-body');
   body.innerHTML = '';
   $('settings-title').textContent = t('settingsTitle');
@@ -903,7 +903,7 @@ export function renderSettings(onInputApply) {
     body.appendChild(h);
   };
 
-  const sliderRow = (labelKey, key, min, max, step, fmt) => {
+  const sliderRow = (labelKey, key, min, max, step, fmt, onChange) => {
     const row = document.createElement('div');
     row.className = 'set-row';
     const lab = document.createElement('span'); lab.className = 'set-label'; lab.textContent = t(labelKey);
@@ -912,9 +912,30 @@ export function renderSettings(onInputApply) {
     inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = settings[key];
     inp.className = 'set-slider';
     const show = () => { val.textContent = fmt ? fmt(settings[key]) : settings[key]; };
-    inp.addEventListener('input', () => { settings[key] = +inp.value; show(); commit(); });
+    inp.addEventListener('input', () => { settings[key] = +inp.value; show(); if (onChange) onChange(); commit(); });
     show();
     row.append(lab, inp, val);
+    body.appendChild(row);
+  };
+
+  // pick-one row (e.g. graphics quality)
+  const choiceRow = (labelKey, key, options, onChange) => {
+    const row = document.createElement('div');
+    row.className = 'set-row';
+    const lab = document.createElement('span'); lab.className = 'set-label'; lab.textContent = t(labelKey);
+    const wrap = document.createElement('div'); wrap.className = 'set-choices';
+    for (const opt of options) {
+      const b = document.createElement('button');
+      b.className = 'set-choice' + (settings[key] === opt ? ' on' : '');
+      b.textContent = t(labelKey + '_' + opt);
+      b.addEventListener('click', () => {
+        settings[key] = opt;
+        for (const x of wrap.children) x.classList.toggle('on', x === b);
+        if (onChange) onChange(); commit(); SFX.click();
+      });
+      wrap.appendChild(b);
+    }
+    row.append(lab, wrap);
     body.appendChild(row);
   };
 
@@ -941,10 +962,17 @@ export function renderSettings(onInputApply) {
   toggleRow('vibration', () => settings.vibration, (v) => { settings.vibration = v; if (v) gamepad.rumble(0.5, 150); });
   toggleRow('autoFire', () => settings.autoFire, (v) => { settings.autoFire = v; });
 
+  // --- display ---
+  section('secDisplay');
+  sliderRow('fov', 'fov', 60, 110, 1, (v) => v + '°', () => onDisplayApply && onDisplayApply());
+  choiceRow('quality', 'quality', ['low', 'medium', 'high'], () => onDisplayApply && onDisplayApply());
+
   // --- audio ---
   section('secAudio');
   toggleRow('sound', () => soundEnabled(), (v) => { setSoundEnabled(v); settings.sound = v; });
   toggleRow('music', () => musicEnabled(), (v) => { setMusicEnabled(v); settings.music = v; });
+  sliderRow('sfxVol', 'sfxVol', 0, 100, 5, (v) => v + '%', () => { setSfxVolume(settings.sfxVol); SFX.click(); });
+  sliderRow('musicVol', 'musicVol', 0, 100, 5, (v) => v + '%', () => setMusicVolume(settings.musicVol));
 
   // --- gamepad binds ---
   section('secBinds');

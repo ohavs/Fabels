@@ -6,9 +6,21 @@
 let ctx = null;
 let master = null;
 let enabled = true;
+let sfxVol = 1;      // 0..1 user volume (multiplies the 0.32 base gain)
+let musicVol = 0.8;  // 0..1 user volume for the music bus
 
 export function setSoundEnabled(v) { enabled = v; }
 export function soundEnabled() { return enabled; }
+
+export function setSfxVolume(v) {         // v: 0..100
+  sfxVol = Math.max(0, Math.min(1, v / 100));
+  if (master) master.gain.value = 0.32 * sfxVol;
+}
+
+export function setMusicVolume(v) {       // v: 0..100
+  musicVol = Math.max(0, Math.min(1, v / 100));
+  if (musicGain) musicGain.gain.value = musicBase * musicVol;
+}
 
 function ensureCtx() {
   if (!ctx) {
@@ -16,7 +28,7 @@ function ensureCtx() {
     if (!AC) return null;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.32;
+    master.gain.value = 0.32 * sfxVol;
     master.connect(ctx.destination);
   }
   if (ctx.state === 'suspended') ctx.resume();
@@ -80,6 +92,7 @@ const GUNS = {
 // ============================================================
 let musicOn = true;
 let musicGain = null;
+let musicBase = 0.5;   // per-track base gain; user musicVol multiplies it
 let musicTimer = null;
 let beat = 0;
 
@@ -141,8 +154,10 @@ export function startMusic(kind = 'menu') {
   if (!musicOn || !ensureCtx()) return;
   stopMusic();
   musicGain = ctx.createGain();
-  musicGain.gain.value = kind === 'menu' ? 0.5 : 0.42;
-  musicGain.connect(master);
+  // 0.32 compensates for skipping the master (SFX) bus — same loudness as before
+  musicBase = (kind === 'menu' ? 0.5 : 0.42) * 0.32;
+  musicGain.gain.value = musicBase * musicVol;
+  musicGain.connect(ctx.destination);   // own bus: SFX volume doesn't duck music
   beat = 0;
   const bpm = kind === 'menu' ? 92 : 128;
   const beatSec = 60 / bpm;

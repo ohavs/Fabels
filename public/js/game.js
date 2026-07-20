@@ -79,6 +79,7 @@ export class Game {
     this.isTactical = o.mode === 'tactical';          // round-based plant/defuse
     this.isCreative = o.mode === 'creative';          // free build canvas, save/load
     this.myFace = o.myFace || null;                   // my uploaded face photo (dataURL)
+    this.baseFov = o.baseFov || 75;                   // user FOV setting (settings screen)
     this.teamplay = ['team', 'zombies', 'ctf', 'tactical'].includes(o.mode);
     this.wave = 0;
     this.waveDelay = 3;
@@ -1085,11 +1086,14 @@ export class Game {
       this.camera.rotation.z = 0;
     }
 
-    // FOV: sprint widens, ADS narrows to the weapon's own zoom
+    // FOV: sprint widens, ADS narrows to the weapon's own zoom.
+    // baseFov is the user's setting (default 75); hip/sprint/third-person
+    // scale around it, ADS stays absolute (it's a zoom level).
     const w = WEAPONS[p.weapon];
     const sniper = p.weapon === 'sniper';
+    const base = this.baseFov || 75;
     const targetFov = p.ads ? (w.adsFov || 55)
-      : tp ? 70 : sp > GAME.moveSpeed * 1.1 ? 82 : 75;
+      : tp ? base * 0.93 : sp > GAME.moveSpeed * 1.1 ? base * 1.09 : base;
     if (Math.abs(this.camera.fov - targetFov) > 0.1) {
       this.camera.fov = lerp(this.camera.fov, targetFov, Math.min(1, dt * 12));
       this.camera.updateProjectionMatrix();
