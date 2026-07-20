@@ -919,14 +919,14 @@ export class Game {
 
       // action routed by the selected tool (gun / pickaxe / build piece / edit)
       const tool = this.canBuild ? input.tool : 'gun';
+      if (tool !== 'edit' && this._editSess) this._editSess = null;   // dropped a pending edit
       if (tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone') {
         if (input.firing) this.placeBuild({ wall: 'w', ramp: 'r', floor: 'f', cone: 'c' }[tool]);
       } else if (tool === 'pick' || (tool === 'gun' && p.weapon === 'pickaxe')) {
         // pickaxe — whether picked from the build bar or held as hotbar slot 0
         if (input.firing) this._swingPickaxe(p);
       } else if (tool === 'edit') {
-        if (input.firing && !this._editHeld) this._editAimed(p);
-        this._editHeld = input.firing;
+        this._editStep(p, input);
       } else {
         // gun: manual, or mobile auto-fire when the crosshair rests on an enemy
         if (input.firing || (input.touchMode && input.autoFire && this._crosshairOnEnemy(p))) {
@@ -1488,7 +1488,7 @@ export class Game {
       this._updateEditGhost(p);
       return;
     }
-    if (this._editGhost) this._editGhost.visible = false;
+    if (this._editGrp) this._editGrp.visible = false;
     const active = this.canBuild && p && p.alive && !this.over && (tool === 'wall' || tool === 'ramp' || tool === 'floor' || tool === 'cone');
     if (!active) { if (this._ghost) this._ghost.visible = false; return; }
     const kind = { wall: 'w', ramp: 'r', floor: 'f', cone: 'c' }[tool];
@@ -1684,35 +1684,75 @@ export class Game {
     return { b, row, col };
   }
 
-  // highlight the wall cell the crosshair is on while editing
+  // full 3×3 grid overlay on the aimed wall (1v1.lol-style): every cell shows
+  // its pending state, the aimed cell is picked out, so you can see the edit
+  // before you confirm it.
   _updateEditGhost(p) {
     const hit = this._editHit(p);
-    if (!this._editGhost) {
-      const m = new THREE.MeshBasicMaterial({ color: 0x37e0ff, transparent: true, opacity: 0.34, depthTest: false, depthWrite: false });
-      this._editGhost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), m);
-      this._editGhost.renderOrder = 6;
-      this._editGhost.add(new THREE.LineSegments(
-        new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
-        new THREE.LineBasicMaterial({ color: 0xffffff })));
-      this.scene.add(this._editGhost);
+    if (!this._editGrp) {
+      this._editGrp = new THREE.Group();
+      this._editCells = [];
+      const cube = new THREE.BoxGeometry(1, 1, 1);
+      const edge = new THREE.EdgesGeometry(cube);
+      for (let i = 0; i < 9; i++) {
+        const cell = new THREE.Mesh(cube, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthTest: false, depthWrite: false }));
+        cell.renderOrder = 6;
+        cell.add(new THREE.LineSegments(edge, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })));
+        this._editCells.push(cell);
+        this._editGrp.add(cell);
+      }
+      this.scene.add(this._editGrp);
     }
-    const gh = this._editGhost;
-    if (!hit) { gh.visible = false; return; }
-    const { b, row, col } = hit;
+    if (!hit) { this._editGrp.visible = false; return; }
+    this._editGrp.visible = true;
+    const { b, row: ar, col: ac } = hit;
     const W = 3.05, H3 = 3, T = 0.25, cw = W / 3, ch = H3 / 3;
-    const cy = b.y + row * ch + ch / 2, off = (col - 1) * cw;
-    const removed = !!(editMask(b.edit) & (1 << (row * 3 + col)));
-    gh.visible = true;
-    gh.material.color.setHex(removed ? 0x8effa0 : 0x37e0ff);   // green = fill, cyan = open
-    if (b.ax === 'x') { gh.position.set(b.x, cy, b.z + off); gh.scale.set(T + 0.12, ch * 0.92, cw * 0.92); }
-    else { gh.position.set(b.x + off, cy, b.z); gh.scale.set(cw * 0.92, ch * 0.92, T + 0.12); }
+    const sess = this._editSess && this._editSess.id === b.id ? this._editSess : null;
+    const mask = sess ? sess.mask : editMask(b.edit);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+      const idx = r * 3 + c, cell = this._editCells[idx];
+      const open = !!(mask & (1 << idx));            // will be a hole after apply
+      const aimed = r === ar && c === ac;
+      cell.material.color.setHex(aimed ? 0xffd200 : open ? 0x37e0ff : 0x9effb0);
+      cell.material.opacity = aimed ? 0.5 : open ? 0.34 : 0.13;
+      const cy = b.y + r * ch + ch / 2, off = (c - 1) * cw;
+      if (b.ax === 'x') { cell.position.set(b.x, cy, b.z + off); cell.scale.set(T + 0.12, ch * 0.9, cw * 0.9); }
+      else { cell.position.set(b.x + off, cy, b.z); cell.scale.set(cw * 0.9, ch * 0.9, T + 0.12); }
+    }
   }
 
-  _editAimed(p) {
-    const hit = this._editHit(p);
-    if (!hit) return;
-    const b = hit.b;
-    const mask = editMask(b.edit) ^ (1 << (hit.row * 3 + hit.col));
+  // drag-select edit: press+drag paints cells into a pending mask, release
+  // confirms it in one rebuild and swaps back to the last build piece so you
+  // can immediately re-place (exactly the 1v1.lol / Fortnite edit-then-build loop).
+  _editStep(p, input) {
+    if (input.firing) {
+      const hit = this._editHit(p);
+      if (!hit) return;
+      const cell = hit.row * 3 + hit.col;
+      const sess = this._editSess;
+      if (!sess || sess.id !== hit.b.id) {
+        // begin a session on this wall — toggle the first cell, set paint value
+        const toggled = editMask(hit.b.edit) ^ (1 << cell);
+        this._editSess = { id: hit.b.id, mask: toggled, paint: (toggled >> cell) & 1, last: cell };
+        SFX.hit();
+      } else if (cell !== sess.last) {
+        // drag into a new cell — paint it to match the first cell's new state
+        if (sess.paint) sess.mask |= (1 << cell); else sess.mask &= ~(1 << cell);
+        sess.last = cell;
+        SFX.hit();
+      }
+    } else if (this._editSess) {
+      // released — confirm and return to building
+      const sess = this._editSess;
+      this._editSess = null;
+      this._applyEdit(sess.id, sess.mask);
+      if (this.input) this.input.setTool(this.input.lastPiece || 'wall');
+    }
+  }
+
+  _applyEdit(id, mask) {
+    const b = this.builds.get(id);
+    if (!b || editMask(b.edit) === mask) return;      // no change → nothing to do
     b.edit = mask;
     const spec = { id: b.id, t: 'w', o: b.owner, slot: b.slot, mat: b.mat, x: b.x, y: b.y, z: b.z, ax: b.ax, dir: b.dir, edit: mask };
     const keepHp = b.hp;
@@ -2274,6 +2314,7 @@ export class Game {
   }
 
   _respawn(p) {
+    if (p === this.me) this._editSess = null;    // drop any pending edit
     const s = this._spawnPos(p);
     this._place(p, s);
     p.hp = p.maxHp;
