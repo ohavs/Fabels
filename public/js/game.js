@@ -103,6 +103,7 @@ export class Game {
     this.shake = 0;                 // screen-shake magnitude, decays
     this.recoilP = 0; this.recoilY = 0;  // visual camera recoil (does not move aim)
     this.dmgFloats = [];            // floating damage numbers
+    this.dmgDirs = [];              // incoming-damage direction pings {x, z, t}
     this.interpDelayMs = 120;       // render behind newest snapshot (adaptive: lower on WebRTC)
 
     // hooks (wired by net.js / main.js)
@@ -1609,6 +1610,10 @@ export class Game {
 
   _updateFeel(dt) {
     this.shake = Math.max(0, this.shake - dt * 3.5);
+    for (let i = this.dmgDirs.length - 1; i >= 0; i--) {
+      this.dmgDirs[i].t -= dt;
+      if (this.dmgDirs[i].t <= 0) this.dmgDirs.splice(i, 1);
+    }
     this.recoilP = Math.max(0, this.recoilP - dt * 0.9);
     this.recoilY *= Math.pow(0.001, dt);
     for (let i = this.dmgFloats.length - 1; i >= 0; i--) {
@@ -2134,6 +2139,12 @@ export class Game {
       this.hudFlags.hurt = 0.5;
       this.onRumble?.(0.7, 160);   // controller kick when you take a hit
       this.addShake(0.5);          // getting hit shakes the screen
+      // remember where the hit came from → HUD direction arc
+      const atk = this.players.get(fromUid);
+      if (atk && atk !== this.me) {
+        this.dmgDirs.push({ x: atk.x, z: atk.z, t: 1.1 });
+        if (this.dmgDirs.length > 6) this.dmgDirs.shift();
+      }
       SFX.hurt();
     } else {
       const from = this.players.get(fromUid);

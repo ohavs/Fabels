@@ -336,6 +336,7 @@ export function updateHUD(game, input) {
 
   renderHotbar(game, input);
   drawMinimap(game);
+  drawDmgDirs(game);
 
   // weapon / active tool label
   const tool = game.canBuild ? input.tool : 'gun';
@@ -422,6 +423,31 @@ export function updateHUD(game, input) {
   if (showSb) renderScoreboard(game);
 }
 
+// ---------------- incoming-damage direction arcs ----------------
+// red arc segments around the crosshair pointing at whoever hit you,
+// fading out over ~a second (Fortnite/COD-style).
+function drawDmgDirs(game) {
+  const cv = $('dmgdir');
+  const x = cv.getContext('2d');
+  x.clearRect(0, 0, 240, 240);
+  const me = game.me;
+  if (!me || !game.dmgDirs.length) return;
+  for (const d of game.dmgDirs) {
+    const dx = d.x - me.x, dz = d.z - me.z;
+    if (dx * dx + dz * dz < 0.01) continue;
+    // bearing the attacker sits at (same convention as forwardOf), relative to my facing
+    const rel = Math.atan2(-dx, -dz) - me.yaw;
+    const a = -Math.PI / 2 - rel;                 // canvas angle: top = ahead
+    const alpha = Math.min(1, d.t / 0.8);
+    x.strokeStyle = `rgba(255, 64, 64, ${0.85 * alpha})`;
+    x.lineWidth = 7;
+    x.lineCap = 'round';
+    x.beginPath();
+    x.arc(120, 120, 96, a - 0.42, a + 0.42);
+    x.stroke();
+  }
+}
+
 // ---------------- minimap / radar ----------------
 let mmBaked = null;
 let mmBakedFor = '';
@@ -447,6 +473,19 @@ function bakeMinimap(game) {
   mmBakedFor = game.mapId + game.world.size;
 }
 
+// small oriented arrow (used for me + teammates)
+function mmArrow(x, cx, cy, yaw, color, s) {
+  x.save();
+  x.translate(cx, cy);
+  x.rotate(-yaw);
+  x.fillStyle = color;
+  x.beginPath();
+  x.moveTo(0, -s * 1.25); x.lineTo(s * 0.85, s); x.lineTo(-s * 0.85, s);
+  x.closePath();
+  x.fill();
+  x.restore();
+}
+
 function drawMinimap(game) {
   const cv = $('minimap');
   const x = cv.getContext('2d');
@@ -455,55 +494,92 @@ function drawMinimap(game) {
   x.drawImage(mmBaked, 0, 0);
   const S = game.world.size, k = 120 / S;
   const px = (v) => (v + S / 2) * k;
+  const pulse = 0.5 + 0.5 * Math.sin(game.elapsed * 6);
+
+  // player-built structures (live, not baked — they come and go)
+  x.fillStyle = 'rgba(214, 178, 122, 0.85)';
+  for (const b of game.builds.values()) x.fillRect(px(b.x) - 1.2, px(b.z) - 1.2, 2.4, 2.4);
 
   // pickups
   x.fillStyle = 'rgba(255, 210, 0, 0.8)';
   for (const pk of game.pickups.values()) x.fillRect(px(pk.x) - 1.5, px(pk.z) - 1.5, 3, 3);
 
-  // battle-royale zone circle
+  // battle-royale / zone-wars zone: blue inside, red when you're outside it
   if (game.zone) {
-    x.strokeStyle = 'rgba(57, 160, 255, 0.9)';
-    x.lineWidth = 1.5;
+    const me = game.me;
+    const out = me && Math.hypot(me.x, me.z) > game.zone.r;
+    x.strokeStyle = out ? `rgba(255, 82, 82, ${0.6 + 0.4 * pulse})` : 'rgba(57, 160, 255, 0.9)';
+    x.lineWidth = out ? 2.2 : 1.5;
     x.beginPath();
     x.arc(60, 60, game.zone.r * k, 0, Math.PI * 2);
     x.stroke();
   }
 
-  // CTF flags
+  // boxfight arena ring
+  if (game.arena) {
+    x.strokeStyle = 'rgba(255, 90, 160, 0.85)';
+    x.lineWidth = 1.5;
+    x.beginPath();
+    x.arc(60, 60, game.arena.r * k, 0, Math.PI * 2);
+    x.stroke();
+  }
+
+  // tactical: bomb site ring + the bomb itself (blinks once planted)
+  if (game.tac) {
+    const tac = game.tac;
+    x.strokeStyle = tac.planted ? `rgba(255, 68, 68, ${0.5 + 0.5 * pulse})` : 'rgba(255, 207, 63, 0.9)';
+    x.lineWidth = 1.5;
+    x.beginPath();
+    x.arc(px(tac.site.x), px(tac.site.z), Math.max(4, tac.site.r * k), 0, Math.PI * 2);
+    x.stroke();
+    if (tac.planted && tac.bomb) {
+      x.fillStyle = `rgba(255, 68, 68, ${0.55 + 0.45 * pulse})`;
+      x.beginPath();
+      x.arc(px(tac.bomb.x), px(tac.bomb.z), 3, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
+
+  // CTF flags (a pulsing ring marks a carried flag)
   if (game.ctf) {
     for (const teamId of ['r', 'b']) {
       const f = game.ctf.flags[teamId];
-      x.fillStyle = teamId === 'r' ? '#ff4444' : '#448cff';
+      const col = teamId === 'r' ? '#ff4444' : '#448cff';
+      x.fillStyle = col;
       x.fillRect(px(f.x) - 2.5, px(f.z) - 2.5, 5, 5);
+      if (f.state === 'carried') {
+        x.strokeStyle = col;
+        x.lineWidth = 1.4;
+        x.beginPath();
+        x.arc(px(f.x), px(f.z), 5 + pulse * 2.5, 0, Math.PI * 2);
+        x.stroke();
+      }
     }
   }
 
   for (const p of game.players.values()) {
     if (!p.alive || p === game.me) continue;
     const sameTeam = game.teamplay && p.team === game.me?.team;
+    if (sameTeam) {
+      // teammates: green arrows so you can read their facing at a glance
+      mmArrow(x, px(p.x), px(p.z), p.yaw, '#3dff8b', 2.8);
+      continue;
+    }
+    // enemies: on the radar only while they fired recently (PvE bots always),
+    // fading out as the ping ages
+    const since = game.elapsed - (p.lastShotAt || -99);
     const isEnemyBot = !!p.bot;
-    // enemies show on the radar only when they fired recently (or PvE bots always)
-    const ping = game.elapsed - (p.lastShotAt || -99) < 3;
-    if (!sameTeam && !isEnemyBot && !ping) continue;
-    x.fillStyle = sameTeam ? '#3dff8b' : '#ff5252';
+    if (!isEnemyBot && since >= 3) continue;
+    const alpha = isEnemyBot ? 0.9 : Math.max(0.25, 1 - since / 3);
+    x.fillStyle = `rgba(255, 82, 82, ${alpha})`;
     x.beginPath();
-    x.arc(px(p.x), px(p.z), sameTeam ? 2.6 : 3, 0, Math.PI * 2);
+    x.arc(px(p.x), px(p.z), 3, 0, Math.PI * 2);
     x.fill();
   }
 
   // me: white arrow rotated by yaw
   const me = game.me;
-  if (me) {
-    x.save();
-    x.translate(px(me.x), px(me.z));
-    x.rotate(-me.yaw);
-    x.fillStyle = '#ffffff';
-    x.beginPath();
-    x.moveTo(0, -5); x.lineTo(3.4, 4); x.lineTo(-3.4, 4);
-    x.closePath();
-    x.fill();
-    x.restore();
-  }
+  if (me) mmArrow(x, px(me.x), px(me.z), me.yaw, '#ffffff', 4);
 }
 
 function renderScoreboard(game) {
