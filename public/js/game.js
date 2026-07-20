@@ -28,6 +28,11 @@ import { t } from './i18n.js';
 const V1 = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 
+// shared unit geometries — every build piece scales one of these instead of
+// allocating (and leaking) its own BufferGeometry per mesh
+const BOXGEO = new THREE.BoxGeometry(1, 1, 1);
+const CONEGEO = new THREE.ConeGeometry(3.05 * 0.7, 1.7, 4);
+
 const forwardOf = (yaw, pitch = 0) => ({
   x: -Math.sin(yaw) * Math.cos(pitch),
   y: -Math.sin(pitch),
@@ -1644,27 +1649,42 @@ export class Game {
     this.addShake(base * 3.2);
   }
 
+  // damage values recur constantly (weapon dmg × multipliers), so the text
+  // textures are cached instead of re-rasterized on every single hit
+  _dmgTex(dmg, hs) {
+    if (!this._dmgTexCache) this._dmgTexCache = new Map();
+    const key = dmg + (hs ? 'h' : 'n');
+    let tex = this._dmgTexCache.get(key);
+    if (!tex) {
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 64;
+      const g = c.getContext('2d');
+      g.font = '900 46px "Heebo", system-ui, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)';
+      g.fillStyle = hs ? '#ff5252' : '#ffe08a';
+      g.strokeText(dmg, 64, 34); g.fillText(dmg, 64, 34);
+      tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this._dmgTexCache.set(key, tex);
+      if (this._dmgTexCache.size > 64) {   // bounded: drop the oldest entry
+        const [k0, t0] = this._dmgTexCache.entries().next().value;
+        t0.dispose();
+        this._dmgTexCache.delete(k0);
+      }
+    }
+    return tex;
+  }
+
   dmgFloat(x, y, z, dmg, hs) {
-    if (!this._dmgMat) this._dmgMat = {};
-    const key = hs ? 'hs' : 'n';
-    // canvas-text sprite, cheap to make; billboarded, floats up and fades
-    const c = document.createElement('canvas');
-    c.width = 128; c.height = 64;
-    const g = c.getContext('2d');
-    g.font = '900 46px "Heebo", system-ui, sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.85)';
-    g.fillStyle = hs ? '#ff5252' : '#ffe08a';
-    g.strokeText(dmg, 64, 34); g.fillText(dmg, 64, 34);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    // billboarded text sprite, floats up and fades; texture shared via cache
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._dmgTex(dmg, hs), transparent: true, depthTest: false }));
     sp.scale.set(1.1 * (hs ? 1.25 : 1), 0.55 * (hs ? 1.25 : 1), 1);
     sp.position.set(x + (Math.random() - 0.5) * 0.6, y, z + (Math.random() - 0.5) * 0.6);
     sp.renderOrder = 30;
     this.scene.add(sp);
     this.dmgFloats.push({ sp, life: 0.8, vy: 1.8 });
-    if (this.dmgFloats.length > 30) { const old = this.dmgFloats.shift(); this.scene.remove(old.sp); old.sp.material.map.dispose(); old.sp.material.dispose(); }
+    if (this.dmgFloats.length > 30) { const old = this.dmgFloats.shift(); this.scene.remove(old.sp); old.sp.material.dispose(); }
   }
 
   _updateFeel(dt) {
@@ -1681,7 +1701,7 @@ export class Game {
       f.sp.position.y += f.vy * dt;
       f.vy *= Math.pow(0.02, dt);
       f.sp.material.opacity = Math.min(1, f.life * 2.2);
-      if (f.life <= 0) { this.scene.remove(f.sp); f.sp.material.map.dispose(); f.sp.material.dispose(); this.dmgFloats.splice(i, 1); }
+      if (f.life <= 0) { this.scene.remove(f.sp); f.sp.material.dispose(); this.dmgFloats.splice(i, 1); }   // map is cached — keep it
     }
   }
 
@@ -1837,7 +1857,7 @@ export class Game {
     const woodM = mat(material.color);
     const darkM = mat(material.trim);
     const addPiece = (x, y, z, w, h, d, { collide = true, m: useM = woodM, rz = 0 } = {}) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), useM);
+      const m = new THREE.Mesh(BOXGEO, useM);
       m.position.set(x, y + h / 2, z);
       m.scale.set(w, h, d);
       if (rz) m.rotation.z = rz;
@@ -1879,7 +1899,7 @@ export class Game {
     } else if (spec.t === 'c') {
       // cone / roof: a 4-sided pyramid capping the cell
       const H = 1.7;
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.7, H, 4), woodM);
+      const cone = new THREE.Mesh(CONEGEO, woodM);
       cone.rotation.y = Math.PI / 4;
       cone.position.set(spec.x, spec.y + H / 2, spec.z);
       cone.castShadow = true; cone.receiveShadow = true;
@@ -2673,5 +2693,6 @@ export class Game {
     this.scene.traverse((o) => {
       if (o.isMesh) o.geometry?.dispose?.();
     });
+    if (this._dmgTexCache) { for (const t of this._dmgTexCache.values()) t.dispose(); this._dmgTexCache.clear(); }
   }
 }
