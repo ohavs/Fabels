@@ -24,6 +24,9 @@ export const FB = {
   fs: null, f: null,   // firestore
   timeOffset: 0,
   serverNow: () => Date.now() + FB.timeOffset,
+  connected: false,      // live RTDB transport state (.info/connected)
+  _connCbs: [],
+  onConn(cb) { FB._connCbs.push(cb); },
 };
 
 export async function initFirebase() {
@@ -46,6 +49,19 @@ export async function initFirebase() {
     // clock sync for match timers
     dbM.onValue(dbM.ref(FB.db, '.info/serverTimeOffset'), (snap) => {
       FB.timeOffset = snap.val() || 0;
+    });
+
+    // transport watchdog: report drops/recoveries to whoever subscribed.
+    // ('.info/connected' starts false — only fire after the first connect
+    // so boot doesn't look like a disconnect.)
+    let everConnected = false;
+    dbM.onValue(dbM.ref(FB.db, '.info/connected'), (snap) => {
+      const v = !!snap.val();
+      if (v) everConnected = true;
+      else if (!everConnected) return;
+      if (v === FB.connected) return;
+      FB.connected = v;
+      for (const cb of FB._connCbs) { try { cb(v); } catch { /* ignore */ } }
     });
 
     FB.online = true;

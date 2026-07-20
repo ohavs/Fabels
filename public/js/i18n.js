@@ -131,6 +131,8 @@ export const STR = {
 
   // errors
   netError: 'שגיאת רשת — בדקו את החיבור',
+  connLost: '🔌 החיבור נותק — מתחבר מחדש…',
+  connBack: '✓ החיבור חזר!',
   onlineNeedsFirebase: 'מצב מקוון דורש הגדרת Firebase (ראו README)',
 
   // pickups & combat pack

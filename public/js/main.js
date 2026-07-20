@@ -344,6 +344,8 @@ function enterOnlineLobby(room) {
   state.room = room;
   state.matchStarted = false;
   state.lastEntry = { mode: room.mode, online: true };
+  // transport watchdog: tell the player when the connection drops/returns
+  room.onConnState = (ok) => UI.toast(t(ok ? 'connBack' : 'connLost'), ok ? 'gold' : 'red');
   UI.showScreen('lobby');
 
   // invite-by-link: share/copy a URL that drops friends straight into this room

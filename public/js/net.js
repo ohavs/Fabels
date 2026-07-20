@@ -114,10 +114,37 @@ export class Room {
 
   async _enter(lobbyInfo) {
     this.myJoinedAt = FB.serverNow();
+    this._meLobbyInfo = lobbyInfo;
     const meRef = this._ref('players/' + FB.uid);
     await FB.d.set(meRef, { ...lobbyInfo, joinedAt: this.myJoinedAt });
     FB.d.onDisconnect(meRef).remove();
+    this._watchConn();
     this._attachCore();
+  }
+
+  // transport drop → the server wiped my presence (onDisconnect). When the
+  // connection returns, restore my player node with the ORIGINAL joinedAt so
+  // host ordering stays stable, and re-arm the onDisconnect cleanup.
+  _watchConn() {
+    this._dropped = false;
+    FB.onConn((ok) => {
+      if (this._left) return;
+      if (!ok) {
+        this._dropped = true;
+        if (this.onConnState) this.onConnState(false);
+        return;
+      }
+      if (!this._dropped) return;
+      this._dropped = false;
+      const meRef = this._ref('players/' + FB.uid);
+      FB.d.set(meRef, {
+        ...this._meLobbyInfo,
+        ...(this.game ? this.game.getSelfState() : {}),
+        joinedAt: this.myJoinedAt,
+      }).catch(() => {});
+      FB.d.onDisconnect(meRef).remove();
+      if (this.onConnState) this.onConnState(true);
+    });
   }
 
   _attachCore() {
