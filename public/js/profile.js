@@ -33,7 +33,8 @@ function normalize(p) {
   out.skins = { scout: true, ...(p.skins || {}) };
   out.stats = { ...d.stats, ...(p.stats || {}) };
   out.chall = { date: '', prog: {}, done: {}, ...(p.chall || {}) };
-  if (!SKINS[out.skin] || !out.skins[out.skin]) out.skin = 'scout';
+  const isCustom = typeof out.skin === 'string' && out.skin.startsWith('c!');
+  if (!isCustom && (!SKINS[out.skin] || !out.skins[out.skin])) out.skin = 'scout';
   return out;
 }
 
@@ -87,6 +88,16 @@ export function buySkin(id) {
 export function equipSkin(id) {
   if (!profile.skins[id]) return false;
   profile.skin = id;
+  saveProfile();
+  return true;
+}
+
+// custom skin: `packed` is the 'c!...' string chars.js understands; the face
+// photo (small dataURL) rides in the profile and is applied to my own model
+export function equipCustomSkin(packed, facePhoto) {
+  profile.skin = packed;
+  profile.customSkin = packed;
+  if (facePhoto !== undefined) profile.facePhoto = facePhoto || '';
   saveProfile();
   return true;
 }

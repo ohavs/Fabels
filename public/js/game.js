@@ -78,6 +78,7 @@ export class Game {
     this.isLoadout = LOADOUT_MODES.includes(o.mode);
     this.isTactical = o.mode === 'tactical';          // round-based plant/defuse
     this.isCreative = o.mode === 'creative';          // free build canvas, save/load
+    this.myFace = o.myFace || null;                   // my uploaded face photo (dataURL)
     this.teamplay = ['team', 'zombies', 'ctf', 'tactical'].includes(o.mode);
     this.wave = 0;
     this.waveDelay = 3;
@@ -249,7 +250,8 @@ export class Game {
   }
 
   _makeView(p, isBot) {
-    const char = buildCharacter(p.skin);
+    // my own model gets the uploaded face photo (local view only)
+    const char = buildCharacter(p.skin, p === this.me && this.myFace ? { face: this.myFace } : {});
     char.group.position.set(p.x, p.y, p.z);
     const nameColor = this.mode === 'ctf'
       ? (p.team === 'r' ? '#ff6b6b' : '#7db4ff')

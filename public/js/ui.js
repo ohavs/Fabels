@@ -9,7 +9,8 @@ import {
   BUILD, BUILD_MATERIALS, TAC_PRICES, CREATIVE,
 } from './config.js';
 import { paintIcons } from './icons.js';
-import { profile, playerLevel, playerRank, buySkin, equipSkin, getChallenges } from './profile.js';
+import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges } from './profile.js';
+import { packCustomSkin, parseCustomSkin } from './chars.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled } from './audio.js';
 import { settings, saveSettings, resetBinds, BIND_ORDER } from './settings.js';
@@ -148,8 +149,8 @@ export function setLobbyCountdown(sec) {
 }
 
 // ---------------- skins shop ----------------
-function drawSkinPreview(canvas, skinId) {
-  const s = SKINS[skinId];
+function drawSkinPreview(canvas, skinOrId, face) {
+  const s = typeof skinOrId === 'object' ? skinOrId : SKINS[skinOrId];
   const dpr = window.devicePixelRatio || 1;
   canvas.width = 84 * dpr; canvas.height = 104 * dpr;
   const c = canvas.getContext('2d');
@@ -167,21 +168,98 @@ function drawSkinPreview(canvas, skinId) {
   c.fillStyle = hex(s.accent);
   c.fillRect(24, 58, 36, 5);
   c.fillRect(24, 40, 36, 4);
-  // arms
+  // backpack hint
+  if (s.pack) { c.fillStyle = hex(s.pack); c.fillRect(18, 38, 6, 20); }
+  // arms (+ shoulder pads)
   c.fillStyle = hex(s.body);
   c.fillRect(14, 36, 9, 24); c.fillRect(61, 36, 9, 24);
+  if (s.pads) { c.fillStyle = hex(s.pads); c.fillRect(12, 33, 13, 7); c.fillRect(59, 33, 13, 7); }
   c.fillStyle = hex(s.skin);
   c.fillRect(14, 58, 9, 7); c.fillRect(61, 58, 9, 7);
-  // head + visor + helmet
+  // head + visor/face + helmet
   c.fillStyle = hex(s.skin);
   c.fillRect(28, 8, 28, 26);
-  c.fillStyle = '#1f2430';
-  c.fillRect(31, 17, 22, 6);
+  if (face) {
+    const img = new Image();
+    img.onload = () => { c.drawImage(img, 29, 9, 26, 24); c.fillStyle = hex(s.accent); c.fillRect(26, 4, 32, 8); };
+    img.src = face;
+  } else {
+    c.fillStyle = s.visorGlow ? hex(s.visorGlow) : '#1f2430';
+    c.fillRect(31, 17, 22, 6);
+  }
   c.fillStyle = hex(s.accent);
   c.fillRect(26, 4, 32, 8);
 }
 
+// ---------------- custom skin builder ----------------
+let sbFace = null;      // pending face photo (dataURL) while editing
+let sbWired = false;
+
+function sbDef() {
+  const num = (id) => parseInt($(id).value.replace('#', ''), 16);
+  return {
+    body: num('sb-body'), accent: num('sb-accent'), skin: num('sb-skin'),
+    pads: $('sb-pads-on').checked ? num('sb-pads') : undefined,
+    pack: $('sb-pack-on').checked ? num('sb-pack') : undefined,
+    visorGlow: $('sb-visor-on').checked ? num('sb-visor') : undefined,
+  };
+}
+
+function sbRedraw() {
+  drawSkinPreview($('sb-canvas'), sbDef(), sbFace);
+  $('sb-face-clear').classList.toggle('hidden', !sbFace);
+}
+
+// downscale + centre-crop an uploaded photo to a small square face texture
+function sbProcessFace(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const x = c.getContext('2d');
+      const side = Math.min(img.width, img.height);
+      x.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 64, 64);
+      sbFace = c.toDataURL('image/jpeg', 0.82);
+      sbRedraw();
+    };
+    img.src = rd.result;
+  };
+  rd.readAsDataURL(file);
+}
+
+function sbInit() {
+  // restore the saved custom skin into the controls
+  if (profile.customSkin) {
+    const d = parseCustomSkin(profile.customSkin);
+    const hx = (n) => '#' + n.toString(16).padStart(6, '0');
+    $('sb-body').value = hx(d.body); $('sb-accent').value = hx(d.accent); $('sb-skin').value = hx(d.skin);
+    $('sb-pads-on').checked = d.pads !== undefined; if (d.pads !== undefined) $('sb-pads').value = hx(d.pads);
+    $('sb-pack-on').checked = d.pack !== undefined; if (d.pack !== undefined) $('sb-pack').value = hx(d.pack);
+    $('sb-visor-on').checked = d.visorGlow !== undefined; if (d.visorGlow !== undefined) $('sb-visor').value = hx(d.visorGlow);
+  }
+  sbFace = profile.facePhoto || null;
+  if (!sbWired) {
+    sbWired = true;
+    for (const id of ['sb-body', 'sb-accent', 'sb-skin', 'sb-pads', 'sb-pack', 'sb-visor', 'sb-pads-on', 'sb-pack-on', 'sb-visor-on']) {
+      $(id).addEventListener('input', sbRedraw);
+    }
+    $('sb-face-pick').addEventListener('click', () => $('sb-face-file').click());
+    $('sb-face-file').addEventListener('change', (e) => { if (e.target.files[0]) sbProcessFace(e.target.files[0]); });
+    $('sb-face-clear').addEventListener('click', () => { sbFace = null; $('sb-face-file').value = ''; sbRedraw(); });
+    $('sb-equip').addEventListener('click', () => {
+      SFX.click();
+      equipCustomSkin(packCustomSkin(sbDef()), sbFace || '');
+      toast(t('customEquipped'), 'gold');
+      renderShop(); refreshMenu();
+    });
+  }
+  sbRedraw();
+}
+
 export function renderShop() {
+  sbInit();
   $('shop-shards').textContent = `💠 ${profile.shards}`;
   const grid = $('shop-skins');
   grid.innerHTML = '';

@@ -45,6 +45,13 @@ export const STR = {
   skin_shadow: 'צללים',
   skin_sunset: 'שקיעה',
   skin_legend: 'אגדה',
+  skin_neon: 'ניאון',
+  skin_crimson: 'ארגמן',
+  skin_arctic: 'קוטב',
+  skin_toxic: 'רעיל',
+  skin_royal: 'מלכותי',
+  skin_galaxy: 'גלקסיה',
+  customEquipped: '🎨 הסקין המותאם שלכם נלבש!',
 
   // bots
   bots_easy: 'קל',

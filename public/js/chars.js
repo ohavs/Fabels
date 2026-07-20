@@ -20,9 +20,29 @@ function part(parent, w, h, d, color, x, y, z) {
   return m;
 }
 
-export function buildCharacter(skinId) {
-  // accepts a skin id or a raw {body, accent, skin} palette (zombies)
-  const s = typeof skinId === 'object' && skinId !== null ? skinId : (SKINS[skinId] || SKINS.scout);
+// Custom skins travel as a compact packed string ('c!body!accent!skin!pads!pack!visor',
+// hex colors without '#', '-' = accessory off) so the existing skin-id sync carries
+// them to every player with zero netcode changes.
+export function packCustomSkin(d) {
+  const hx = (v) => (v == null || v === false ? '-' : (typeof v === 'number' ? v : parseInt(String(v).replace('#', ''), 16)).toString(16).padStart(6, '0'));
+  return ['c', hx(d.body), hx(d.accent), hx(d.skin), hx(d.pads), hx(d.pack), hx(d.visorGlow)].join('!');
+}
+
+export function parseCustomSkin(str) {
+  const p = String(str).split('!');
+  const num = (v, fb) => (v && v !== '-' ? parseInt(v, 16) : fb);
+  const opt = (v) => (v && v !== '-' ? parseInt(v, 16) : undefined);
+  return {
+    body: num(p[1], 0x3b82f6), accent: num(p[2], 0xfbbf24), skin: num(p[3], 0xf1c27d),
+    pads: opt(p[4]), pack: opt(p[5]), visorGlow: opt(p[6]),
+  };
+}
+
+export function buildCharacter(skinId, opts = {}) {
+  // accepts a skin id, a packed custom string, or a raw palette (zombies)
+  const s = typeof skinId === 'object' && skinId !== null ? skinId
+    : typeof skinId === 'string' && skinId.startsWith('c!') ? parseCustomSkin(skinId)
+    : (SKINS[skinId] || SKINS.scout);
   const group = new THREE.Group();
 
   // legs (pivots at the hip so they swing)
@@ -53,8 +73,18 @@ export function buildCharacter(skinId) {
   // head + visor + helmet accent
   const head = new THREE.Group(); head.position.set(0, 1.76, 0); group.add(head);
   part(head, 0.36, 0.36, 0.34, s.skin, 0, 0, 0);
-  const visor = part(head, 0.3, 0.09, 0.05, s.visorGlow || 0x1f2430, 0, 0.04, 0.17);  // visor/eyes
-  if (s.visorGlow) visor.material.emissive?.setHex(s.visorGlow);
+  if (opts.face) {
+    // uploaded face photo mapped onto the front of the head (replaces the visor)
+    const tex = new THREE.TextureLoader().load(opts.face);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const plate = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ map: tex }));
+    plate.scale.set(0.34, 0.32, 0.02);
+    plate.position.set(0, 0, 0.175);
+    head.add(plate);
+  } else {
+    const visor = part(head, 0.3, 0.09, 0.05, s.visorGlow || 0x1f2430, 0, 0.04, 0.17);  // visor/eyes
+    if (s.visorGlow) visor.material.emissive?.setHex(s.visorGlow);
+  }
   part(head, 0.4, 0.12, 0.38, s.accent, 0, 0.22, 0);      // helmet band
 
   // optional accessories (premium skins)

@@ -195,6 +195,31 @@
         <span id="shop-shards" class="chip shards big">💠 0</span>
       </div>
       <div id="shop-skins" class="ship-grid"></div>
+
+      <!-- custom skin builder -->
+      <div class="panel-head" style="margin-top:18px"><h2>🎨 הסקין שלי</h2></div>
+      <div id="skin-builder" class="skin-builder">
+        <div class="sb-preview">
+          <canvas id="sb-canvas"></canvas>
+          <button id="sb-equip" class="cta small">לבש אותי ✓</button>
+        </div>
+        <div class="sb-controls">
+          <label class="sb-row"><span>צבע גוף</span><input type="color" id="sb-body" value="#3b82f6"></label>
+          <label class="sb-row"><span>צבע משלים</span><input type="color" id="sb-accent" value="#fbbf24"></label>
+          <label class="sb-row"><span>גוון עור</span><input type="color" id="sb-skin" value="#f1c27d"></label>
+          <label class="sb-row"><span>🛡️ כתפיות</span><input type="checkbox" id="sb-pads-on"><input type="color" id="sb-pads" value="#111827"></label>
+          <label class="sb-row"><span>🎒 תיק גב</span><input type="checkbox" id="sb-pack-on"><input type="color" id="sb-pack" value="#94a3b8"></label>
+          <label class="sb-row"><span>✨ מגן זוהר</span><input type="checkbox" id="sb-visor-on"><input type="color" id="sb-visor" value="#22d3ee"></label>
+          <div class="sb-row sb-face">
+            <span>🤳 תמונת פנים</span>
+            <input type="file" id="sb-face-file" accept="image/*" hidden>
+            <button id="sb-face-pick" class="ghost-btn small">העלאת תמונה</button>
+            <button id="sb-face-clear" class="ghost-btn small hidden">✕ הסרה</button>
+          </div>
+          <p class="sb-hint">התמונה מוקטנת ונמתחת על פני הדמות שלכם (רק אתם ואתם בלבד מעלים אותה — היא נשמרת בפרופיל שלכם)</p>
+        </div>
+      </div>
+
       <div class="panel-actions">
         <button id="btn-back-shop" class="ghost-btn">חזרה</button>
       </div>

@@ -439,6 +439,7 @@ function beginOnlineMatch() {
     timeFn: () => FB.serverNow(),
     startAt: meta.startAt,
     endAt: endAtFor(room.mode, meta.startAt),
+    myFace: profile.facePhoto || null,
   });
 
   // CTF / tactical: humans alternate red/blue by join order
@@ -490,6 +491,7 @@ function startOffline() {
     timeFn: () => Date.now(),
     startAt: now,
     endAt: endAtFor(mode, now),
+    myFace: profile.facePhoto || null,
   });
 
   const myTeam = (mode === 'ctf' || mode === 'tactical') ? 'r' : 'p';
