@@ -32,29 +32,32 @@
   </section>
 
   <!-- ═══════════ תפריט ראשי ═══════════ -->
-  <!-- Home = the lobby: your character centre-stage, mode picker on the side -->
+  <!-- Home = the lobby, full-screen: the 3D lineup fills the screen, menus float over it -->
   <section id="scr-menu" class="screen home">
-    <header class="home-topbar">
-      <div class="pilot-card compact">
-        <input id="menu-name-input" maxlength="20" placeholder="כינוי לוחם" aria-label="כינוי לוחם" />
-        <div class="pilot-meta">
-          <span id="menu-level" class="chip">רמה 1</span>
-          <span id="menu-rank" class="chip rank">ארד</span>
-          <span id="menu-shards" class="chip shards">💠 0</span>
-        </div>
-        <div class="xpbar"><div id="menu-xpbar" class="xpbar-fill"></div></div>
-      </div>
-      <div class="home-top-right">
-        <button id="btn-google" class="google-btn hidden">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-          <span id="google-label">התחברות עם Google</span>
-        </button>
-        <div id="menu-conn" class="conn-badge">מתחבר…</div>
-      </div>
-    </header>
+    <!-- fullscreen 3D character stage (background) -->
+    <canvas id="home-stage"></canvas>
 
-    <div class="home-body">
-      <!-- mode selector (side) -->
+    <div class="home-overlay">
+      <header class="home-topbar">
+        <div class="pilot-card compact">
+          <input id="menu-name-input" maxlength="20" placeholder="כינוי לוחם" aria-label="כינוי לוחם" />
+          <div class="pilot-meta">
+            <span id="menu-level" class="chip">רמה 1</span>
+            <span id="menu-rank" class="chip rank">ארד</span>
+            <span id="menu-shards" class="chip shards">💠 0</span>
+          </div>
+          <div class="xpbar"><div id="menu-xpbar" class="xpbar-fill"></div></div>
+        </div>
+        <div class="home-top-right">
+          <button id="btn-google" class="google-btn hidden">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+            <span id="google-label">התחברות עם Google</span>
+          </button>
+          <div id="menu-conn" class="conn-badge">מתחבר…</div>
+        </div>
+      </header>
+
+      <!-- mode selector floats on the side -->
       <div class="home-left">
         <button id="home-mode-card" class="home-mode-card">
           <span id="home-mode-icon" class="hm-icon">🔫</span>
@@ -68,29 +71,26 @@
         <button id="btn-leave-party" class="ghost-btn slim hidden">↩ עזיבת החבורה</button>
       </div>
 
-      <!-- 3D character lineup: you + friend slots -->
-      <div class="home-stage-wrap">
-        <canvas id="home-stage"></canvas>
-        <div id="home-party-invite" class="lobby-friends hidden"></div>
-        <button id="home-dance" class="dance-btn" aria-label="ריקוד">🕺</button>
+      <div id="home-party-invite" class="lobby-friends hidden"></div>
+      <button id="home-dance" class="dance-btn" aria-label="ריקוד">🕺</button>
+
+      <div class="home-bottom">
+        <div class="home-play-row">
+          <span id="home-status" class="home-status"></span>
+          <button id="home-play" class="play-btn">🚀 שחק</button>
+        </div>
+        <footer class="home-footer">
+          <button id="btn-shop" class="hf-btn" title="דמויות">🎽</button>
+          <button id="btn-friends" class="hf-btn" title="חברים">👥</button>
+          <button id="btn-join" class="hf-btn" title="הצטרפות עם קוד">🔑</button>
+          <button id="btn-board" class="hf-btn" title="לוח מובילים">🏆</button>
+          <button id="btn-chall" class="hf-btn" title="אתגרים">🎯</button>
+          <button id="btn-settings" class="hf-btn" title="הגדרות">⚙️</button>
+          <button id="btn-sound" class="hf-btn" title="צליל">🔊</button>
+          <button id="btn-music" class="hf-btn" title="מוזיקה">🎵</button>
+        </footer>
       </div>
     </div>
-
-    <div class="home-play-row">
-      <span id="home-status" class="home-status"></span>
-      <button id="home-play" class="play-btn">🚀 שחק</button>
-    </div>
-
-    <footer class="home-footer">
-      <button id="btn-shop" class="hf-btn" title="דמויות">🎽</button>
-      <button id="btn-friends" class="hf-btn" title="חברים">👥</button>
-      <button id="btn-join" class="hf-btn" title="הצטרפות עם קוד">🔑</button>
-      <button id="btn-board" class="hf-btn" title="לוח מובילים">🏆</button>
-      <button id="btn-chall" class="hf-btn" title="אתגרים">🎯</button>
-      <button id="btn-settings" class="hf-btn" title="הגדרות">⚙️</button>
-      <button id="btn-sound" class="hf-btn" title="צליל">🔊</button>
-      <button id="btn-music" class="hf-btn" title="מוזיקה">🎵</button>
-    </footer>
 
     <!-- floating mode picker -->
     <div id="mode-popover" class="mode-popover hidden">

@@ -91,6 +91,7 @@ export class LobbyStage {
         this.pads.push(pad);
       }
     }
+    this._frame();          // reframe for the new lineup width
   }
 
   // cycle / set my dance (-1 = stop)
@@ -102,11 +103,29 @@ export class LobbyStage {
   _fit() {
     const w = this.canvas.clientWidth || 300;
     const h = this.canvas.clientHeight || 220;
-    if (this.canvas.width !== w * 2 || this.canvas.height !== h * 2) {
+    if (w !== this._w || h !== this._h) {
+      this._w = w; this._h = h;
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
+      this._frame();
     }
+  }
+
+  // pull the camera back so the whole lineup fits the current viewport aspect
+  // (fullscreen background: portrait phones need more distance than wide desktops)
+  _frame() {
+    const a = this.camera.aspect || 1.6;
+    let halfW = 1.7;
+    for (const c of this.chars) halfW = Math.max(halfW, Math.abs(c.char.group.position.x) + 1.2);
+    for (const p of this.pads) halfW = Math.max(halfW, Math.abs(p.position.x) + 1.0);
+    const vHalf = (this.camera.fov * Math.PI / 180) / 2;
+    const distH = 1.75 / Math.tan(vHalf);                       // fit character height
+    const hHalf = Math.atan(Math.tan(vHalf) * a);
+    const distW = halfW / Math.tan(hHalf);                      // fit lineup width
+    const dist = Math.min(22, Math.max(5.5, distW, distH));
+    this.camera.position.set(0, 1.65, dist);
+    this.camera.lookAt(0, 1.0, 0);
   }
 
   start() {

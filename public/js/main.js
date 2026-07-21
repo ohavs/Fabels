@@ -118,6 +118,10 @@ function finishBoot(online) {
     });
     state.renderer = createRenderer($('game-canvas'));
     window.addEventListener('resize', fitRenderer);
+    // re-frame the home lineup on rotate/resize (slot count is aspect-aware)
+    window.addEventListener('resize', () => {
+      if (!state.game && $('scr-menu').classList.contains('active')) renderHome();
+    });
     wireMenu();
 
     // physical controller: drives gameplay in a match, menu navigation otherwise
@@ -434,7 +438,12 @@ function renderHome() {
     players = [{ name: profile.name, skin: profile.skin, me: true }];
     max = 4;
   }
-  const slots = Math.min(Math.max(4, players.length), Math.max(4, max), 6);
+  // portrait phones: no empty pads (keep your character big); wide screens
+  // show up to 6 slots with friend pads
+  const portrait = window.innerHeight > window.innerWidth * 1.15;
+  const slots = portrait
+    ? Math.min(players.length, 4)
+    : Math.min(Math.max(4, players.length), Math.max(4, max), 6);
   homeStage().setPlayers(players.map((p) => ({
     name: p.name || '?', skin: p.skin || (p.me ? profile.skin : 'scout'),
     me: !!p.me, face: p.me ? profile.facePhoto : undefined,
