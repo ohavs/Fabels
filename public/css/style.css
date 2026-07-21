@@ -841,6 +841,46 @@ body.touch .rstack { display: grid; }
   .buy-item { padding: 6px 9px; font-size: 0.74rem; }
 }
 
+/* ═══════════ friends / social ═══════════ */
+.fr-mycode {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  background: rgba(20, 12, 48, 0.6); border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px;
+}
+.fr-mycode b { font-size: 1.3rem; letter-spacing: 4px; color: var(--yellow); direction: ltr; font-family: monospace; }
+.friends-list { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.fr-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(20, 12, 48, 0.55); border: 2px solid var(--line); border-radius: 11px; padding: 8px 12px;
+}
+.fr-dot { width: 11px; height: 11px; border-radius: 50%; background: #555; flex: none; }
+.fr-dot.on, .fr-dot.join { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.fr-dot.busy { background: var(--yellow); }
+.fr-name { font-weight: 800; }
+.fr-lvl { font-size: 0.72rem; color: var(--muted); }
+.fr-status { margin-inline-start: auto; font-size: 0.76rem; font-weight: 700; color: var(--muted); }
+.fr-status.join { color: var(--green); }
+.fr-status.busy { color: var(--yellow); }
+.fr-empty { color: var(--muted); text-align: center; padding: 18px 0; }
+.lobby-friends {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 8px 0 2px;
+}
+.lobby-friends.hidden { display: none; }
+.lf-label { font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+.lf-chip {
+  padding: 6px 12px; border-radius: 999px; font-weight: 800; font-size: 0.8rem;
+  background: rgba(61, 255, 139, 0.12); border: 2px solid var(--green); color: var(--green);
+}
+.lf-chip:disabled { opacity: 0.6; }
+.invite-banner {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 60; pointer-events: auto;
+  background: rgba(10, 6, 30, 0.95); border: 2px solid var(--green); border-radius: 14px;
+  padding: 10px 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-weight: 800;
+  animation: invitePop 0.3s ease-out;
+}
+.invite-banner.hidden { display: none; }
+@keyframes invitePop { from { transform: translateX(-50%) translateY(-20px); opacity: 0; } }
+
 /* ═══════════ custom skin builder ═══════════ */
 .skin-builder {
   display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;

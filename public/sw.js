@@ -8,7 +8,7 @@
 // Bump CACHE on every meaningful change to evict old bundles.
 // ============================================================
 
-const CACHE = 'starshards-v30';
+const CACHE = 'starshards-v31';
 const CORE = [
   './', './index.html', './manifest.json', './css/style.css',
   './icon-192.png', './icon-512.png',
@@ -16,7 +16,7 @@ const CORE = [
   './js/audio.js', './js/fb.js', './js/profile.js', './js/input.js',
   './js/world.js', './js/chars.js', './js/weapons.js', './js/game.js',
   './js/bots.js', './js/net.js', './js/rtc.js', './js/ui.js', './js/icons.js',
-  './js/settings.js', './js/gamepad.js',
+  './js/settings.js', './js/gamepad.js', './js/social.js',
   './js/vendor/three.module.js',
 ];
 

@@ -25,6 +25,10 @@ import {
 } from './audio.js';
 import { settings, loadSettings, saveSettings, flushSettingsOutbox } from './settings.js';
 import { gamepad } from './gamepad.js';
+import {
+  ensureFriendCode, addFriendByCode, removeFriend, refreshFriendProfiles,
+  setPresence, watchFriends, sendInvite, clearInvite, watchInvites,
+} from './social.js';
 import * as UI from './ui.js';
 
 const $ = UI.$;
@@ -132,6 +136,18 @@ function finishBoot(online) {
   UI.showScreen('menu');
   if (daily) UI.toast(t('daily', { n: daily }), 'gold');
 
+  // social: my code + presence + incoming invites
+  if (online) {
+    ensureFriendCode();
+    setPresence('menu');
+    watchInvites((fromUid, inv) => {
+      if (state.game) { return; }              // mid-match: leave it pending
+      UI.showInviteBanner(inv.name || '?',
+        () => { clearInvite(fromUid); joinRoomByCode(inv.room); },
+        () => clearInvite(fromUid));
+    });
+  }
+
   // deep-link: ?room=CODE → auto-join a friend's room
   const roomCode = new URLSearchParams(location.search).get('room');
   if (roomCode) {
@@ -146,7 +162,7 @@ function handleGamepadBack() {
   const scr = document.querySelector('.screen.active');
   if (!scr) return;
   const back = scr.querySelector(
-    '#btn-back-settings, #btn-back-shop, #btn-back-board, #btn-leave-lobby, #btn-menu',
+    '#btn-back-settings, #btn-back-shop, #btn-back-board, #btn-back-friends, #btn-leave-lobby, #btn-menu',
   );
   if (back) { SFX.click(); back.click(); }
 }
@@ -194,6 +210,31 @@ function wireMenu() {
   });
   $('btn-back-board').addEventListener('click', () => { SFX.click(); UI.showScreen('menu'); });
 
+  // ---- friends screen ----
+  $('btn-friends').addEventListener('click', () => { SFX.click(); openFriendsScreen(); });
+  $('btn-back-friends').addEventListener('click', () => {
+    SFX.click();
+    stopFriendsWatch();
+    UI.showScreen('menu');
+  });
+  $('btn-copy-code').addEventListener('click', async () => {
+    SFX.click();
+    try { await navigator.clipboard.writeText(profile.friendCode || ''); UI.toast(t('frCodeCopied')); }
+    catch { UI.toast(profile.friendCode || '', 'gold'); }
+  });
+  $('btn-add-friend').addEventListener('click', async () => {
+    SFX.click();
+    const res = await addFriendByCode($('friend-code-input').value);
+    if (res.ok) {
+      $('friend-code-input').value = '';
+      UI.toast(t('frAdded', { name: res.name }), 'gold');
+      openFriendsScreen();                     // re-render with the new friend
+    } else {
+      UI.toast(t(res.reason === 'notFound' ? 'frNotFound' : res.reason === 'self' ? 'frSelf'
+        : res.reason === 'dup' ? 'frDup' : 'frNeedOnline'), 'red');
+    }
+  });
+
   $('menu-name-input').addEventListener('change', (e) => {
     if (setName(e.target.value)) UI.toast(t('nameSaved'));
     UI.refreshMenu();
@@ -220,6 +261,8 @@ function wireMenu() {
   $('btn-leave-lobby').addEventListener('click', async () => {
     SFX.click();
     clearInterval(state.lobbyTimer);
+    stopLobbyFriends();
+    setPresence('menu');
     if (state.room) { await state.room.leave(); state.room = null; }
     UI.refreshMenu();
     UI.showScreen('menu');
@@ -263,6 +306,26 @@ function wireMenu() {
     if (state.paused) resumeFromSettings();   // opened mid-match → resume
     else UI.showScreen('menu');
   });
+}
+
+// ---------------- friends screen flow ----------------
+let friendsUnsub = null;
+function stopFriendsWatch() { if (friendsUnsub) { friendsUnsub(); friendsUnsub = null; } }
+
+const friendsCtl = {
+  onJoin: (code) => { stopFriendsWatch(); joinRoomByCode(code); },
+  onRemove: (uid) => { removeFriend(uid); openFriendsScreen(); },
+};
+
+function openFriendsScreen() {
+  UI.renderFriendCode(ensureFriendCode());
+  UI.showScreen('friends');
+  if (!FB.online) { UI.renderFriendsList({}, friendsCtl); return; }
+  stopFriendsWatch();
+  let pres = {};
+  friendsUnsub = watchFriends((p) => { pres = p; UI.renderFriendsList(pres, friendsCtl); });
+  UI.renderFriendsList(pres, friendsCtl);
+  refreshFriendProfiles().then(() => UI.renderFriendsList(pres, friendsCtl));
 }
 
 // push the loaded control/audio settings into the live systems
@@ -340,12 +403,24 @@ async function enterMode(mode) {
   }
 }
 
+let lobbyFriendsUnsub = null;
+function stopLobbyFriends() {
+  if (lobbyFriendsUnsub) { lobbyFriendsUnsub(); lobbyFriendsUnsub = null; }
+  $('lobby-friends').classList.add('hidden');
+}
+
 function enterOnlineLobby(room) {
   state.room = room;
   state.matchStarted = false;
   state.lastEntry = { mode: room.mode, online: true };
   // transport watchdog: tell the player when the connection drops/returns
   room.onConnState = (ok) => UI.toast(t(ok ? 'connBack' : 'connLost'), ok ? 'gold' : 'red');
+  // presence + online-friends invite chips
+  setPresence('lobby', room.id);
+  stopLobbyFriends();
+  lobbyFriendsUnsub = watchFriends((pres) => UI.renderLobbyFriends(pres, {
+    onInvite: (uid) => { sendInvite(uid, room.id); UI.toast(t('frInviteSent')); },
+  }));
   UI.showScreen('lobby');
 
   // invite-by-link: share/copy a URL that drops friends straight into this room
@@ -497,6 +572,8 @@ function beginOnlineMatch() {
   if (room.isHost) game.spawnBrLoot();
   // creative online: the host restores their island; builds sync to everyone
   if (room.mode === 'creative' && room.isHost) loadCreativeMap(game, true);
+  stopLobbyFriends();
+  setPresence('match', room.id);
   startLoop(game);
   SFX.go();
 }
@@ -545,6 +622,7 @@ function startOffline() {
   attachBrains(game);
   game.spawnBrLoot();
   if (mode === 'creative') loadCreativeMap(game, true);   // restore my saved island
+  setPresence('match');
   game.onChat = (idx) => game.showChat('me', QUICK_CHAT[idx]);
   game.onOver = (results) => finishMatch(results);
   startLoop(game);
@@ -629,6 +707,7 @@ async function exitMatch() {
   if (state.room) { await state.room.leave(); state.room = null; }
   state.game?.dispose();
   state.game = null;
+  setPresence('menu');
   UI.refreshMenu();
   UI.showScreen('menu');
 }
@@ -642,6 +721,7 @@ function finishMatch(results) {
     stopLoop();
     const wasOnline = !!state.room;
     if (state.room) { state.room.leave(); state.room = null; }
+    setPresence('menu');
 
     const myRow = results.placements.find((p) => p.me) || { kills: 0, deaths: 0 };
     const place = Math.max(0, results.placements.indexOf(results.placements.find((p) => p.me)));

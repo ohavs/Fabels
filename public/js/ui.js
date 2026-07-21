@@ -19,7 +19,7 @@ import { gamepad } from './gamepad.js';
 const $ = (id) => document.getElementById(id);
 
 // ---------------- screens ----------------
-const SCREENS = ['load', 'menu', 'lobby', 'shop', 'board', 'settings', 'game', 'results'];
+const SCREENS = ['load', 'menu', 'lobby', 'shop', 'board', 'friends', 'settings', 'game', 'results'];
 export function showScreen(name) {
   for (const s of SCREENS) $('scr-' + s).classList.toggle('active', s === name);
 }
@@ -190,6 +190,90 @@ function drawSkinPreview(canvas, skinOrId, face) {
   c.fillStyle = hex(s.accent);
   c.fillRect(26, 4, 32, 8);
 }
+
+// ---------------- friends / social ----------------
+// status line for a friend's presence record
+function presenceLabel(p) {
+  if (!p) return { txt: t('frOffline'), cls: 'off' };
+  if (p.state === 'match') return { txt: t('frInMatch'), cls: 'busy' };
+  if (p.state === 'lobby') return { txt: t('frInLobby'), cls: 'join' };
+  return { txt: t('frOnline'), cls: 'on' };
+}
+
+export function renderFriendCode(code) { $('my-friend-code').textContent = code || '------'; }
+
+// friends screen list. ctl: { onJoin(code), onRemove(uid) }
+export function renderFriendsList(presence, ctl) {
+  const wrap = $('friends-list');
+  wrap.innerHTML = '';
+  const friends = Object.entries(profile.friends || {});
+  if (!friends.length) {
+    wrap.innerHTML = `<p class="fr-empty">${t('frEmpty')}</p>`;
+    return;
+  }
+  // online friends first
+  friends.sort((a, b) => (presence[b[0]] ? 1 : 0) - (presence[a[0]] ? 1 : 0));
+  for (const [uid, f] of friends) {
+    const p = presence[uid];
+    const st = presenceLabel(p);
+    const row = document.createElement('div');
+    row.className = 'fr-row';
+    row.innerHTML = `
+      <span class="fr-dot ${st.cls}"></span>
+      <span class="fr-name">${escapeHtml((p && p.name) || f.name)}</span>
+      <span class="fr-lvl">${f.level ? t('level', { n: f.level }) : ''}</span>
+      <span class="fr-status ${st.cls}">${st.txt}</span>`;
+    if (p && p.state === 'lobby' && p.room) {
+      const join = document.createElement('button');
+      join.className = 'cta small';
+      join.textContent = t('frJoin');
+      join.addEventListener('click', () => ctl.onJoin(p.room));
+      row.appendChild(join);
+    }
+    const rm = document.createElement('button');
+    rm.className = 'ghost-btn small';
+    rm.textContent = '✕';
+    rm.title = t('frRemove');
+    rm.addEventListener('click', () => { ctl.onRemove(uid); });
+    row.appendChild(rm);
+    wrap.appendChild(row);
+  }
+}
+
+// online-friends chips inside the online lobby. ctl: { onInvite(uid) }
+export function renderLobbyFriends(presence, ctl) {
+  const wrap = $('lobby-friends');
+  const online = Object.entries(profile.friends || {}).filter(([uid]) => presence[uid]);
+  wrap.classList.toggle('hidden', !online.length);
+  wrap.innerHTML = '';
+  if (!online.length) return;
+  const lab = document.createElement('span');
+  lab.className = 'lf-label';
+  lab.textContent = t('frInviteLabel');
+  wrap.appendChild(lab);
+  for (const [uid, f] of online) {
+    const p = presence[uid];
+    const chip = document.createElement('button');
+    chip.className = 'lf-chip';
+    chip.textContent = `📨 ${(p && p.name) || f.name}`;
+    chip.addEventListener('click', () => {
+      chip.disabled = true;
+      chip.textContent = `✓ ${(p && p.name) || f.name}`;
+      ctl.onInvite(uid);
+    });
+    wrap.appendChild(chip);
+  }
+}
+
+// incoming-invite banner
+export function showInviteBanner(fromName, onAccept, onDismiss) {
+  const b = $('invite-banner');
+  $('invite-text').textContent = t('frInvited', { name: fromName });
+  b.classList.remove('hidden');
+  $('btn-invite-accept').onclick = () => { b.classList.add('hidden'); onAccept(); };
+  $('btn-invite-dismiss').onclick = () => { b.classList.add('hidden'); onDismiss(); };
+}
+export function hideInviteBanner() { $('invite-banner').classList.add('hidden'); }
 
 // ---------------- custom skin builder ----------------
 let sbFace = null;      // pending face photo (dataURL) while editing

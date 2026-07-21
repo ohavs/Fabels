@@ -87,6 +87,24 @@ export const STR = {
   inviteShareTitle: 'בואו לשחק זירת האש!',
   inviteShareText: 'הצטרפו לקרב שלי בזירת האש 🎮',
 
+  // friends
+  frOnline: 'מחובר',
+  frOffline: 'לא מחובר',
+  frInLobby: 'בלובי — אפשר להצטרף!',
+  frInMatch: 'במשחק',
+  frJoin: 'הצטרפות ▶',
+  frRemove: 'הסרת חבר',
+  frEmpty: 'אין עדיין חברים — שתפו את הקוד שלכם או הוסיפו קוד של חבר!',
+  frAdded: '✓ {name} נוסף לחברים!',
+  frNotFound: 'קוד לא נמצא — בדקו שוב',
+  frSelf: 'זה הקוד שלכם 😄',
+  frDup: 'כבר ברשימת החברים',
+  frNeedOnline: 'רשימת החברים דורשת חיבור',
+  frCodeCopied: '✓ הקוד הועתק! שלחו לחברים',
+  frInvited: '📨 {name} מזמין אתכם למשחק!',
+  frInviteLabel: 'הזמינו חברים מחוברים:',
+  frInviteSent: '📨 ההזמנה נשלחה!',
+
   // HUD / battle
   kill: '{a} חיסל את {b}',
   killKnife: '{a} השפיל את {b} עם הסכין! 🔪',

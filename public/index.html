@@ -117,6 +117,7 @@
     <div class="menu-row">
       <button id="btn-shop" class="menu-btn">🎽 דמויות</button>
       <button id="btn-board" class="menu-btn">🏆 לוח מובילים</button>
+      <button id="btn-friends" class="menu-btn">👥 חברים</button>
     </div>
 
     <div class="join-row">
@@ -152,6 +153,7 @@
       <h2 id="lobby-title">לובי</h2>
       <div id="lobby-code" class="room-code"></div>
       <button id="btn-invite" class="invite-btn" style="display:none">🔗 הזמינו חברים</button>
+      <div id="lobby-friends" class="lobby-friends hidden"></div>
 
       <div class="lobby-opts">
         <div id="practice-mode-wrap" class="opt-group" style="display:none">
@@ -236,6 +238,33 @@
       </div>
     </div>
   </section>
+
+  <!-- ═══════════ חברים ═══════════ -->
+  <section id="scr-friends" class="screen scroll">
+    <div class="panel wide">
+      <h2>👥 חברים</h2>
+      <div class="fr-mycode">
+        <span>הקוד שלי:</span>
+        <b id="my-friend-code">------</b>
+        <button id="btn-copy-code" class="ghost-btn small">📋 העתקה</button>
+      </div>
+      <div class="join-row">
+        <input id="friend-code-input" maxlength="6" placeholder="קוד של חבר" aria-label="קוד של חבר" />
+        <button id="btn-add-friend" class="menu-btn slim">➕ הוספה</button>
+      </div>
+      <div id="friends-list" class="friends-list"></div>
+      <div class="panel-actions">
+        <button id="btn-back-friends" class="ghost-btn">חזרה</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- invite banner (shows over any screen) -->
+  <div id="invite-banner" class="invite-banner hidden">
+    <span id="invite-text">הזמנה למשחק!</span>
+    <button id="btn-invite-accept" class="cta small">הצטרפות ✓</button>
+    <button id="btn-invite-dismiss" class="ghost-btn small">✕</button>
+  </div>
 
   <!-- ═══════════ משחק ═══════════ -->
   <section id="scr-game" class="screen game">
