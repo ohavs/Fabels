@@ -12,6 +12,7 @@ import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges,
   buyDance, ownsDance, setEmoteSlot, danceIndex, isAdmin } from './profile.js';
 import { packCustomSkin, parseCustomSkin } from './chars.js';
+import { LobbyStage } from './lobbystage.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled, setSfxVolume, setMusicVolume } from './audio.js';
 import { settings, saveSettings, resetBinds, BIND_ORDER, resetKb, KB_ORDER } from './settings.js';
@@ -434,10 +435,24 @@ export function renderShop() {
 
 // which equipped slot (0-7) the next selected dance goes into
 let shopSlot = 0;
+// single shared animated dance-preview stage (one WebGL context, started only
+// while the shop is open → no perf cost elsewhere)
+let shopStage = null;
+function ensureShopStage() {
+  const cv = $('shop-dance-preview');
+  if (!cv) return null;
+  if (!shopStage) shopStage = new LobbyStage(cv);
+  shopStage.setPlayers([{ name: profile.name, skin: profile.skin, me: true, face: profile.facePhoto || '' }], 1);
+  shopStage.start();
+  return shopStage;
+}
+export function stopShopPreview() { shopStage?.stop(); }
+
 function renderShopDances() {
   const slotsEl = $('shop-emote-slots');
   const grid = $('shop-dances');
   if (!slotsEl || !grid) return;
+  ensureShopStage();
 
   // 8 equipped-emote slots — click to choose where the next dance goes
   slotsEl.innerHTML = '';
@@ -461,6 +476,8 @@ function renderShopDances() {
     const card = document.createElement('div');
     card.className = 'dance-card' + (isEq ? ' equipped' : '');
     card.innerHTML = `<span class="dc-emoji">${d.icon}</span><span class="dc-name">${escapeHtml(d.name)}</span>`;
+    // tap the card body → play this dance on the shared preview character
+    card.addEventListener('click', () => { shopStage?.dance(danceIndex(d.id)); });
     const btn = document.createElement('button');
     btn.className = 'shop-buy' + (owned ? ' own' : '');
     if (isEq) { btn.textContent = '✓ ' + t('equipped'); }

@@ -687,8 +687,21 @@ body.touch .rstack { display: grid; }
 .em-slot.sel { border-color: var(--yellow); box-shadow: 0 0 12px rgba(255, 210, 0, 0.5); }
 .es-num { position: absolute; top: 2px; right: 5px; font-size: 0.6rem; color: var(--muted); font-weight: 800; }
 .es-emoji { font-size: 1.5rem; }
+.dance-shop-top { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.dance-preview {
+  width: 120px; height: 150px; flex: 0 0 auto; border-radius: 14px;
+  background: radial-gradient(circle at 50% 35%, rgba(60,40,110,0.5), rgba(10,6,30,0.85));
+  border: 2px solid var(--line);
+}
+.dance-shop-top .emote-slots { margin: 0; flex: 1; }
 .dance-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px;
+}
+.dance-card { cursor: pointer; }
+.dance-card:active { transform: scale(0.97); }
+#admin-dance, #admin-skin {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px;
+  background: rgba(10, 6, 30, 0.7); border: 2px solid var(--line); color: #fff; font-weight: 700;
 }
 .dance-card {
   background: rgba(20, 12, 44, 0.7); border: 2px solid var(--line); border-radius: 14px;

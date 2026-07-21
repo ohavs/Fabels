@@ -6,6 +6,7 @@
 import {
   GAME, MAP_ORDER, RP_BY_PLACE, rewardsGunGame, rewardsTeam, QUICK_CHAT,
   CTF, TACTICAL, BR, ZONEWARS, BUILDDM, BOXFIGHT, rewardsZombies, rewardsBr,
+  DANCES, SKINS, SKIN_ORDER,
 } from './config.js';
 import { t } from './i18n.js';
 import { FB, initFirebase, signInWithGoogle, signOutGoogle, isGoogleUser } from './fb.js';
@@ -286,10 +287,14 @@ function wireMenu() {
   });
 
   $('btn-shop').addEventListener('click', () => { SFX.click(); state.lobbyStage?.stop(); UI.renderShop(); UI.showScreen('shop'); });
-  $('btn-back-shop').addEventListener('click', () => { SFX.click(); showHome(); });
+  $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.stopShopPreview(); showHome(); });
 
   // ---- admin grants panel (visible only to the admin account) ----
-  let adminGrant = 'all';
+  let adminGrant = 'none';
+  // fill the specific-item dropdowns once
+  const adDance = $('admin-dance'), adSkin = $('admin-skin');
+  for (const d of DANCES) { const o = document.createElement('option'); o.value = d.id; o.textContent = `${d.icon} ${d.name}`; adDance.appendChild(o); }
+  for (const id of SKIN_ORDER) { const o = document.createElement('option'); o.value = id; o.textContent = t('skin_' + id); adSkin.appendChild(o); }
   $('btn-admin').addEventListener('click', () => {
     SFX.click();
     $('admin-popover').classList.remove('hidden');
@@ -308,9 +313,16 @@ function wireMenu() {
     const shards = Math.max(0, parseInt($('admin-shards').value, 10) || 0);
     if (!code) { UI.toast('הזן קוד חבר', 'red'); return; }
     const grant = { shards };
-    if (adminGrant === 'all') grant.all = true;
-    else if (adminGrant === 'dances') grant.dances = 'all';
-    else if (adminGrant === 'skins') grant.skins = 'all';
+    if (adminGrant === 'all') { grant.all = true; }
+    else if (adminGrant === 'dances') { grant.dances = 'all'; }
+    else if (adminGrant === 'skins') { grant.skins = 'all'; }
+    else {
+      // specific: collect the chosen dance/skin (if any)
+      if (adDance.value) grant.dances = [adDance.value];
+      if (adSkin.value) grant.skins = [adSkin.value];
+    }
+    // nothing to grant?
+    if (!grant.all && !grant.dances && !grant.skins && !shards) { UI.toast('בחר מה להעניק', 'red'); return; }
     const res = await grantByCode(code, grant);
     if (res.ok) { UI.toast('✓ הוענק בהצלחה', 'gold'); $('admin-popover').classList.add('hidden'); }
     else if (res.reason === 'notFound') UI.toast('קוד לא נמצא', 'red');

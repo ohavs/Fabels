@@ -151,8 +151,13 @@
             <button class="admin-pick" data-grant="dances">🕺 כל הריקודים</button>
             <button class="admin-pick" data-grant="skins">🎽 כל הדמויות</button>
             <button class="admin-pick" data-grant="all">✨ הכל</button>
+            <button class="admin-pick sel" data-grant="none">— רק ספציפי/כסף</button>
           </div>
         </div>
+        <label class="admin-row"><span>🕺 ריקוד ספציפי</span>
+          <select id="admin-dance"><option value="">— ללא —</option></select></label>
+        <label class="admin-row"><span>🎽 דמות ספציפית</span>
+          <select id="admin-skin"><option value="">— ללא —</option></select></label>
         <div class="panel-actions">
           <button id="btn-admin-grant" class="cta small">הענק</button>
           <button id="btn-admin-close" class="ghost-btn small">סגירה</button>
@@ -185,9 +190,12 @@
       <!-- dances / emotes shop -->
       <div class="panel-head" style="margin-top:18px">
         <h2>🕺 ריקודים</h2>
-        <span class="sb-hint" style="margin:0">בחר משבצת ואז ריקוד</span>
+        <span class="sb-hint" style="margin:0">הקש ריקוד לתצוגה · בחר משבצת ואז ריקוד</span>
       </div>
-      <div id="shop-emote-slots" class="emote-slots"></div>
+      <div class="dance-shop-top">
+        <canvas id="shop-dance-preview" class="dance-preview"></canvas>
+        <div id="shop-emote-slots" class="emote-slots"></div>
+      </div>
       <div id="shop-dances" class="dance-grid"></div>
 
       <!-- custom skin builder -->
