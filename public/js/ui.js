@@ -294,18 +294,89 @@ function sbRedraw() {
   $('sb-face-clear').classList.toggle('hidden', !sbFace);
 }
 
-// downscale + centre-crop an uploaded photo to a small square face texture
+// find the face in an uploaded photo and return its square crop region.
+// 1) native FaceDetector (Chrome/Android/Xbox Edge) → exact face box
+// 2) fallback: skin-tone density scan on a small thumbnail → likely face area
+// 3) last resort: centre crop biased to the top third (portraits)
+export async function detectFaceRegion(img) {
+  // --- native detector ---
+  try {
+    if ('FaceDetector' in window) {
+      const det = new window.FaceDetector({ maxDetectedFaces: 1, fastMode: true });
+      const faces = await det.detect(img);
+      if (faces && faces.length) {
+        const b = faces[0].boundingBox;
+        // pad the box ~35% so the whole head fits, keep it square
+        const side = Math.max(b.width, b.height) * 1.35;
+        return {
+          x: b.x + b.width / 2 - side / 2,
+          y: b.y + b.height / 2 - side / 2.2,   // slight upward bias (forehead)
+          side,
+        };
+      }
+    }
+  } catch { /* fall through */ }
+
+  // --- skin-tone heuristic on a 48px thumbnail ---
+  try {
+    const tw = 48, th = Math.max(1, Math.round(48 * img.height / img.width));
+    const tc = document.createElement('canvas');
+    tc.width = tw; tc.height = th;
+    const tx = tc.getContext('2d');
+    tx.drawImage(img, 0, 0, tw, th);
+    const d = tx.getImageData(0, 0, tw, th).data;
+    let sx = 0, sy = 0, n = 0;
+    for (let yy = 0; yy < th; yy++) {
+      for (let xx = 0; xx < tw; xx++) {
+        const i = (yy * tw + xx) * 4;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        // classic RGB skin gate (works across tones; cheap and good enough)
+        if (r > 60 && g > 30 && b > 15 && r > g && r > b && (r - Math.min(g, b)) > 10 && Math.abs(r - g) > 10) {
+          sx += xx; sy += yy; n++;
+        }
+      }
+    }
+    if (n > tw * th * 0.02) {                       // enough skin pixels found
+      const cx = (sx / n) / tw * img.width;
+      const cy = (sy / n) / th * img.height;
+      // estimate the face size from the skin spread
+      let spread = 0;
+      for (let yy = 0; yy < th; yy++) {
+        for (let xx = 0; xx < tw; xx++) {
+          const i = (yy * tw + xx) * 4;
+          const r = d[i], g = d[i + 1], b = d[i + 2];
+          if (r > 60 && g > 30 && b > 15 && r > g && r > b && (r - Math.min(g, b)) > 10 && Math.abs(r - g) > 10) {
+            spread = Math.max(spread, Math.abs(xx - (sx / n)), Math.abs(yy - (sy / n)));
+          }
+        }
+      }
+      const side = Math.max(img.width * 0.25, spread * 2.4 / tw * img.width);
+      return { x: cx - side / 2, y: cy - side / 2.1, side };
+    }
+  } catch { /* fall through */ }
+
+  // --- portrait-biased centre crop ---
+  const side = Math.min(img.width, img.height) * 0.8;
+  return { x: (img.width - side) / 2, y: Math.max(0, img.height * 0.12), side };
+}
+
+// downscale + auto-crop the face out of an uploaded photo → tiny texture
 function sbProcessFace(file) {
   const rd = new FileReader();
   rd.onload = () => {
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
+      const box = await detectFaceRegion(img);
+      // clamp the crop inside the photo
+      const side = Math.min(box.side, img.width, img.height);
+      const cx = Math.max(0, Math.min(img.width - side, box.x));
+      const cy = Math.max(0, Math.min(img.height - side, box.y));
       const c = document.createElement('canvas');
       c.width = c.height = 64;
       const x = c.getContext('2d');
-      const side = Math.min(img.width, img.height);
-      x.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 64, 64);
-      sbFace = c.toDataURL('image/jpeg', 0.82);
+      x.imageSmoothingQuality = 'high';
+      x.drawImage(img, cx, cy, side, side, 0, 0, 64, 64);
+      sbFace = c.toDataURL('image/jpeg', 0.8);    // ≈2-5KB — loads instantly
       sbRedraw();
     };
     img.src = rd.result;
@@ -534,13 +605,16 @@ export function updateHUD(game, input) {
         const cEl = b.querySelector('.bb-cost'); if (cEl) cEl.textContent = cost;
       }
     }
-    // material selector: visible while a build piece/edit is active, highlight current
-    const isBuilding = tool !== 'gun' && tool !== 'pick';
+    // material selector while placing pieces; simple-edit presets while editing
+    const editing = tool === 'edit';
+    const isBuilding = tool !== 'gun' && tool !== 'pick' && !editing;
     const mb = $('mat-bar');
     mb.classList.toggle('hidden', !isBuilding);
+    $('edit-presets').classList.toggle('hidden', !editing);
     for (const b of mb.querySelectorAll('.mb')) b.classList.toggle('sel', b.dataset.mat === curMat);
   } else {
     $('mat-bar').classList.add('hidden');
+    $('edit-presets').classList.add('hidden');
   }
   $('btn-cam').classList.toggle('on', game.thirdPerson);
 
@@ -860,6 +934,10 @@ export function bindHUD(input, { onExit, onChat, onSettings, onSaveMap, onLoadMa
   // material selector (wood / brick / metal)
   for (const b of document.querySelectorAll('#mat-bar .mb')) {
     hold(b, () => { input.selectMaterial(b.dataset.mat); });
+  }
+  // simple-edit presets
+  for (const b of document.querySelectorAll('#edit-presets .mb')) {
+    hold(b, () => input.onEditPreset?.(+b.dataset.preset));
   }
   // tactical buy menu
   for (const b of document.querySelectorAll('#buy-menu .buy-item')) {

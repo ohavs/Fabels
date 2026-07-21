@@ -841,6 +841,16 @@ body.touch .rstack { display: grid; }
   .buy-item { padding: 6px 9px; font-size: 0.74rem; }
 }
 
+/* ═══════════ google sign-in ═══════════ */
+.google-btn {
+  margin-top: 8px; display: flex; align-items: center; gap: 8px;
+  padding: 7px 13px; border-radius: 10px; font-weight: 800; font-size: 0.8rem;
+  background: #fff; color: #333; border: none; cursor: pointer;
+}
+.google-btn.hidden { display: none; }
+.google-btn.signed { background: rgba(255,255,255,0.1); color: var(--text); border: 2px solid var(--line); }
+.google-btn:active { transform: scale(0.96); }
+
 /* ═══════════ friends / social ═══════════ */
 .fr-mycode {
   display: flex; align-items: center; gap: 10px; margin-bottom: 12px;

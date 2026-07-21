@@ -47,6 +47,7 @@ export class Input {
     this.onCycleMaterial = null; // (dir) cycle the build material
     this.onSelectMaterial = null; // (m) pick a build material directly
     this.onBuy = null;         // (item) tactical buy-menu purchase
+    this.onEditPreset = null;  // (i) simple-edit preset while editing
     this.wantChat = -1;
     this.scoreHeld = false;
     this.touchMode = false;
@@ -161,12 +162,15 @@ export class Input {
       if (c === kb.nade) this.wantNade = true;
       if (c === kb.emote) this.wantEmote = 0;
       if (c === kb.camera) this.wantCamera = true;
-      // tool selection (1v1.lol-style): swap / direct piece / edit / material
+      // tool selection (1v1.lol-style): swap / direct piece / edit / material.
+      // while editing, the four piece keys become simple-edit presets
+      // (door / window / half / full — Fortnite-style one-press edits)
       if (c === kb.gun) this.toggleBuild();
-      if (c === kb.wall) this.setTool('wall');
-      if (c === kb.ramp) this.setTool('ramp');
-      if (c === kb.floor) this.setTool('floor');
-      if (c === kb.cone) this.setTool('cone');
+      const editing = this.tool === 'edit';
+      if (c === kb.wall) { if (editing) this.onEditPreset?.(0); else this.setTool('wall'); }
+      if (c === kb.ramp) { if (editing) this.onEditPreset?.(1); else this.setTool('ramp'); }
+      if (c === kb.floor) { if (editing) this.onEditPreset?.(2); else this.setTool('floor'); }
+      if (c === kb.cone) { if (editing) this.onEditPreset?.(3); else this.setTool('cone'); }
       if (c === kb.pick) this.setTool('pick');
       if (c === kb.material) this.cycleMaterial(1);
       if (c === kb.edit) this.setTool(this.tool === 'edit' ? 'gun' : 'edit');

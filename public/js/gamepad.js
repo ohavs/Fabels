@@ -156,11 +156,12 @@ export class GamePad {
       if (inp.tool !== 'gun') inp.setTool(inp.tool === 'edit' ? (inp.lastPiece || 'wall') : 'edit');
       else inp.wantReload = true;
     }
-    // direct piece select on the D-pad
-    if (hit('wall')) inp.setTool('wall');
-    if (hit('ramp')) inp.setTool('ramp');
-    if (hit('floor')) inp.setTool('floor');
-    if (hit('cone')) inp.setTool('cone');
+    // D-pad: direct piece select — or simple-edit presets while editing
+    const editing = inp.tool === 'edit';
+    if (hit('wall')) { if (editing) inp.onEditPreset?.(0); else inp.setTool('wall'); }
+    if (hit('ramp')) { if (editing) inp.onEditPreset?.(1); else inp.setTool('ramp'); }
+    if (hit('floor')) { if (editing) inp.onEditPreset?.(2); else inp.setTool('floor'); }
+    if (hit('cone')) { if (editing) inp.onEditPreset?.(3); else inp.setTool('cone'); }
     // optional extra binds (unbound by default)
     if (hit('pick')) inp.setTool('pick');
     if (hit('edit')) inp.setTool(inp.tool === 'edit' ? 'gun' : 'edit');

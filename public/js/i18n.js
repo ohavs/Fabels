@@ -87,6 +87,13 @@ export const STR = {
   inviteShareTitle: 'בואו לשחק זירת האש!',
   inviteShareText: 'הצטרפו לקרב שלי בזירת האש 🎮',
 
+  // google account
+  googleSignIn: 'התחברות עם Google',
+  googleSignOut: 'התנתקות',
+  googleLinked: '✓ החשבון חובר ל-Google — ההתקדמות שלכם שמורה לתמיד!',
+  googleSwitched: '✓ מתחברים לחשבון הקיים שלכם…',
+  googleFail: 'ההתחברות נכשלה — נסו שוב',
+
   // friends
   frOnline: 'מחובר',
   frOffline: 'לא מחובר',

@@ -38,8 +38,17 @@ export async function initFirebase() {
     FB.app = appM.initializeApp(FIREBASE_CONFIG);
 
     const auth = authM.getAuth(FB.app);
-    const cred = await authM.signInAnonymously(auth);
-    FB.uid = cred.user.uid;
+    FB.auth = auth;
+    FB.authM = authM;
+    // restore a previous session (Google or anonymous) before minting a new
+    // anonymous user, so a signed-in player keeps their account across visits
+    const existing = await new Promise((res) => {
+      const stop = authM.onAuthStateChanged(auth, (u) => { stop(); res(u); }, () => { stop(); res(null); });
+      setTimeout(() => res(auth.currentUser), 2500);
+    });
+    const user = existing || (await authM.signInAnonymously(auth)).user;
+    FB.uid = user.uid;
+    FB.user = user;
 
     FB.d = dbM;
     FB.db = dbM.getDatabase(FB.app);
@@ -72,3 +81,39 @@ export async function initFirebase() {
     return false;
   }
 }
+
+// ---- Google sign-in --------------------------------------------------------
+// Anonymous user → LINK the Google account (uid unchanged, progress kept).
+// If that Google account is already tied to another player, sign into it
+// instead (returns 'switched' so the app can reload state for the other uid).
+export async function signInWithGoogle() {
+  if (!FB.online || !FB.auth) return { ok: false, reason: 'offline' };
+  const provider = new FB.authM.GoogleAuthProvider();
+  try {
+    if (FB.user && FB.user.isAnonymous) {
+      const cred = await FB.authM.linkWithPopup(FB.user, provider);
+      FB.user = cred.user;
+      return { ok: true, mode: 'linked', user: cred.user };
+    }
+    const cred = await FB.authM.signInWithPopup(FB.auth, provider);
+    FB.user = cred.user; FB.uid = cred.user.uid;
+    return { ok: true, mode: 'signed', user: cred.user };
+  } catch (e) {
+    if (e && (e.code === 'auth/credential-already-in-use' || e.code === 'auth/email-already-in-use')) {
+      // this Google account already owns a player → switch to it
+      try {
+        const cred = await FB.authM.signInWithPopup(FB.auth, provider);
+        FB.user = cred.user; FB.uid = cred.user.uid;
+        return { ok: true, mode: 'switched', user: cred.user };
+      } catch (e2) { return { ok: false, reason: e2.code || 'popup' }; }
+    }
+    return { ok: false, reason: (e && e.code) || 'popup' };
+  }
+}
+
+export async function signOutGoogle() {
+  if (!FB.auth) return;
+  try { await FB.authM.signOut(FB.auth); } catch { /* ignore */ }
+}
+
+export const isGoogleUser = () => !!(FB.user && !FB.user.isAnonymous);

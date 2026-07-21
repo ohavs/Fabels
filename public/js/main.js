@@ -8,7 +8,7 @@ import {
   CTF, TACTICAL, BR, ZONEWARS, BUILDDM, BOXFIGHT, rewardsZombies, rewardsBr,
 } from './config.js';
 import { t } from './i18n.js';
-import { FB, initFirebase } from './fb.js';
+import { FB, initFirebase, signInWithGoogle, signOutGoogle, isGoogleUser } from './fb.js';
 import {
   profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, fetchLeaderboard,
   trackChallenges, saveProfile,
@@ -106,6 +106,7 @@ function finishBoot(online) {
     state.input.onCycleMaterial = (dir) => state.game?.cycleMaterial(dir);
     state.input.onSelectMaterial = (m) => state.game?.setMaterial(m);
     state.input.onBuy = (item) => state.game?.tacBuy(item);
+    state.input.onEditPreset = (i) => state.game?.applyEditPreset(i);
     UI.bindHUD(state.input, {
       onExit: exitMatch,
       onChat: (idx) => { state.input.wantChat = idx; },
@@ -136,6 +137,13 @@ function finishBoot(online) {
   UI.showScreen('menu');
   if (daily) UI.toast(t('daily', { n: daily }), 'gold');
 
+  // google account button
+  if (online) {
+    $('btn-google').classList.remove('hidden');
+    refreshGoogleBtn();
+    $('btn-google').addEventListener('click', onGoogleClick);
+  }
+
   // social: my code + presence + incoming invites
   if (online) {
     ensureFriendCode();
@@ -153,6 +161,42 @@ function finishBoot(online) {
   if (roomCode) {
     history.replaceState(null, '', location.pathname);   // clean the URL
     joinRoomByCode(roomCode.trim().toUpperCase());
+  }
+}
+
+// ---------------- google account ----------------
+function refreshGoogleBtn() {
+  const signed = isGoogleUser();
+  $('btn-google').classList.toggle('signed', signed);
+  $('google-label').textContent = signed
+    ? `✓ ${FB.user.displayName || FB.user.email || 'Google'} · ${t('googleSignOut')}`
+    : t('googleSignIn');
+}
+
+async function onGoogleClick() {
+  SFX.click();
+  if (isGoogleUser()) {
+    // sign out → reload as a fresh guest
+    await signOutGoogle();
+    location.reload();
+    return;
+  }
+  const res = await signInWithGoogle();
+  if (!res.ok) {
+    if (res.reason !== 'auth/popup-closed-by-user' && res.reason !== 'auth/cancelled-popup-request') {
+      UI.toast(t('googleFail'), 'red');
+    }
+    return;
+  }
+  if (res.mode === 'linked') {
+    // same uid — all progress kept, now backed by the Google account
+    UI.toast(t('googleLinked'), 'gold');
+    saveProfile();
+    refreshGoogleBtn();
+  } else {
+    // switched to an existing Google-owned player → boot fresh for that uid
+    UI.toast(t('googleSwitched'), 'gold');
+    setTimeout(() => location.reload(), 900);
   }
 }
 

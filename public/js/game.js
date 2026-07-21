@@ -1569,8 +1569,9 @@ export class Game {
     gh.visible = true;
     const matId = p.buildMat || 'wood';
     const afford = p.mats >= this._buildCost(kind, matId);
-    // green when affordable (tinted toward the material), red when short on mats
-    gh.material.color.setHex(afford ? (BUILD_MATERIALS[matId]?.ghost || 0x8effa0) : 0xff6b6b);
+    const supported = this._hasSupport(g);
+    // material tint when placeable; red when short on mats OR floating in air
+    gh.material.color.setHex(afford && supported ? (BUILD_MATERIALS[matId]?.ghost || 0x8effa0) : 0xff6b6b);
     const W = 3.05;
     gh.rotation.set(0, 0, 0);
     if (kind === 'f') { gh.position.set(g.x, g.y + 0.14, g.z); gh.scale.set(W, 0.28, W); }
@@ -1579,11 +1580,31 @@ export class Game {
       else { gh.position.set(g.x, g.y + 1.5, g.z); gh.scale.set(W, 3, 0.25); }
     } else if (kind === 'c') { // cone / roof — box preview capping the cell
       gh.position.set(g.x, g.y + 0.85, g.z); gh.scale.set(W, 1.7, W);
-    } else { // ramp — sloped
+    } else { // ramp — sloped preview matching the real steps (rises toward +dir)
       gh.position.set(g.x, g.y + 1.1, g.z);
-      if (g.ax === 'x') { gh.scale.set(W, 0.3, W); gh.rotation.z = -g.dir * 0.62; }
-      else { gh.scale.set(W, 0.3, W); gh.rotation.x = g.dir * 0.62; }
+      if (g.ax === 'x') { gh.scale.set(W, 0.3, W); gh.rotation.z = g.dir * 0.62; }
+      else { gh.scale.set(W, 0.3, W); gh.rotation.x = -g.dir * 0.62; }
     }
+  }
+
+  // a piece may only be placed on the ground or touching an existing
+  // structure/world surface — no floating builds (Fortnite-style anchoring)
+  _hasSupport(t) {
+    if (t.y <= 0.01) return true;                 // sits on the ground
+    const W = 3.05, m = 0.4;                      // touch tolerance
+    let x0, x1, y0, y1, z0, z1;
+    if (t.kind === 'w') {
+      if (t.ax === 'x') { x0 = t.x - 0.3; x1 = t.x + 0.3; z0 = t.z - W / 2; z1 = t.z + W / 2; }
+      else { x0 = t.x - W / 2; x1 = t.x + W / 2; z0 = t.z - 0.3; z1 = t.z + 0.3; }
+      y0 = t.y; y1 = t.y + 3;
+    } else {
+      x0 = t.x - W / 2; x1 = t.x + W / 2; z0 = t.z - W / 2; z1 = t.z + W / 2;
+      y0 = t.y; y1 = t.y + (t.kind === 'f' ? 0.3 : t.kind === 'c' ? 1.7 : 2.4);
+    }
+    for (const c of this.world.colliders) {
+      if (x1 + m > c.x0 && x0 - m < c.x1 && y1 + m > c.y0 && y0 - m < c.y1 && z1 + m > c.z0 && z0 - m < c.z1) return true;
+    }
+    return false;
   }
 
   _buildCost(kind, mat = 'wood') {
@@ -1612,6 +1633,7 @@ export class Game {
     const cost = this._buildCost(kind, material);
     if (p.mats < cost) { this.hudFlags.tierBanner = t('noMats'); return; }
     const tgt = this._buildTarget(kind);
+    if (!this._hasSupport(tgt)) return;           // no floating builds
     const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
     for (const b of this.builds.values()) if (b.slot === slotKey) return;
     p.mats -= cost;
@@ -1628,6 +1650,7 @@ export class Game {
   botBuild(p, kind) {
     if (!this.canBuild || !p.alive || (p.bot.buildCd || 0) > 0) return false;
     const tgt = this._buildTarget(kind, p);
+    if (!this._hasSupport(tgt)) return false;     // bots obey anchoring too
     const slotKey = `${kind}:${tgt.x.toFixed(1)}:${tgt.y.toFixed(1)}:${tgt.z.toFixed(1)}:${tgt.ax}`;
     for (const b of this.builds.values()) if (b.slot === slotKey) return false;
     p.bot.buildCd = 0.6 + Math.random() * 0.5;
@@ -1835,6 +1858,18 @@ export class Game {
       this._applyEdit(sess.id, sess.mask);
       if (this.input) this.input.setTool(this.input.lastPiece || 'wall');
     }
+  }
+
+  // Fortnite "simple edit" presets applied to the aimed wall in one press:
+  // 0 door (bottom+mid centre) · 1 window (centre) · 2 half wall · 3 full reset
+  applyEditPreset(i) {
+    const p = this.me;
+    if (!p?.alive || !this.canBuild) return;
+    const hit = this._editHit(p);
+    if (!hit) return;
+    const masks = [(1 << 1) | (1 << 4), 1 << 4, 0b111111000, 0];
+    this._editSess = null;                        // cancel any pending drag
+    this._applyEdit(hit.b.id, masks[i] ?? 0);
   }
 
   _applyEdit(id, mask) {
