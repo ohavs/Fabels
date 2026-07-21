@@ -88,6 +88,7 @@
           <button id="btn-settings" class="hf-btn" title="הגדרות">⚙️</button>
           <button id="btn-sound" class="hf-btn" title="צליל">🔊</button>
           <button id="btn-music" class="hf-btn" title="מוזיקה">🎵</button>
+          <button id="btn-admin" class="hf-btn admin hidden" title="ניהול">👑</button>
         </footer>
       </div>
     </div>
@@ -135,6 +136,29 @@
         <button id="btn-chall-close" class="ghost-btn small">סגירה</button>
       </div>
     </div>
+
+    <!-- admin panel: grant goodies to another player by friend code -->
+    <div id="admin-popover" class="mode-popover hidden">
+      <div class="mp-panel admin-panel">
+        <h3>👑 ניהול — מתן גישה</h3>
+        <p class="sb-hint">הענק כסף, ריקודים או דמויות לחשבון אחר לפי קוד החבר שלו.</p>
+        <label class="admin-row"><span>קוד חבר</span>
+          <input id="admin-code" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
+        <label class="admin-row"><span>💠 כסף</span>
+          <input id="admin-shards" type="number" min="0" step="100" value="0"></label>
+        <div class="admin-row"><span>מה להעניק</span>
+          <div class="admin-picks">
+            <button class="admin-pick" data-grant="dances">🕺 כל הריקודים</button>
+            <button class="admin-pick" data-grant="skins">🎽 כל הדמויות</button>
+            <button class="admin-pick" data-grant="all">✨ הכל</button>
+          </div>
+        </div>
+        <div class="panel-actions">
+          <button id="btn-admin-grant" class="cta small">הענק</button>
+          <button id="btn-admin-close" class="ghost-btn small">סגירה</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ═══════════ הגדרות ובקרים ═══════════ -->
@@ -157,6 +181,14 @@
         <span id="shop-shards" class="chip shards big">💠 0</span>
       </div>
       <div id="shop-skins" class="ship-grid"></div>
+
+      <!-- dances / emotes shop -->
+      <div class="panel-head" style="margin-top:18px">
+        <h2>🕺 ריקודים</h2>
+        <span class="sb-hint" style="margin:0">בחר משבצת ואז ריקוד</span>
+      </div>
+      <div id="shop-emote-slots" class="emote-slots"></div>
+      <div id="shop-dances" class="dance-grid"></div>
 
       <!-- custom skin builder -->
       <div class="panel-head" style="margin-top:18px"><h2>🎨 הסקין שלי</h2></div>
@@ -364,21 +396,15 @@
         <button data-chat="2">להסתער!</button>
         <button data-chat="3">איזה יופי!</button>
       </div>
-
-      <!-- emote wheel -->
-      <div id="emote-wheel" class="emote-wheel hidden">
-        <button data-emote="0">🕺</button>
-        <button data-emote="1">👋</button>
-        <button data-emote="2">💪</button>
-        <button data-emote="3">🎉</button>
-        <button data-emote="4">🙏</button>
-        <button data-emote="5">😂</button>
-        <button data-emote="6">🤖</button>
-        <button data-emote="7">👏</button>
-        <button data-emote="8">🪩</button>
-      </div>
     </div>
   </section>
+
+  <!-- emote wheel: Fortnite-style radial, populated from equipped emotes.
+       top-level overlay so it works over both the in-game HUD and the lobby. -->
+  <div id="emote-wheel" class="emote-wheel hidden">
+    <div class="ew-ring" id="ew-ring"></div>
+    <div class="ew-hub">בטל</div>
+  </div>
 
   <!-- ═══════════ תוצאות ═══════════ -->
   <section id="scr-results" class="screen">

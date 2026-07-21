@@ -6,10 +6,11 @@
 import { t } from './i18n.js';
 import {
   SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel, RETICLE,
-  BUILD, BUILD_MATERIALS, TAC_PRICES, CREATIVE,
+  BUILD, BUILD_MATERIALS, TAC_PRICES, CREATIVE, DANCES,
 } from './config.js';
 import { paintIcons } from './icons.js';
-import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges } from './profile.js';
+import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges,
+  buyDance, ownsDance, setEmoteSlot, danceIndex, isAdmin } from './profile.js';
 import { packCustomSkin, parseCustomSkin } from './chars.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled, setSfxVolume, setMusicVolume } from './audio.js';
@@ -428,6 +429,55 @@ export function renderShop() {
     grid.appendChild(card);
     drawSkinPreview(card.querySelector('canvas'), id);
   }
+  renderShopDances();
+}
+
+// which equipped slot (0-7) the next selected dance goes into
+let shopSlot = 0;
+function renderShopDances() {
+  const slotsEl = $('shop-emote-slots');
+  const grid = $('shop-dances');
+  if (!slotsEl || !grid) return;
+
+  // 8 equipped-emote slots — click to choose where the next dance goes
+  slotsEl.innerHTML = '';
+  const emotes = profile.emotes || [];
+  for (let i = 0; i < 8; i++) {
+    const id = emotes[i];
+    const d = DANCES.find((x) => x.id === id);
+    const slot = document.createElement('button');
+    slot.className = 'em-slot' + (i === shopSlot ? ' sel' : '');
+    slot.innerHTML = `<span class="es-num">${i + 1}</span><span class="es-emoji">${d ? d.icon : '·'}</span>`;
+    slot.addEventListener('click', () => { SFX.click(); shopSlot = i; renderShopDances(); });
+    slotsEl.appendChild(slot);
+  }
+
+  // all dances: buy the locked ones, tap owned ones to drop into the chosen slot
+  grid.innerHTML = '';
+  const equipped = new Set(emotes);
+  for (const d of DANCES) {
+    const owned = ownsDance(d.id);
+    const isEq = equipped.has(d.id);
+    const card = document.createElement('div');
+    card.className = 'dance-card' + (isEq ? ' equipped' : '');
+    card.innerHTML = `<span class="dc-emoji">${d.icon}</span><span class="dc-name">${escapeHtml(d.name)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'shop-buy' + (owned ? ' own' : '');
+    if (isEq) { btn.textContent = '✓ ' + t('equipped'); }
+    else if (owned) { btn.textContent = t('equip'); }
+    else { btn.textContent = d.cost === 0 ? t('free') : `💠 ${d.cost}`; if (!isAdmin()) btn.disabled = profile.shards < d.cost; }
+    btn.addEventListener('click', () => {
+      SFX.click();
+      if (!owned && !buyDance(d.id)) { toast(t('notEnough'), 'red'); return; }
+      setEmoteSlot(shopSlot, d.id);
+      shopSlot = (shopSlot + 1) % 8;
+      $('shop-shards').textContent = `💠 ${profile.shards}`;
+      renderShopDances();
+      refreshMenu();
+    });
+    card.appendChild(btn);
+    grid.appendChild(card);
+  }
 }
 
 // ---------------- leaderboard ----------------
@@ -465,6 +515,34 @@ export function banner(text, ms = 2000) {
   el.classList.add('show');
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// Fortnite-style radial emote wheel. Populated from the player's 8 equipped
+// emote slots (profile.emotes). onPick receives the DANCES index to play.
+// Shared by the in-game HUD button and the lobby dance button.
+export function buildEmoteWheel(onPick) {
+  const ring = $('ew-ring');
+  if (!ring) return;
+  ring.innerHTML = '';
+  const ids = (profile.emotes || []).slice(0, 8);
+  const n = Math.max(ids.length, 1);
+  const R = 40; // percent radius from centre
+  ids.forEach((id, i) => {
+    const d = DANCES.find((x) => x.id === id);
+    if (!d) return;
+    const ang = (i / n) * Math.PI * 2 - Math.PI / 2;   // start at top, clockwise
+    const x = 50 + Math.cos(ang) * R;
+    const y = 50 + Math.sin(ang) * R;
+    const b = document.createElement('button');
+    b.className = 'ew-slot';
+    b.style.left = x + '%';
+    b.style.top = y + '%';
+    b.innerHTML = `<span class="ew-emoji">${d.icon}</span><span class="ew-name">${escapeHtml(d.name)}</span>`;
+    const fn = () => { onPick(danceIndex(id)); $('emote-wheel').classList.add('hidden'); };
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
+    b.addEventListener('click', fn);
+    ring.appendChild(b);
+  });
 }
 
 export function resetHUD() {
@@ -912,7 +990,11 @@ export function bindHUD(input, { onExit, onChat, onSettings, onSaveMap, onLoadMa
   hold($('btn-cam'), () => { input.wantCamera = true; });
   hold($('btn-score'), () => { sbToggle = !sbToggle; });
   hold($('btn-chat'), () => $('chat-panel').classList.toggle('hidden'));
-  hold($('btn-emote'), () => $('emote-wheel').classList.toggle('hidden'));
+  hold($('btn-emote'), () => {
+    const w = $('emote-wheel');
+    if (w.classList.contains('hidden')) { buildEmoteWheel((idx) => { input.wantEmote = idx; }); w.classList.remove('hidden'); }
+    else w.classList.add('hidden');
+  });
   if (onSettings) hold($('btn-ingame-settings'), () => onSettings());
 
   // build bar tool selection
@@ -948,10 +1030,12 @@ export function bindHUD(input, { onExit, onChat, onSettings, onSaveMap, onLoadMa
     b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
     b.addEventListener('click', fn);
   }
-  for (const b of $('emote-wheel').querySelectorAll('button')) {
-    const fn = () => { input.wantEmote = +b.dataset.emote; $('emote-wheel').classList.add('hidden'); };
-    b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
-    b.addEventListener('click', fn);
+  // hub cancels the wheel
+  const hub = $('emote-wheel').querySelector('.ew-hub');
+  if (hub) {
+    const cancel = () => $('emote-wheel').classList.add('hidden');
+    hub.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); cancel(); }, { passive: false });
+    hub.addEventListener('click', cancel);
   }
   $('btn-exit').addEventListener('click', onExit);
   $('btn-exit').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); onExit(); }, { passive: false });

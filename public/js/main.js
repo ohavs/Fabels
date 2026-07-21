@@ -11,7 +11,7 @@ import { t } from './i18n.js';
 import { FB, initFirebase, signInWithGoogle, signOutGoogle, isGoogleUser } from './fb.js';
 import {
   profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, fetchLeaderboard,
-  trackChallenges, saveProfile,
+  trackChallenges, saveProfile, isAdmin, applyAdminUnlocks,
 } from './profile.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
@@ -29,6 +29,7 @@ import { LobbyStage } from './lobbystage.js';
 import {
   ensureFriendCode, addFriendByCode, removeFriend, refreshFriendProfiles,
   setPresence, watchFriends, sendInvite, clearInvite, watchInvites,
+  grantByCode, applyPendingGrants,
 } from './social.js';
 import * as UI from './ui.js';
 
@@ -75,6 +76,8 @@ async function boot() {
     const online = await withTimeout(initFirebase(), 5000, false);
     UI.setLoadStatus(t('loading'));
     await withTimeout(loadProfile(), 4000, null);   // Firestore getDoc can hang → cap it
+    if (isAdmin()) applyAdminUnlocks();              // god-mode for the admin account
+    await withTimeout(applyPendingGrants(), 3000, 0); // apply gifts from the admin
     await withTimeout(loadSettings(), 3000, null);  // controls: local first, then cloud
     applyLoadedSettings();
     clearTimeout(failSafe);
@@ -150,6 +153,9 @@ function finishBoot(online) {
     $('btn-google').addEventListener('click', onGoogleClick);
   }
 
+  // admin panel button — only for the admin account
+  $('btn-admin').classList.toggle('hidden', !isAdmin());
+
   // social: my code + presence + incoming invites
   if (online) {
     ensureFriendCode();
@@ -173,6 +179,7 @@ function finishBoot(online) {
 // ---------------- google account ----------------
 function refreshGoogleBtn() {
   const signed = isGoogleUser();
+  $('btn-admin').classList.toggle('hidden', !isAdmin());
   $('btn-google').classList.toggle('signed', signed);
   $('google-label').textContent = signed
     ? `✓ ${FB.user.displayName || FB.user.email || 'Google'} · ${t('googleSignOut')}`
@@ -197,8 +204,10 @@ async function onGoogleClick() {
   if (res.mode === 'linked') {
     // same uid — all progress kept, now backed by the Google account
     UI.toast(t('googleLinked'), 'gold');
+    if (isAdmin()) { applyAdminUnlocks(); UI.toast('👑 מצב אדמין הופעל', 'gold'); }
     saveProfile();
     refreshGoogleBtn();
+    UI.refreshMenu();
   } else {
     // switched to an existing Google-owned player → boot fresh for that uid
     UI.toast(t('googleSwitched'), 'gold');
@@ -258,8 +267,13 @@ function wireMenu() {
   $('home-play').addEventListener('click', () => { SFX.click(); onPlay(); });
   $('home-dance').addEventListener('click', () => {
     SFX.click();
-    state.lobbyDance = ((state.lobbyDance ?? -1) + 1) % 9;
-    state.lobbyStage?.dance(state.lobbyDance);
+    const w = $('emote-wheel');
+    if (w.classList.contains('hidden')) {
+      UI.buildEmoteWheel((idx) => { state.lobbyStage?.dance(idx); });
+      w.classList.remove('hidden');
+    } else {
+      w.classList.add('hidden');
+    }
   });
   $('btn-leave-party').addEventListener('click', () => { SFX.click(); leaveParty(); });
   $('btn-chall').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); $('chall-popover').classList.remove('hidden'); });
@@ -273,6 +287,37 @@ function wireMenu() {
 
   $('btn-shop').addEventListener('click', () => { SFX.click(); state.lobbyStage?.stop(); UI.renderShop(); UI.showScreen('shop'); });
   $('btn-back-shop').addEventListener('click', () => { SFX.click(); showHome(); });
+
+  // ---- admin grants panel (visible only to the admin account) ----
+  let adminGrant = 'all';
+  $('btn-admin').addEventListener('click', () => {
+    SFX.click();
+    $('admin-popover').classList.remove('hidden');
+  });
+  $('btn-admin-close').addEventListener('click', () => { SFX.click(); $('admin-popover').classList.add('hidden'); });
+  for (const b of document.querySelectorAll('#admin-popover .admin-pick')) {
+    b.addEventListener('click', () => {
+      SFX.click();
+      adminGrant = b.dataset.grant;
+      for (const x of document.querySelectorAll('#admin-popover .admin-pick')) x.classList.toggle('sel', x === b);
+    });
+  }
+  $('btn-admin-grant').addEventListener('click', async () => {
+    SFX.click();
+    const code = $('admin-code').value.trim().toUpperCase();
+    const shards = Math.max(0, parseInt($('admin-shards').value, 10) || 0);
+    if (!code) { UI.toast('הזן קוד חבר', 'red'); return; }
+    const grant = { shards };
+    if (adminGrant === 'all') grant.all = true;
+    else if (adminGrant === 'dances') grant.dances = 'all';
+    else if (adminGrant === 'skins') grant.skins = 'all';
+    const res = await grantByCode(code, grant);
+    if (res.ok) { UI.toast('✓ הוענק בהצלחה', 'gold'); $('admin-popover').classList.add('hidden'); }
+    else if (res.reason === 'notFound') UI.toast('קוד לא נמצא', 'red');
+    else if (res.reason === 'self') UI.toast('זה הקוד שלך', 'red');
+    else if (res.reason === 'denied') UI.toast('אין הרשאה (עדכן חוקי DB)', 'red');
+    else UI.toast('נדרש חיבור', 'red');
+  });
 
   $('btn-board').addEventListener('click', async () => {
     SFX.click();

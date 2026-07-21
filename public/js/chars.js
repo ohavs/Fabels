@@ -122,64 +122,97 @@ export function animateCharacter(char, dt, speed, grounded, dance = -1) {
   char.animT += dt * (4 + speed * 1.6);
   if (dance >= 0) {
     const d = char.animT * 2.4;
-    // reset accumulators each frame
-    char.head.rotation.z = 0; char.group.rotation.z = 0;
-    if (dance === 1) {
-      // wave: one arm up, swinging
-      char.shR.rotation.x = -2.9; char.shR.rotation.z = Math.sin(d * 1.6) * 0.7;
-      char.shL.rotation.x = -0.2; char.shL.rotation.z = 0;
-      char.hipL.rotation.x = 0; char.hipR.rotation.x = 0;
-      char.head.rotation.z = Math.sin(d) * 0.1;
-    } else if (dance === 2) {
-      // flex: both arms curled up
-      char.shR.rotation.x = -2.5; char.shR.rotation.z = -1.1 + Math.sin(d) * 0.15;
-      char.shL.rotation.x = -2.5; char.shL.rotation.z = 1.1 - Math.sin(d) * 0.15;
-      char.group.rotation.z = Math.sin(d) * 0.05;
-    } else if (dance === 3) {
-      // cheer: arms up, waving
-      char.shR.rotation.x = -3.0 + Math.sin(d) * 0.3; char.shR.rotation.z = 0.3;
-      char.shL.rotation.x = -3.0 + Math.sin(d + 0.5) * 0.3; char.shL.rotation.z = -0.3;
-      char.head.rotation.z = Math.sin(d) * 0.12;
-    } else if (dance === 4) {
-      // bow
-      char.group.rotation.x = 0.5 + Math.sin(d * 0.5) * 0.1;
-      char.shL.rotation.x = -0.6; char.shR.rotation.x = -0.6;
-    } else if (dance === 6) {
-      // robot: stiff arms stepping up/down in opposite phase, head ticks
-      const step = Math.sign(Math.sin(d));
-      char.shR.rotation.x = -1.6 - step * 0.5; char.shR.rotation.z = 0;
-      char.shL.rotation.x = -1.6 + step * 0.5; char.shL.rotation.z = 0;
-      char.head.rotation.z = Math.sign(Math.sin(d * 0.5)) * 0.14;
-      char.hipL.rotation.x = 0; char.hipR.rotation.x = 0;
-    } else if (dance === 7) {
-      // clap: both arms forward, hands meeting on the beat
-      const c = Math.abs(Math.sin(d * 1.6));
-      char.shR.rotation.x = -1.5; char.shR.rotation.z = -0.5 - c * 0.5;
-      char.shL.rotation.x = -1.5; char.shL.rotation.z = 0.5 + c * 0.5;
-      char.head.rotation.z = Math.sin(d) * 0.06;
-    } else if (dance === 8) {
-      // disco point: one arm punches up-diagonal, hips sway (Saturday night)
-      const up = Math.sin(d) > 0;
-      char.shR.rotation.x = up ? -2.7 : -0.4; char.shR.rotation.z = up ? -0.5 : 0;
-      char.shL.rotation.x = up ? -0.4 : -2.7; char.shL.rotation.z = up ? 0 : 0.5;
-      char.hipL.rotation.x = Math.sin(d) * 0.3; char.hipR.rotation.x = -Math.sin(d) * 0.3;
-      char.group.rotation.z = Math.sin(d) * 0.08;
-    } else {
-      // floss (0) / laugh (5): flossy arm-wave
-      char.shL.rotation.x = -2.6 + Math.sin(d) * 0.8;
-      char.shR.rotation.x = -2.6 + Math.sin(d + Math.PI) * 0.8;
-      char.shL.rotation.z = Math.sin(d) * 0.6;
-      char.shR.rotation.z = -Math.sin(d) * 0.6;
-      char.hipL.rotation.x = Math.sin(d) * 0.35;
-      char.hipR.rotation.x = -Math.sin(d) * 0.35;
-      char.head.rotation.z = Math.sin(d * 2) * 0.18;
-      char.group.rotation.z = Math.sin(d) * 0.06;
+    const s = Math.sin(d), c2 = Math.cos(d);
+    // reset every joint the dances touch, each frame
+    char.head.rotation.set(0, 0, 0);
+    char.group.rotation.x = 0; char.group.rotation.z = 0;
+    char.hipL.rotation.set(0, 0, 0); char.hipR.rotation.set(0, 0, 0);
+    const R = char.shR.rotation, L = char.shL.rotation, H = char.head.rotation, G = char.group.rotation;
+    switch (dance) {
+      case 1: // wave
+        R.x = -2.9; R.z = s * 0.7; L.x = -0.2; H.z = Math.sin(d * 0.7) * 0.1; break;
+      case 2: // flex
+        R.x = -2.5; R.z = -1.1 + s * 0.15; L.x = -2.5; L.z = 1.1 - s * 0.15; G.z = s * 0.05; break;
+      case 3: // cheer
+        R.x = -3.0 + s * 0.3; R.z = 0.3; L.x = -3.0 + Math.sin(d + 0.5) * 0.3; L.z = -0.3; H.z = s * 0.12; break;
+      case 4: // bow
+        G.x = 0.55 + Math.sin(d * 0.5) * 0.1; L.x = -0.6; R.x = -0.6; break;
+      case 5: // laugh — lean back, hold belly, shake
+        R.x = -1.4; R.z = -0.6; L.x = -1.4; L.z = 0.6; G.x = -0.22 + Math.abs(s) * 0.12; H.x = -0.2; break;
+      case 6: { // robot
+        const step = Math.sign(s);
+        R.x = -1.6 - step * 0.5; L.x = -1.6 + step * 0.5; H.z = Math.sign(Math.sin(d * 0.5)) * 0.14; break;
+      }
+      case 7: { // clap
+        const cl = Math.abs(Math.sin(d * 1.6));
+        R.x = -1.5; R.z = -0.5 - cl * 0.5; L.x = -1.5; L.z = 0.5 + cl * 0.5; H.z = s * 0.06; break;
+      }
+      case 8: { // disco point
+        const up = s > 0;
+        R.x = up ? -2.7 : -0.4; R.z = up ? -0.5 : 0; L.x = up ? -0.4 : -2.7; L.z = up ? 0 : 0.5;
+        char.hipL.rotation.x = s * 0.3; char.hipR.rotation.x = -s * 0.3; G.z = s * 0.08; break;
+      }
+      case 9: // dab
+        R.x = -2.7; R.z = -0.55; L.x = -1.95; L.z = -0.95; H.x = 0.5; H.z = -0.2; G.z = Math.sin(d * 2) * 0.02; break;
+      case 10: // spin
+        G.y = d; R.x = -1.2; R.z = 1.4; L.x = -1.2; L.z = -1.4; break;
+      case 11: // twist
+        G.y = Math.sin(d * 2) * 0.5; R.x = -1.0; R.z = -0.9; L.x = -1.0; L.z = 0.9;
+        char.hipL.rotation.x = 0.18; char.hipR.rotation.x = 0.18; break;
+      case 12: { // YMCA — cycle the 4 letters
+        const ph = Math.floor((d * 0.5) % 4);
+        if (ph === 0) { R.x = -2.6; R.z = 0.75; L.x = -2.6; L.z = -0.75; }       // Y
+        else if (ph === 1) { R.x = -1.35; R.z = -0.95; L.x = -1.35; L.z = 0.95; } // M
+        else if (ph === 2) { R.x = -2.3; R.z = 1.0; L.x = -1.1; L.z = 1.0; }      // C
+        else { R.x = -2.95; R.z = 0.22; L.x = -2.95; L.z = -0.22; }               // A
+        break;
+      }
+      case 13: { // jumping jacks (no vertical move: arms + legs spread on the beat)
+        const open = Math.sin(d * 2) > 0;
+        R.x = open ? -2.9 : -0.1; R.z = open ? 0.6 : 0; L.x = open ? -2.9 : -0.1; L.z = open ? -0.6 : 0;
+        char.hipL.rotation.z = open ? 0.34 : 0; char.hipR.rotation.z = open ? -0.34 : 0; break;
+      }
+      case 14: { // alternating front kicks
+        const k = s;
+        char.hipR.rotation.x = k > 0 ? -1.4 * k : 0;
+        char.hipL.rotation.x = k < 0 ? 1.4 * k : 0;
+        R.x = -0.9; R.z = -0.4; L.x = -0.9; L.z = 0.4; G.z = -k * 0.06; break;
+      }
+      case 15: // moonwalk — lean back, feet sliding
+        G.x = -0.14; char.hipL.rotation.x = s * 0.55; char.hipR.rotation.x = Math.sin(d + Math.PI) * 0.55;
+        R.x = -0.35; L.x = -0.35; H.x = -0.08; break;
+      case 16: // the worm — body wave
+        G.x = 0.25 + s * 0.35; R.x = -1.7; L.x = -1.7; H.x = -s * 0.4; break;
+      case 17: // salute
+        R.x = -2.9; R.z = -0.62; L.x = -0.05; G.x = Math.sin(d * 0.6) * 0.02; H.x = -0.05; break;
+      case 18: // headbang — rock horns + head
+        H.x = Math.abs(Math.sin(d * 3)) * 0.6; L.x = -2.8; L.z = -0.35; R.x = -0.3;
+        G.x = Math.sin(d * 3) * 0.1; break;
+      case 19: // shuffle — quick side steps
+        G.z = Math.sin(d * 2) * 0.12; char.hipL.rotation.x = Math.sin(d * 3) * 0.3;
+        char.hipR.rotation.x = Math.sin(d * 3 + Math.PI) * 0.3; R.x = -0.6; R.z = -0.3; L.x = -0.6; L.z = 0.3; break;
+      case 20: // breakdance — fast spin + lean
+        G.y = d * 1.5; G.x = 0.42; R.x = -0.2; L.x = -1.9; L.z = -1.2;
+        char.hipL.rotation.x = 0.5; break;
+      case 21: // T-pose (troll)
+        R.z = 1.57; L.z = -1.57; break;
+      case 22: // hands up + sway
+        R.x = -3.0; L.x = -3.0; R.z = s * 0.4; L.z = s * 0.4; G.z = s * 0.05; H.z = s * 0.1; break;
+      case 23: // swim (freestyle strokes)
+        R.x = -1.7 + Math.sin(d * 1.4) * 1.4; L.x = -1.7 + Math.sin(d * 1.4 + Math.PI) * 1.4;
+        G.x = 0.2; H.x = -0.15; break;
+      default: // floss (0)
+        L.x = -2.6 + s * 0.8; R.x = -2.6 + Math.sin(d + Math.PI) * 0.8;
+        L.z = s * 0.6; R.z = -s * 0.6;
+        char.hipL.rotation.x = s * 0.35; char.hipR.rotation.x = -s * 0.35;
+        H.z = Math.sin(d * 2) * 0.18; G.z = s * 0.06; break;
     }
     return;
   }
   char.group.rotation.x = 0;
   char.group.rotation.z = 0;
-  char.head.rotation.z = 0;
+  char.head.rotation.set(0, 0, 0);
+  char.hipL.rotation.z = 0; char.hipR.rotation.z = 0;
   char.shL.rotation.z = 0;
   char.shR.rotation.z = 0;
   const moving = speed > 0.6;

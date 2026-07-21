@@ -13,6 +13,7 @@
 
 import { FB } from './fb.js';
 import { profile, saveProfile } from './profile.js';
+import { DANCES, SKINS } from './config.js';
 
 // ---- friend code -----------------------------------------------------------
 // unambiguous alphabet (no O/0/I/1); 6 chars ≈ 1B combinations
@@ -116,6 +117,71 @@ export function watchFriends(cb) {
     } catch { /* ignore */ }
   }
   return () => { for (const u of unsubs) { try { u(); } catch { /* ignore */ } } };
+}
+
+// ---- admin grants ----------------------------------------------------------
+// The admin account grants goodies to another player by their friend code.
+// A grant is pushed to RTDB grants/{targetUid}/{pushId}; the target applies &
+// removes it on next load. Server-side, DB rules must restrict writing to
+// grants/* to the admin email (auth.token.email) — see database.rules.json.
+
+// resolve a friend code → uid via the same Firestore lookup friends use
+async function uidForCode(code) {
+  code = String(code || '').trim().toUpperCase();
+  if (!code || !FB.online) return null;
+  try {
+    const q = FB.f.query(
+      FB.f.collection(FB.fs, 'users'),
+      FB.f.where('friendCode', '==', code),
+      FB.f.limit(1),
+    );
+    const snap = await FB.f.getDocs(q);
+    if (snap.empty) return null;
+    return snap.docs[0].id;
+  } catch { return null; }
+}
+
+// grant: { shards?:number, dances?:[ids]|'all', skins?:[ids]|'all', all?:bool }
+// returns {ok} or {ok:false, reason}
+export async function grantByCode(code, grant) {
+  if (!FB.online) return { ok: false, reason: 'offline' };
+  const uid = await uidForCode(code);
+  if (!uid) return { ok: false, reason: 'notFound' };
+  if (uid === FB.uid) return { ok: false, reason: 'self' };
+  try {
+    const ref = FB.d.push(FB.d.ref(FB.db, 'grants/' + uid));
+    await FB.d.set(ref, { ...grant, from: profile.name, at: FB.serverNow() });
+    return { ok: true, uid };
+  } catch (e) {
+    console.warn('grant failed', e);
+    return { ok: false, reason: 'denied' };
+  }
+}
+
+// apply any pending grants addressed to me, then delete them. safe offline.
+export async function applyPendingGrants() {
+  if (!FB.online) return 0;
+  let applied = 0;
+  try {
+    const ref = FB.d.ref(FB.db, 'grants/' + FB.uid);
+    const snap = await FB.d.get(ref);
+    if (!snap.exists()) return 0;
+    const grants = snap.val() || {};
+    for (const g of Object.values(grants)) {
+      if (!g) continue;
+      if (typeof g.shards === 'number') profile.shards += g.shards;
+      const dGrant = g.all ? 'all' : g.dances;
+      const sGrant = g.all ? 'all' : g.skins;
+      if (dGrant === 'all') for (const d of DANCES) profile.dances[d.id] = true;
+      else if (Array.isArray(dGrant)) for (const id of dGrant) profile.dances[id] = true;
+      if (sGrant === 'all') for (const id of Object.keys(SKINS)) profile.skins[id] = true;
+      else if (Array.isArray(sGrant)) for (const id of sGrant) profile.skins[id] = true;
+      applied++;
+    }
+    await FB.d.remove(ref);
+    if (applied) saveProfile();
+  } catch (e) { console.warn('applyGrants failed', e); }
+  return applied;
 }
 
 // ---- invites ---------------------------------------------------------------

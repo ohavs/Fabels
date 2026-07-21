@@ -139,6 +139,42 @@ export const rewardsTeam = (kills, won) => ({
 
 export const QUICK_CHAT = ['gg', 'help', 'attack', 'nice'];
 
+// ---- Emotes / dances --------------------------------------------------------
+// The array index IS the danceType passed to animateCharacter(); order is
+// permanent (don't reorder — it would remap owned dances). First 5 are free.
+export const DANCES = [
+  { id: 'floss',   name: 'פלוס',        icon: '🕺', cost: 0 },
+  { id: 'wave',    name: 'נפנוף',        icon: '👋', cost: 0 },
+  { id: 'flex',    name: 'שרירים',       icon: '💪', cost: 0 },
+  { id: 'cheer',   name: 'עידוד',        icon: '🎉', cost: 0 },
+  { id: 'bow',     name: 'קידה',         icon: '🙇', cost: 0 },
+  { id: 'laugh',   name: 'צחוק',         icon: '😂', cost: 150 },
+  { id: 'robot',   name: 'רובוט',        icon: '🤖', cost: 150 },
+  { id: 'clap',    name: 'מחיאות כפיים', icon: '👏', cost: 150 },
+  { id: 'disco',   name: 'דיסקו',        icon: '🪩', cost: 200 },
+  { id: 'dab',     name: 'דאב',          icon: '🙆', cost: 200 },
+  { id: 'spin',    name: 'סחרור',        icon: '🌀', cost: 250 },
+  { id: 'twist',   name: 'טוויסט',       icon: '🍥', cost: 250 },
+  { id: 'ymca',    name: 'YMCA',         icon: '🔤', cost: 300 },
+  { id: 'jacks',   name: 'קפיצות',       icon: '🤸', cost: 250 },
+  { id: 'kick',    name: 'בעיטות',       icon: '🦵', cost: 300 },
+  { id: 'moonwalk',name: 'מונ-ווק',      icon: '🌙', cost: 350 },
+  { id: 'worm',    name: 'התולעת',       icon: '🐛', cost: 350 },
+  { id: 'salute',  name: 'הצדעה',        icon: '🫡', cost: 200 },
+  { id: 'headbang',name: 'הד-בנג',       icon: '🤘', cost: 300 },
+  { id: 'shuffle', name: 'שאפל',         icon: '👟', cost: 350 },
+  { id: 'breakdance', name: 'ברייקדאנס', icon: '💥', cost: 450 },
+  { id: 'tpose',   name: 'T-פוז',        icon: '🧍', cost: 500 },
+  { id: 'handsup', name: 'ידיים למעלה',  icon: '🙌', cost: 200 },
+  { id: 'swim',    name: 'שחייה',        icon: '🏊', cost: 300 },
+];
+export const FREE_DANCES = DANCES.filter((d) => d.cost === 0).map((d) => d.id);
+// default equipped wheel (up to 8 shown on the emote wheel)
+export const DEFAULT_EMOTES = ['floss', 'wave', 'flex', 'cheer', 'bow', 'clap', 'robot', 'disco'];
+
+// accounts with full unlock / admin powers (matched against the Google email)
+export const ADMIN_EMAILS = ['ohav88@gmail.com'];
+
 // ---- Building (Fortnite-style walls & ramps) --------------------------------
 export const BUILD = {
   matsStart: 10, matsMax: 30, matsPerKill: 4,
