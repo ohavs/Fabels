@@ -151,44 +151,71 @@
     </div>
   </section>
 
-  <!-- ═══════════ לובי ═══════════ -->
+  <!-- ═══════════ לובי (Fortnite-style) ═══════════ -->
   <section id="scr-lobby" class="screen">
-    <div class="panel">
-      <h2 id="lobby-title">לובי</h2>
-      <div id="lobby-code" class="room-code"></div>
-      <button id="btn-invite" class="invite-btn" style="display:none">🔗 הזמינו חברים</button>
-      <div id="lobby-friends" class="lobby-friends hidden"></div>
-
-      <div class="lobby-opts">
-        <div id="practice-mode-wrap" class="opt-group" style="display:none">
-          <div class="opt-label">מצב משחק</div>
-          <div id="practice-mode-picker" class="opt-row"></div>
+    <div class="panel lobby-panel">
+      <div class="lobby-head">
+        <button id="lobby-mode-card" class="lmode-card">
+          <span id="lobby-mode-icon" class="lmode-icon">🔫</span>
+          <span class="lmode-txt">
+            <b id="lobby-mode-name">משחק רובים</b>
+            <small id="lobby-mode-hint">לחצו להחלפה</small>
+          </span>
+        </button>
+        <div class="lobby-head-mid">
+          <h2 id="lobby-title">לובי</h2>
+          <div id="lobby-code" class="room-code"></div>
         </div>
-        <div class="opt-group">
-          <div class="opt-label">בחירת מפה</div>
-          <div id="map-picker" class="opt-row"></div>
-        </div>
-        <div id="bots-opts" class="opt-group">
-          <div class="opt-label">רמת בוטים</div>
-          <div id="bot-picker" class="opt-row"></div>
-          <div class="opt-label" style="margin-top:6px">מספר בוטים (0 = רק שחקנים)</div>
-          <div id="botcount-picker" class="opt-row"></div>
-        </div>
-        <div id="maxplayers-wrap" class="opt-group" style="display:none">
-          <div class="opt-label">מקסימום שחקנים</div>
-          <div id="maxplayers-picker" class="opt-row"></div>
-        </div>
-        <div id="privacy-wrap" class="opt-group" style="display:none">
-          <div class="opt-label">נראות החדר</div>
-          <div id="privacy-picker" class="opt-row"></div>
-        </div>
+        <button id="btn-invite" class="invite-btn" style="display:none">🔗</button>
       </div>
 
-      <ul id="lobby-players" class="player-list"></ul>
+      <div id="lobby-friends" class="lobby-friends hidden"></div>
+
+      <!-- 3D lineup: me + friend slots -->
+      <div class="lobby-stage-wrap">
+        <canvas id="lobby-stage"></canvas>
+        <button id="btn-lobby-dance" class="dance-btn" aria-label="ריקוד">🕺</button>
+      </div>
+
+      <!-- compact, collapsible match options -->
+      <details id="lobby-opts-sheet" class="lobby-opts-sheet">
+        <summary>⚙️ אפשרויות משחק</summary>
+        <div class="lobby-opts">
+          <div id="practice-mode-wrap" class="opt-group" style="display:none"></div>
+          <div class="opt-group">
+            <div class="opt-label">מפה</div>
+            <div id="map-picker" class="opt-row"></div>
+          </div>
+          <div id="bots-opts" class="opt-group">
+            <div class="opt-label">בוטים · רמה ומספר (0 = רק שחקנים)</div>
+            <div id="bot-picker" class="opt-row"></div>
+            <div id="botcount-picker" class="opt-row"></div>
+          </div>
+          <div id="maxplayers-wrap" class="opt-group" style="display:none">
+            <div class="opt-label">מקסימום שחקנים</div>
+            <div id="maxplayers-picker" class="opt-row"></div>
+          </div>
+          <div id="privacy-wrap" class="opt-group" style="display:none">
+            <div class="opt-label">נראות החדר</div>
+            <div id="privacy-picker" class="opt-row"></div>
+          </div>
+        </div>
+      </details>
+
+      <ul id="lobby-players" class="player-list hidden"></ul>
       <p id="lobby-status" class="lobby-status">ממתין ללוחמים נוספים…</p>
       <div class="panel-actions">
         <button id="btn-start" class="primary-btn" disabled>🚀 התחל קרב</button>
         <button id="btn-leave-lobby" class="ghost-btn">חזרה</button>
+      </div>
+    </div>
+
+    <!-- floating mode picker -->
+    <div id="mode-popover" class="mode-popover hidden">
+      <div class="mp-panel">
+        <h3>בחרו מצב משחק</h3>
+        <div id="mode-popover-grid" class="mp-grid"></div>
+        <button id="btn-mode-close" class="ghost-btn small">סגירה</button>
       </div>
     </div>
   </section>

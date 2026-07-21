@@ -25,6 +25,7 @@ import {
 } from './audio.js';
 import { settings, loadSettings, saveSettings, flushSettingsOutbox } from './settings.js';
 import { gamepad } from './gamepad.js';
+import { LobbyStage } from './lobbystage.js';
 import {
   ensureFriendCode, addFriendByCode, removeFriend, refreshFriendProfiles,
   setPresence, watchFriends, sendInvite, clearInvite, watchInvites,
@@ -243,6 +244,19 @@ function wireMenu() {
   }
   $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
 
+  // lobby: floating mode switcher (practice lobby only) + lineup dance
+  $('lobby-mode-card').addEventListener('click', () => {
+    if (state.room) return;                       // online rooms keep their mode
+    SFX.click();
+    UI.openModePopover(state.practice.mode, (m) => enterPracticeLobby(m));
+  });
+  $('btn-mode-close').addEventListener('click', () => { SFX.click(); UI.closeModePopover(); });
+  $('btn-lobby-dance').addEventListener('click', () => {
+    SFX.click();
+    state.lobbyDance = ((state.lobbyDance ?? -1) + 1) % 9;
+    state.lobbyStage?.dance(state.lobbyDance);
+  });
+
   $('btn-shop').addEventListener('click', () => { SFX.click(); UI.renderShop(); UI.showScreen('shop'); });
   $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); UI.showScreen('menu'); });
 
@@ -306,6 +320,8 @@ function wireMenu() {
     SFX.click();
     clearInterval(state.lobbyTimer);
     stopLobbyFriends();
+    state.lobbyStage?.stop();
+    UI.closeModePopover();
     setPresence('menu');
     if (state.room) { await state.room.leave(); state.room = null; }
     UI.refreshMenu();
@@ -410,15 +426,31 @@ function enterPracticeLobby(mode) {
   renderPracticeLobby();
 }
 
+// the 3D lineup stage — created on first lobby, reused after
+function lobbyStage() {
+  if (!state.lobbyStage) state.lobbyStage = new LobbyStage($('lobby-stage'));
+  return state.lobbyStage;
+}
+
+function stageForPlayers(players, maxPlayers) {
+  const slots = Math.min(Math.max(4, players.length), 6);
+  lobbyStage().setPlayers(players.map((p) => ({
+    name: p.name || '?', skin: p.skin || (p.me ? profile.skin : 'scout'),
+    me: !!p.me, face: p.me ? profile.facePhoto : undefined,
+  })), Math.min(slots, maxPlayers || slots));
+  lobbyStage().start();
+}
+
 function renderPracticeLobby() {
   const pr = state.practice;
   $('btn-invite').style.display = 'none';   // offline practice — nobody to invite
   const fakeMeta = { mode: pr.mode, state: 'waiting', host: 'me', maxPlayers: 1 + pr.botCount };
   UI.renderLobby([{ uid: 'me', name: profile.name, lvl: playerLevel(), me: true }], fakeMeta, 'me', '');
+  UI.setLobbyModeCard(pr.mode, true);
+  stageForPlayers([{ name: profile.name, skin: profile.skin, me: true }], 4);
   UI.renderLobbyOptions({
     map: pr.map, botLevel: pr.botLevel, botCount: pr.botCount,
     showBots: pr.mode !== 'zombies' && pr.mode !== 'duel', canPick: true,
-    practiceMode: pr.mode,
     onPick: (patch) => { Object.assign(pr, patch); renderPracticeLobby(); },
   });
   $('lobby-status').textContent = t('mode_practice') + ' · ' + t('mode_' + pr.mode);
@@ -509,6 +541,8 @@ function enterOnlineLobby(room) {
   room.onLobby = (players, meta) => {
     if (state.matchStarted) return;
     UI.renderLobby(players, meta, FB.uid, room.id);
+    UI.setLobbyModeCard(room.mode, false);
+    stageForPlayers(players, meta.maxPlayers);
     renderOpts();
     if (room.mode === 'duel' && players.length >= 2 && room.isHost && meta.state === 'waiting') {
       room.startMatch();
@@ -676,6 +710,8 @@ function startOffline() {
 // ---------------- game loop ----------------
 function startLoop(game) {
   stopLoop();
+  state.lobbyStage?.stop();
+  UI.closeModePopover();
   state.game = game;
   game.onRumble = (s, ms) => gamepad.rumble(s, ms);
   UI.resetHUD();

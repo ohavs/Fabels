@@ -79,13 +79,35 @@ function pillRow(el, items, selected, canPick, onPick, labelFn) {
   }
 }
 
-export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, practiceMode, privacy, maxPlayers }) {
-  const wrap = $('practice-mode-wrap');
-  wrap.style.display = practiceMode ? '' : 'none';
-  if (practiceMode) {
-    pillRow($('practice-mode-picker'), ['gungame', 'builddm', 'boxfight', 'zonewars', 'tactical', 'duel', 'team', 'zombies', 'ctf', 'br'],
-      practiceMode, true, (m) => onPick({ mode: m }), (m) => t('mode_' + m));
+export const MODE_ICONS = {
+  gungame: '🔫', duel: '⚔️', team: '🤖', zombies: '🧟', ctf: '🚩', br: '🪂',
+  zonewars: '🌀', builddm: '🧱', boxfight: '🥊', tactical: '💣', creative: '🏝️',
+};
+export const MODE_LIST = ['gungame', 'builddm', 'boxfight', 'zonewars', 'tactical', 'duel', 'team', 'zombies', 'ctf', 'br', 'creative'];
+
+// lobby mode card (top corner) + the floating switch panel
+export function setLobbyModeCard(mode, switchable) {
+  $('lobby-mode-icon').textContent = MODE_ICONS[mode] || '🎮';
+  $('lobby-mode-name').textContent = t('mode_' + mode);
+  $('lobby-mode-hint').style.display = switchable ? '' : 'none';
+  $('lobby-mode-card').classList.toggle('static', !switchable);
+}
+
+export function openModePopover(current, onPick) {
+  const grid = $('mode-popover-grid');
+  grid.innerHTML = '';
+  for (const m of MODE_LIST) {
+    const b = document.createElement('button');
+    b.className = 'mp-item' + (m === current ? ' sel' : '');
+    b.innerHTML = `<span>${MODE_ICONS[m]}</span><b>${t('mode_' + m)}</b>`;
+    b.addEventListener('click', () => { SFX.click(); closeModePopover(); onPick(m); });
+    grid.appendChild(b);
   }
+  $('mode-popover').classList.remove('hidden');
+}
+export function closeModePopover() { $('mode-popover').classList.add('hidden'); }
+
+export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick, onPick, privacy, maxPlayers }) {
   pillRow($('map-picker'), MAP_ORDER, map, canPick, (m) => onPick({ map: m }), (m) => t('map_' + m));
   $('bots-opts').style.display = showBots ? '' : 'none';
   if (showBots) {
