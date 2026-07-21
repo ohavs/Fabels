@@ -10,7 +10,7 @@ import {
 } from './config.js';
 import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges,
-  buyDance, ownsDance, setEmoteSlot, danceIndex, isAdmin } from './profile.js';
+  buyDance, ownsDance, setEmoteSlot, danceIndex, isAdmin, saveFace } from './profile.js';
 import { packCustomSkin, parseCustomSkin } from './chars.js';
 import { LobbyStage } from './lobbystage.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
@@ -417,7 +417,23 @@ function sbInit() {
     }
     $('sb-face-pick').addEventListener('click', () => $('sb-face-file').click());
     $('sb-face-file').addEventListener('change', (e) => { if (e.target.files[0]) sbProcessFace(e.target.files[0]); });
-    $('sb-face-clear').addEventListener('click', () => { sbFace = null; $('sb-face-file').value = ''; sbRedraw(); });
+    // save applies the face to my profile immediately (works on any skin)
+    $('sb-face-save').addEventListener('click', () => {
+      SFX.click();
+      saveFace(sbFace || '');
+      toast(sbFace ? '💾 התמונה נשמרה' : 'אין תמונה לשמור', sbFace ? 'gold' : 'red');
+      refreshShopPreviewSkin();
+      refreshMenu();
+    });
+    // remove clears it from my profile immediately (no re-equip needed)
+    $('sb-face-clear').addEventListener('click', () => {
+      SFX.click();
+      sbFace = null; $('sb-face-file').value = '';
+      saveFace('');
+      sbRedraw();
+      refreshShopPreviewSkin();
+      toast('✕ התמונה הוסרה');
+    });
     $('sb-equip').addEventListener('click', () => {
       SFX.click();
       equipCustomSkin(packCustomSkin(sbDef()), sbFace || '');
@@ -472,6 +488,12 @@ function ensureShopStage() {
   return shopStage;
 }
 export function stopShopPreview() { shopStage?.stop(); }
+// rebuild the dance-preview character (e.g. after the face photo changed) and
+// refresh the skin-builder canvas so both reflect the current profile face
+function refreshShopPreviewSkin() {
+  if (shopStage) shopStage.setPlayers([{ name: profile.name, skin: profile.skin, me: true, face: profile.facePhoto || '' }], 1);
+  sbRedraw();
+}
 
 function renderShopDances() {
   const grid = $('shop-dances');
@@ -612,8 +634,9 @@ export function initEmoteWheel() {
     el.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
   };
   tap($('ew-hub'), () => { SFX.click(); close(); });
-  tap($('ew-prev'), () => { SFX.click(); emoteWheelPage(-1); });
-  tap($('ew-next'), () => { SFX.click(); emoteWheelPage(1); });
+  // RTL: ‹ (points left) advances forward, › (points right) goes back
+  tap($('ew-prev'), () => { SFX.click(); emoteWheelPage(1); });
+  tap($('ew-next'), () => { SFX.click(); emoteWheelPage(-1); });
 }
 
 export function resetHUD() {

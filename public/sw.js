@@ -8,7 +8,7 @@
 // Bump CACHE on every meaningful change to evict old bundles.
 // ============================================================
 
-const CACHE = 'starshards-v38';
+const CACHE = 'starshards-v39';
 const CORE = [
   './', './index.html', './manifest.json', './css/style.css',
   './icon-192.png', './icon-512.png',

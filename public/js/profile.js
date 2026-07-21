@@ -169,6 +169,14 @@ export function emoteIndices() {
 }
 export const danceIndex = (id) => DANCES.findIndex((d) => d.id === id);
 
+// save (or clear with '') the face photo independently of the equipped skin,
+// so it can be applied/removed without switching to a custom skin
+export function saveFace(dataURL) {
+  profile.facePhoto = dataURL || '';
+  saveProfile();
+  return true;
+}
+
 export function setName(name) {
   name = String(name).trim().slice(0, 20);
   if (!name) return false;

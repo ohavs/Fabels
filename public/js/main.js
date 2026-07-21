@@ -599,6 +599,7 @@ function renderHome() {
   const mode = room ? room.mode : pr.mode;
   const isHost = !room || room.isHost;
   UI.setLobbyModeCard(mode, isHost);            // guests can't change the mode
+  UI.renderFriendCode(ensureFriendCode());      // show my code in the topbar
 
   // characters on stage
   let players, max;
