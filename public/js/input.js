@@ -8,6 +8,8 @@
 //           look; on-screen buttons for everything else.
 // ============================================================
 
+import { DEFAULT_KB } from './settings.js';
+
 const JOY_RADIUS = 72;      // bigger stick = easier full-speed movement
 const JOY_DEAD = 0.14;      // ignore tiny thumb jitter
 const SPRINT_AT = 0.92;     // stick push fraction that auto-sprints
@@ -35,6 +37,7 @@ export class Input {
     this.wantNade = false;
     this.wantEmote = -1;       // -1 none, else emote index
     this.wantCamera = false;
+    this.kb = { ...DEFAULT_KB }; // keyboard bindings (KeyboardEvent.code)
     this.tool = 'gun';         // gun | pick | wall | ramp | floor | cone | edit
     this.lastPiece = 'wall';   // last build piece, for the quick-build swap
     this.canBuildTools = false;// set true by the loop in build-capable modes
@@ -73,7 +76,7 @@ export class Input {
     this._kbScore = false;
   }
 
-  // pull look/aim prefs from the settings object
+  // pull look/aim prefs + keyboard bindings from the settings object
   applySettings(s) {
     this.sensX = s.sensX; this.sensY = s.sensY;
     this.sensitivity = s.sensX;
@@ -81,6 +84,7 @@ export class Input {
     this.deadzone = s.deadzone;
     this.autoFire = s.autoFire;
     this.aimAssistOn = s.aimAssist;
+    if (s.kb) this.kb = { ...s.kb };
   }
 
   consumeLook() { const d = { dx: this.lookDX, dy: this.lookDY }; this.lookDX = 0; this.lookDY = 0; return d; }
@@ -138,33 +142,41 @@ export class Input {
     this._bindMoveZone(zoneL);
     this._bindLookZone(zoneR);
 
+    // every action reads the rebindable keyboard map (settings.kb). Shift/Ctrl
+    // right-hand twins keep working when the left one is bound, and KeyC stays
+    // a crouch alias while crouch sits on its default.
+    const isSprint = (c) => c === this.kb.sprint || (this.kb.sprint === 'ShiftLeft' && c === 'ShiftRight');
+    const isCrouch = (c) => c === this.kb.crouch || (this.kb.crouch === 'ControlLeft' && c === 'KeyC');
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
-      if (e.code === 'Tab') { e.preventDefault(); this._kbScore = true; return; }
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._kbSprint = true;
-      if (e.code === 'ControlLeft' || e.code === 'KeyC') { e.preventDefault(); this._kbCrouch = true; }
+      const c = e.code;
+      const kb = this.kb;
+      if (c === kb.score) { e.preventDefault(); this._kbScore = true; return; }
+      if (isSprint(c)) this._kbSprint = true;
+      if (isCrouch(c)) { e.preventDefault(); this._kbCrouch = true; }
       if (e.repeat) return;
-      this._keys.add(e.code);
-      if (e.code === 'Space') { e.preventDefault(); this.wantJump = true; }
-      if (e.code === 'KeyR') this.wantReload = true;
-      if (e.code === 'KeyG') this.wantNade = true;
-      if (e.code === 'KeyB') this.wantEmote = 0;
-      if (e.code === 'KeyV') this.wantCamera = true;
-      // tool selection (1v1.lol-style): Q=weapon, 1=wall 2=ramp 3=floor 4=pickaxe, E=edit
-      if (e.code === 'KeyQ') this.toggleBuild();   // one-key swap weapon↔build
-      if (e.code === 'Digit1') this.setTool('wall');
-      if (e.code === 'Digit2') this.setTool('ramp');
-      if (e.code === 'Digit3') this.setTool('floor');
-      if (e.code === 'Digit5') this.setTool('cone');
-      if (e.code === 'Digit4') this.setTool('pick');
-      if (e.code === 'KeyF') this.cycleMaterial(1);   // swap build material
-      if (e.code === 'KeyE') this.setTool(this.tool === 'edit' ? 'gun' : 'edit');
+      this._keys.add(c);
+      if (c === kb.jump) { e.preventDefault(); this.wantJump = true; }
+      if (c === kb.reload) this.wantReload = true;
+      if (c === kb.nade) this.wantNade = true;
+      if (c === kb.emote) this.wantEmote = 0;
+      if (c === kb.camera) this.wantCamera = true;
+      // tool selection (1v1.lol-style): swap / direct piece / edit / material
+      if (c === kb.gun) this.toggleBuild();
+      if (c === kb.wall) this.setTool('wall');
+      if (c === kb.ramp) this.setTool('ramp');
+      if (c === kb.floor) this.setTool('floor');
+      if (c === kb.cone) this.setTool('cone');
+      if (c === kb.pick) this.setTool('pick');
+      if (c === kb.material) this.cycleMaterial(1);
+      if (c === kb.edit) this.setTool(this.tool === 'edit' ? 'gun' : 'edit');
     });
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'Tab') this._kbScore = false;
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this._kbSprint = false;
-      if (e.code === 'ControlLeft' || e.code === 'KeyC') this._kbCrouch = false;
-      this._keys.delete(e.code);
+      const c = e.code;
+      if (c === this.kb.score) this._kbScore = false;
+      if (isSprint(c)) this._kbSprint = false;
+      if (isCrouch(c)) this._kbCrouch = false;
+      this._keys.delete(c);
     });
     window.addEventListener('blur', () => {
       this._keys.clear(); this._mouseDown = false; this._kbSprint = false;
@@ -303,10 +315,10 @@ export class Input {
       stickSprint = this._stick.mag > SPRINT_AT && this.move.y > 0.4;
     } else {
       let x = 0, y = 0;
-      if (this._keys.has('KeyW') || this._keys.has('ArrowUp')) y += 1;
-      if (this._keys.has('KeyS') || this._keys.has('ArrowDown')) y -= 1;
-      if (this._keys.has('KeyD') || this._keys.has('ArrowRight')) x += 1;
-      if (this._keys.has('KeyA') || this._keys.has('ArrowLeft')) x -= 1;
+      if (this._keys.has(this.kb.fwd) || this._keys.has('ArrowUp')) y += 1;
+      if (this._keys.has(this.kb.back) || this._keys.has('ArrowDown')) y -= 1;
+      if (this._keys.has(this.kb.right) || this._keys.has('ArrowRight')) x += 1;
+      if (this._keys.has(this.kb.left) || this._keys.has('ArrowLeft')) x -= 1;
       const len = Math.hypot(x, y);
       this.move.x = len > 1 ? x / len : x;
       this.move.y = len > 1 ? y / len : y;

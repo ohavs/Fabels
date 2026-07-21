@@ -44,6 +44,23 @@ export const BIND_ORDER = [
   'edit', 'pick', 'nade', 'camera', 'emote', 'score',
 ];
 
+// keyboard bindings (KeyboardEvent.code values); fire/aim stay on the mouse
+export const DEFAULT_KB = {
+  fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
+  jump: 'Space', crouch: 'ControlLeft', sprint: 'ShiftLeft',
+  reload: 'KeyR', nade: 'KeyG', emote: 'KeyB', camera: 'KeyV',
+  gun: 'KeyQ', edit: 'KeyE', material: 'KeyF',
+  wall: 'Digit1', ramp: 'Digit2', floor: 'Digit3', pick: 'Digit4', cone: 'Digit5',
+  score: 'Tab',
+};
+
+export const KB_ORDER = [
+  'fwd', 'back', 'left', 'right', 'jump', 'crouch', 'sprint',
+  'reload', 'nade', 'gun', 'edit', 'material',
+  'wall', 'ramp', 'floor', 'cone', 'pick',
+  'camera', 'emote', 'score',
+];
+
 function defaults() {
   return {
     sensX: 1.0, sensY: 1.0, invertY: false, deadzone: 0.14,
@@ -53,6 +70,7 @@ function defaults() {
     fov: 75,                          // hip-fire field of view
     quality: 'high',                  // low | medium | high
     binds: { ...DEFAULT_BINDS },
+    kb: { ...DEFAULT_KB },
   };
 }
 
@@ -62,6 +80,7 @@ function normalize(s) {
   const d = defaults();
   const out = { ...d, ...(s || {}) };
   out.binds = { ...d.binds, ...((s && s.binds) || {}) };
+  out.kb = { ...d.kb, ...((s && s.kb) || {}) };
   out.sensX = clamp(+out.sensX || 1, 0.1, 4);
   out.sensY = clamp(+out.sensY || 1, 0.1, 4);
   out.deadzone = clamp(+out.deadzone || 0.14, 0.02, 0.45);
@@ -106,7 +125,13 @@ export async function loadSettings() {
   }
   let merged;
   if (pending || !cloud) merged = local || cloud;
-  else merged = { ...(local || {}), ...cloud, binds: { ...((local && local.binds) || {}), ...(cloud.binds || {}) } };
+  else {
+    merged = {
+      ...(local || {}), ...cloud,
+      binds: { ...((local && local.binds) || {}), ...(cloud.binds || {}) },
+      kb: { ...((local && local.kb) || {}), ...(cloud.kb || {}) },
+    };
+  }
   Object.assign(settings, normalize(merged));
   writeLocal();
   if (FB.online && (pending || !cloud)) {
@@ -137,5 +162,10 @@ export async function flushSettingsOutbox() {
 
 export function resetBinds() {
   settings.binds = { ...DEFAULT_BINDS };
+  saveSettings();
+}
+
+export function resetKb() {
+  settings.kb = { ...DEFAULT_KB };
   saveSettings();
 }

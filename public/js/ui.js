@@ -13,7 +13,7 @@ import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, 
 import { packCustomSkin, parseCustomSkin } from './chars.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
 import { SFX, soundEnabled, setSoundEnabled, musicEnabled, setMusicEnabled, setSfxVolume, setMusicVolume } from './audio.js';
-import { settings, saveSettings, resetBinds, BIND_ORDER } from './settings.js';
+import { settings, saveSettings, resetBinds, BIND_ORDER, resetKb, KB_ORDER } from './settings.js';
 import { gamepad } from './gamepad.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1011,6 +1011,65 @@ export function renderSettings(onInputApply, onDisplayApply) {
   reset.textContent = t('resetBinds');
   reset.addEventListener('click', () => { resetBinds(); drawBinds(); SFX.click(); });
   body.appendChild(reset);
+
+  // --- keyboard binds ---
+  section('secKb');
+  const kbWrap = document.createElement('div');
+  kbWrap.className = 'binds-wrap';
+  body.appendChild(kbWrap);
+  const drawKb = () => {
+    kbWrap.innerHTML = '';
+    for (const action of KB_ORDER) {
+      const row = document.createElement('div');
+      row.className = 'set-row bind-row';
+      const lab = document.createElement('span'); lab.className = 'set-label'; lab.textContent = t('act_' + action);
+      const btn = document.createElement('button');
+      btn.className = 'bind-btn';
+      btn.textContent = kbKeyName(settings.kb[action]);
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('listening')) return;
+        btn.classList.add('listening');
+        btn.textContent = t('pressKey');
+        const onKey = (e) => {
+          e.preventDefault(); e.stopPropagation();
+          window.removeEventListener('keydown', onKey, true);
+          if (e.code !== 'Escape') {
+            // steal: whoever held this key gets my old key (swap, never orphan)
+            const other = KB_ORDER.find((a) => a !== action && settings.kb[a] === e.code);
+            if (other) settings.kb[other] = settings.kb[action];
+            settings.kb[action] = e.code;
+            commit();
+          }
+          drawKb();
+        };
+        window.addEventListener('keydown', onKey, true);
+      });
+      row.append(lab, btn);
+      kbWrap.appendChild(row);
+    }
+  };
+  drawKb();
+
+  const resetK = document.createElement('button');
+  resetK.className = 'ghost-btn slim';
+  resetK.textContent = t('resetKb');
+  resetK.addEventListener('click', () => { resetKb(); drawKb(); SFX.click(); });
+  body.appendChild(resetK);
+}
+
+// human-readable key label for a KeyboardEvent.code
+function kbKeyName(code) {
+  if (!code) return '—';
+  const map = {
+    Space: 'רווח', Tab: 'Tab', ShiftLeft: 'Shift', ShiftRight: 'Shift⟩', ControlLeft: 'Ctrl',
+    ControlRight: 'Ctrl⟩', AltLeft: 'Alt', Escape: 'Esc', Enter: 'Enter', Backspace: '⌫',
+    ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps',
+  };
+  if (map[code]) return map[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'Num' + code.slice(6);
+  return code;
 }
 
 export { $ };
