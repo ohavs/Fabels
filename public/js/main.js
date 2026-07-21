@@ -30,7 +30,8 @@ import { LobbyStage } from './lobbystage.js';
 import {
   ensureFriendCode, addFriendByCode, removeFriend, refreshFriendProfiles,
   setPresence, watchFriends, sendInvite, clearInvite, watchInvites,
-  grantByCode, applyPendingGrants,
+  grantByCode, grantToUid, applyPendingGrants,
+  watchFriendAdds, addFriendBack, clearFriendAdd,
 } from './social.js';
 import * as UI from './ui.js';
 
@@ -157,6 +158,9 @@ function finishBoot(online) {
   // admin panel button — only for the admin account
   $('btn-admin').classList.toggle('hidden', !isAdmin());
 
+  // radial emote-wheel controls (hub + paging arrows) — works in lobby & match
+  UI.initEmoteWheel();
+
   // social: my code + presence + incoming invites
   if (online) {
     ensureFriendCode();
@@ -166,6 +170,18 @@ function finishBoot(online) {
       UI.showInviteBanner(inv.name || '?',
         () => { clearInvite(fromUid); joinRoomByCode(inv.room); },
         () => clearInvite(fromUid));
+    });
+    // someone added you as a friend → toast + one-tap add-back
+    watchFriendAdds((fromUid, info) => {
+      const name = info.name || '???';
+      UI.toast(t('frAddedYou', { name }), 'gold');
+      if (!(profile.friends && profile.friends[fromUid])) {
+        UI.showInviteBanner(t('frAddBack', { name }),
+          () => { addFriendBack(fromUid, name); clearFriendAdd(fromUid); UI.toast(t('frAdded', { name }), 'gold'); },
+          () => clearFriendAdd(fromUid));
+      } else {
+        clearFriendAdd(fromUid);
+      }
     });
   }
 
@@ -290,16 +306,75 @@ function wireMenu() {
   $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.stopShopPreview(); showHome(); });
 
   // ---- admin grants panel (visible only to the admin account) ----
-  let adminGrant = 'none';
-  // fill the specific-item dropdowns once
-  const adDance = $('admin-dance'), adSkin = $('admin-skin');
-  for (const d of DANCES) { const o = document.createElement('option'); o.value = d.id; o.textContent = `${d.icon} ${d.name}`; adDance.appendChild(o); }
-  for (const id of SKIN_ORDER) { const o = document.createElement('option'); o.value = id; o.textContent = t('skin_' + id); adSkin.appendChild(o); }
+  let adminGrant = 'none';      // quick-pack: none|dances|skins|all
+  let adminTargetUid = '';      // chosen from friend tiles (preferred)
+  let adminDanceId = '';        // specific dance tile
+  let adminSkinId = '';         // specific skin tile
+
+  // build the gamey tile pickers once (icons, not dropdowns)
+  const dTiles = $('admin-dance-tiles'), sTiles = $('admin-skin-tiles');
+  for (const d of DANCES) {
+    const b = document.createElement('button');
+    b.className = 'admin-tile'; b.dataset.id = d.id;
+    b.innerHTML = `<span class="at-emoji">${d.icon}</span><span class="at-name">${d.name}</span>`;
+    b.addEventListener('click', () => {
+      SFX.click();
+      adminDanceId = adminDanceId === d.id ? '' : d.id;
+      for (const x of dTiles.children) x.classList.toggle('sel', x.dataset.id === adminDanceId);
+    });
+    dTiles.appendChild(b);
+  }
+  for (const id of SKIN_ORDER) {
+    const b = document.createElement('button');
+    b.className = 'admin-tile'; b.dataset.id = id;
+    b.innerHTML = `<span class="at-emoji">🎽</span><span class="at-name">${t('skin_' + id)}</span>`;
+    b.addEventListener('click', () => {
+      SFX.click();
+      adminSkinId = adminSkinId === id ? '' : id;
+      for (const x of sTiles.children) x.classList.toggle('sel', x.dataset.id === adminSkinId);
+    });
+    sTiles.appendChild(b);
+  }
+
+  const setAdminTarget = (uid, name) => {
+    adminTargetUid = uid;
+    $('admin-target-name').textContent = name ? ` ${name}` : '—';
+  };
+  const renderAdminFriends = () => {
+    const wrap = $('admin-friend-list');
+    wrap.innerHTML = '';
+    const friends = Object.entries(profile.friends || {});
+    if (!friends.length) { wrap.innerHTML = '<span class="af-empty">אין חברים עדיין — השתמש בקוד ידני</span>'; return; }
+    for (const [uid, f] of friends) {
+      const b = document.createElement('button');
+      b.className = 'admin-friend' + (uid === adminTargetUid ? ' sel' : '');
+      b.textContent = f.name || '???';
+      b.addEventListener('click', () => {
+        SFX.click();
+        setAdminTarget(uid, f.name);
+        $('admin-code').value = '';
+        for (const x of wrap.children) x.classList.toggle('sel', x === b);
+      });
+      wrap.appendChild(b);
+    }
+  };
+
   $('btn-admin').addEventListener('click', () => {
     SFX.click();
+    closeDrawer();
+    setAdminTarget('', '');
+    renderAdminFriends();
     $('admin-popover').classList.remove('hidden');
   });
   $('btn-admin-close').addEventListener('click', () => { SFX.click(); $('admin-popover').classList.add('hidden'); });
+
+  // manual code entry clears the friend selection
+  $('admin-code').addEventListener('input', () => { if ($('admin-code').value) setAdminTarget('', ''); renderAdminFriends(); });
+
+  // shard quick-chips
+  for (const b of document.querySelectorAll('#admin-popover .chip-pick')) {
+    b.addEventListener('click', () => { SFX.click(); $('admin-shards').value = b.dataset.shards; });
+  }
   for (const b of document.querySelectorAll('#admin-popover .admin-pick')) {
     b.addEventListener('click', () => {
       SFX.click();
@@ -309,24 +384,28 @@ function wireMenu() {
   }
   $('btn-admin-grant').addEventListener('click', async () => {
     SFX.click();
-    const code = $('admin-code').value.trim().toUpperCase();
     const shards = Math.max(0, parseInt($('admin-shards').value, 10) || 0);
-    if (!code) { UI.toast('הזן קוד חבר', 'red'); return; }
     const grant = { shards };
     if (adminGrant === 'all') { grant.all = true; }
     else if (adminGrant === 'dances') { grant.dances = 'all'; }
     else if (adminGrant === 'skins') { grant.skins = 'all'; }
     else {
-      // specific: collect the chosen dance/skin (if any)
-      if (adDance.value) grant.dances = [adDance.value];
-      if (adSkin.value) grant.skins = [adSkin.value];
+      if (adminDanceId) grant.dances = [adminDanceId];
+      if (adminSkinId) grant.skins = [adminSkinId];
     }
-    // nothing to grant?
     if (!grant.all && !grant.dances && !grant.skins && !shards) { UI.toast('בחר מה להעניק', 'red'); return; }
-    const res = await grantByCode(code, grant);
+
+    // prefer the picked friend (uid); fall back to a manual code
+    let res;
+    if (adminTargetUid) res = await grantToUid(adminTargetUid, grant);
+    else {
+      const code = $('admin-code').value.trim().toUpperCase();
+      if (!code) { UI.toast('בחר חבר או הזן קוד', 'red'); return; }
+      res = await grantByCode(code, grant);
+    }
     if (res.ok) { UI.toast('✓ הוענק בהצלחה', 'gold'); $('admin-popover').classList.add('hidden'); }
-    else if (res.reason === 'notFound') UI.toast('קוד לא נמצא', 'red');
-    else if (res.reason === 'self') UI.toast('זה הקוד שלך', 'red');
+    else if (res.reason === 'notFound') UI.toast('לא נמצא', 'red');
+    else if (res.reason === 'self') UI.toast('זה החשבון שלך', 'red');
     else if (res.reason === 'denied') UI.toast('אין הרשאה (עדכן חוקי DB)', 'red');
     else UI.toast('נדרש חיבור', 'red');
   });
@@ -340,29 +419,50 @@ function wireMenu() {
   });
   $('btn-back-board').addEventListener('click', () => { SFX.click(); showHome(); });
 
-  // ---- friends screen ----
-  $('btn-friends').addEventListener('click', () => { SFX.click(); state.lobbyStage?.stop(); openFriendsScreen(); });
-  $('btn-back-friends').addEventListener('click', () => {
+  // ---- side drawer (friends + navigation) ----
+  $('btn-drawer-open').addEventListener('click', () => { SFX.click(); openDrawer(); });
+  $('btn-drawer-close').addEventListener('click', () => { SFX.click(); closeDrawer(); });
+  $('drawer-scrim').addEventListener('click', () => closeDrawer());
+  // any nav button inside the drawer also closes it
+  for (const b of document.querySelectorAll('#side-drawer .drawer-nav .drawer-btn')) {
+    b.addEventListener('click', () => closeDrawer());
+  }
+  $('drawer-add-friend').addEventListener('click', async () => {
     SFX.click();
-    stopFriendsWatch();
-    showHome();
-  });
-  $('btn-copy-code').addEventListener('click', async () => {
-    SFX.click();
-    try { await navigator.clipboard.writeText(profile.friendCode || ''); UI.toast(t('frCodeCopied')); }
-    catch { UI.toast(profile.friendCode || '', 'gold'); }
-  });
-  $('btn-add-friend').addEventListener('click', async () => {
-    SFX.click();
-    const res = await addFriendByCode($('friend-code-input').value);
+    const res = await addFriendByCode($('drawer-friend-input').value);
     if (res.ok) {
-      $('friend-code-input').value = '';
+      $('drawer-friend-input').value = '';
       UI.toast(t('frAdded', { name: res.name }), 'gold');
-      openFriendsScreen();                     // re-render with the new friend
+      renderDrawerFriends();
     } else {
       UI.toast(t(res.reason === 'notFound' ? 'frNotFound' : res.reason === 'self' ? 'frSelf'
         : res.reason === 'dup' ? 'frDup' : 'frNeedOnline'), 'red');
     }
+  });
+
+  // topbar friend-code: copy + share
+  $('btn-code-copy').addEventListener('click', async () => {
+    SFX.click();
+    const code = ensureFriendCode();
+    try { await navigator.clipboard.writeText(code); UI.toast(t('frCodeCopied')); }
+    catch { UI.toast(code, 'gold'); }
+  });
+  $('btn-code-share').addEventListener('click', async () => {
+    SFX.click();
+    const code = ensureFriendCode();
+    const text = `בוא לשחק איתי ב-Fabels! הקוד שלי: ${code}\nhttps://fabels-70545.web.app`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'Fabels', text });
+      else { await navigator.clipboard.writeText(text); UI.toast(t('frCodeCopied')); }
+    } catch { /* user cancelled share */ }
+  });
+
+  // legacy friends screen back button (kept for safety)
+  $('btn-back-friends')?.addEventListener('click', () => { SFX.click(); stopFriendsWatch(); showHome(); });
+  $('btn-copy-code')?.addEventListener('click', async () => {
+    SFX.click();
+    try { await navigator.clipboard.writeText(profile.friendCode || ''); UI.toast(t('frCodeCopied')); }
+    catch { UI.toast(profile.friendCode || '', 'gold'); }
   });
 
   $('menu-name-input').addEventListener('change', (e) => {
@@ -417,19 +517,33 @@ let friendsUnsub = null;
 function stopFriendsWatch() { if (friendsUnsub) { friendsUnsub(); friendsUnsub = null; } }
 
 const friendsCtl = {
-  onJoin: (code) => { stopFriendsWatch(); joinRoomByCode(code); },
-  onRemove: (uid) => { removeFriend(uid); openFriendsScreen(); },
+  onJoin: (code) => { closeDrawer(); joinRoomByCode(code); },
+  onRemove: (uid) => { removeFriend(uid); renderDrawerFriends(); },
 };
 
-function openFriendsScreen() {
+let drawerPres = {};
+function renderDrawerFriends() {
+  UI.renderFriendsList(drawerPres, friendsCtl, 'drawer-friends-list');
+}
+
+// Fortnite-style side drawer: friends live-list + navigation
+function openDrawer() {
+  state.lobbyStage?.stop?.();     // pause the 3D stage while the drawer is up (perf)
   UI.renderFriendCode(ensureFriendCode());
-  UI.showScreen('friends');
-  if (!FB.online) { UI.renderFriendsList({}, friendsCtl); return; }
+  $('side-drawer').classList.remove('hidden');
+  renderDrawerFriends();
+  if (FB.online) {
+    stopFriendsWatch();
+    friendsUnsub = watchFriends((p) => { drawerPres = p; renderDrawerFriends(); });
+    refreshFriendProfiles().then(renderDrawerFriends);
+  }
+}
+function closeDrawer() {
+  $('side-drawer').classList.add('hidden');
   stopFriendsWatch();
-  let pres = {};
-  friendsUnsub = watchFriends((p) => { pres = p; UI.renderFriendsList(pres, friendsCtl); });
-  UI.renderFriendsList(pres, friendsCtl);
-  refreshFriendProfiles().then(() => UI.renderFriendsList(pres, friendsCtl));
+  // only resume the 3D stage if we're still on the home screen (a nav button
+  // may have taken us elsewhere, which manages the stage itself)
+  if ($('scr-menu').classList.contains('active')) state.lobbyStage?.start?.();
 }
 
 // push the loaded control/audio settings into the live systems

@@ -52,11 +52,57 @@ export async function addFriendByCode(code) {
     if (!profile.friends) profile.friends = {};
     profile.friends[doc.id] = { name: u.name || '???', addedAt: Date.now() };
     saveProfile();
+    // let the other player know they've been added (fire-and-forget)
+    notifyFriendAdd(doc.id);
     return { ok: true, name: u.name || '???' };
   } catch (e) {
     console.warn('addFriend failed', e);
     return { ok: false, reason: 'offline' };
   }
+}
+
+// ---- friend-add notifications --------------------------------------------
+// when A adds B, A writes friendAdds/{B}/{A} = {name, at}; B surfaces a toast
+// and can add A back with one tap. Degrades silently if rules aren't deployed.
+function notifyFriendAdd(toUid) {
+  if (!FB.online) return;
+  try {
+    const ref = FB.d.ref(FB.db, `friendAdds/${toUid}/${FB.uid}`);
+    FB.d.set(ref, { name: profile.name, code: profile.friendCode || '', at: FB.serverNow() }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
+export function clearFriendAdd(fromUid) {
+  if (!FB.online) return;
+  try { FB.d.remove(FB.d.ref(FB.db, `friendAdds/${FB.uid}/${fromUid}`)).catch(() => {}); } catch { /* ignore */ }
+}
+
+// add someone back who added me (mutual) — used by the notification action
+export function addFriendBack(uid, name) {
+  if (!uid) return false;
+  if (!profile.friends) profile.friends = {};
+  if (!profile.friends[uid]) {
+    profile.friends[uid] = { name: name || '???', addedAt: Date.now() };
+    saveProfile();
+    notifyFriendAdd(uid);
+  }
+  return true;
+}
+
+// listen for "someone added you" events → cb(fromUid, {name, code}). Only
+// fresh ones (≤ 5 min) surface, then get cleared.
+export function watchFriendAdds(cb) {
+  if (!FB.online) return () => {};
+  try {
+    const ref = FB.d.ref(FB.db, 'friendAdds/' + FB.uid);
+    const unsub = FB.d.onChildAdded(ref, (s) => {
+      const v = s.val();
+      if (!v) return;
+      if (v.at && FB.serverNow() - v.at > 300000) { clearFriendAdd(s.key); return; }
+      cb(s.key, v);
+    });
+    return () => { try { unsub(); } catch { /* ignore */ } };
+  } catch { return () => {}; }
 }
 
 export function removeFriend(uid) {
@@ -142,10 +188,9 @@ async function uidForCode(code) {
 }
 
 // grant: { shards?:number, dances?:[ids]|'all', skins?:[ids]|'all', all?:bool }
-// returns {ok} or {ok:false, reason}
-export async function grantByCode(code, grant) {
+// grant straight to a known uid (admin picked a friend from the list)
+export async function grantToUid(uid, grant) {
   if (!FB.online) return { ok: false, reason: 'offline' };
-  const uid = await uidForCode(code);
   if (!uid) return { ok: false, reason: 'notFound' };
   if (uid === FB.uid) return { ok: false, reason: 'self' };
   try {
@@ -156,6 +201,14 @@ export async function grantByCode(code, grant) {
     console.warn('grant failed', e);
     return { ok: false, reason: 'denied' };
   }
+}
+
+// grant by friend code (resolve the code first). returns {ok} or {ok,reason}
+export async function grantByCode(code, grant) {
+  if (!FB.online) return { ok: false, reason: 'offline' };
+  const uid = await uidForCode(code);
+  if (!uid) return { ok: false, reason: 'notFound' };
+  return grantToUid(uid, grant);
 }
 
 // apply any pending grants addressed to me, then delete them. safe offline.

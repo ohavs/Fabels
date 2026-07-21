@@ -86,6 +86,20 @@ export const MODE_ICONS = {
   zonewars: '🌀', builddm: '🧱', boxfight: '🥊', tactical: '💣', creative: '🏝️',
 };
 export const MODE_LIST = ['gungame', 'builddm', 'boxfight', 'zonewars', 'tactical', 'duel', 'team', 'zombies', 'ctf', 'br', 'creative'];
+// short Hebrew blurbs for the big mode cards
+export const MODE_DESC = {
+  gungame: 'עלה בסולם הנשקים — הריגה מקדמת לנשק הבא',
+  builddm: 'קרב בנייה חופשי — בנה, ערוך ותפוס עמדות',
+  boxfight: 'קופסאות 1v1 צמודות — קרב בנייה מהיר',
+  zonewars: 'זירה מצטמצמת — השחקן האחרון מנצח',
+  tactical: 'סבבים · שתול/נטרל · כלכלה כמו CS',
+  duel: 'דו-קרב 1 על 1 — הטוב מנצח',
+  team: 'קבוצות — שתפו פעולה והשמידו',
+  zombies: 'הישרדות מול גלי זומבים',
+  ctf: 'לכידת הדגל — גנוב והחזר לבסיס',
+  br: 'באטל רויאל — צנחו, שדדו, שרדו',
+  creative: 'מצב יצירה — בנה ושמור מפות משלך',
+};
 
 // home mode card + the floating switch panel
 export function setLobbyModeCard(mode, switchable) {
@@ -101,8 +115,14 @@ export function openModePopover(current, onPick) {
   grid.innerHTML = '';
   for (const m of MODE_LIST) {
     const b = document.createElement('button');
-    b.className = 'mp-item' + (m === current ? ' sel' : '');
-    b.innerHTML = `<span>${MODE_ICONS[m]}</span><b>${t('mode_' + m)}</b>`;
+    b.className = 'mp-card' + (m === current ? ' sel' : '');
+    b.innerHTML = `
+      <span class="mpc-icon">${MODE_ICONS[m]}</span>
+      <span class="mpc-body">
+        <b class="mpc-name">${t('mode_' + m)}</b>
+        <small class="mpc-desc">${MODE_DESC[m] || ''}</small>
+      </span>
+      ${m === current ? '<span class="mpc-check">✓</span>' : ''}`;
     b.addEventListener('click', () => { SFX.click(); closeModePopover(); onPick(m); });
     grid.appendChild(b);
   }
@@ -190,11 +210,16 @@ function presenceLabel(p) {
   return { txt: t('frOnline'), cls: 'on' };
 }
 
-export function renderFriendCode(code) { $('my-friend-code').textContent = code || '------'; }
+export function renderFriendCode(code) {
+  const c = code || '------';
+  const a = $('my-friend-code'); if (a) a.textContent = c;
+  const b = $('menu-friend-code'); if (b) b.textContent = c;
+}
 
 // friends screen list. ctl: { onJoin(code), onRemove(uid) }
-export function renderFriendsList(presence, ctl) {
-  const wrap = $('friends-list');
+export function renderFriendsList(presence, ctl, targetId = 'friends-list') {
+  const wrap = $(targetId);
+  if (!wrap) return;
   wrap.innerHTML = '';
   const friends = Object.entries(profile.friends || {});
   if (!friends.length) {
@@ -403,8 +428,10 @@ function sbInit() {
   sbRedraw();
 }
 
+let lockerTabsReady = false;
 export function renderShop() {
   sbInit();
+  if (!lockerTabsReady) { setupLockerTabs(); lockerTabsReady = true; }
   $('shop-shards').textContent = `💠 ${profile.shards}`;
   const grid = $('shop-skins');
   grid.innerHTML = '';
@@ -433,8 +460,6 @@ export function renderShop() {
   renderShopDances();
 }
 
-// which equipped slot (0-7) the next selected dance goes into
-let shopSlot = 0;
 // single shared animated dance-preview stage (one WebGL context, started only
 // while the shop is open → no perf cost elsewhere)
 let shopStage = null;
@@ -449,51 +474,49 @@ function ensureShopStage() {
 export function stopShopPreview() { shopStage?.stop(); }
 
 function renderShopDances() {
-  const slotsEl = $('shop-emote-slots');
   const grid = $('shop-dances');
-  if (!slotsEl || !grid) return;
+  if (!grid) return;
   ensureShopStage();
 
-  // 8 equipped-emote slots — click to choose where the next dance goes
-  slotsEl.innerHTML = '';
-  const emotes = profile.emotes || [];
-  for (let i = 0; i < 8; i++) {
-    const id = emotes[i];
-    const d = DANCES.find((x) => x.id === id);
-    const slot = document.createElement('button');
-    slot.className = 'em-slot' + (i === shopSlot ? ' sel' : '');
-    slot.innerHTML = `<span class="es-num">${i + 1}</span><span class="es-emoji">${d ? d.icon : '·'}</span>`;
-    slot.addEventListener('click', () => { SFX.click(); shopSlot = i; renderShopDances(); });
-    slotsEl.appendChild(slot);
-  }
-
-  // all dances: buy the locked ones, tap owned ones to drop into the chosen slot
+  // every dance: owned ones tap-to-preview, locked ones buy (any owned dance
+  // then shows up automatically in the emote wheel — no manual slotting)
   grid.innerHTML = '';
-  const equipped = new Set(emotes);
   for (const d of DANCES) {
     const owned = ownsDance(d.id);
-    const isEq = equipped.has(d.id);
     const card = document.createElement('div');
-    card.className = 'dance-card' + (isEq ? ' equipped' : '');
+    card.className = 'dance-card' + (owned ? ' owned' : '');
     card.innerHTML = `<span class="dc-emoji">${d.icon}</span><span class="dc-name">${escapeHtml(d.name)}</span>`;
     // tap the card body → play this dance on the shared preview character
     card.addEventListener('click', () => { shopStage?.dance(danceIndex(d.id)); });
     const btn = document.createElement('button');
     btn.className = 'shop-buy' + (owned ? ' own' : '');
-    if (isEq) { btn.textContent = '✓ ' + t('equipped'); }
-    else if (owned) { btn.textContent = t('equip'); }
+    if (owned) { btn.textContent = '✓ ' + t('owned'); btn.disabled = true; }
     else { btn.textContent = d.cost === 0 ? t('free') : `💠 ${d.cost}`; if (!isAdmin()) btn.disabled = profile.shards < d.cost; }
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       SFX.click();
-      if (!owned && !buyDance(d.id)) { toast(t('notEnough'), 'red'); return; }
-      setEmoteSlot(shopSlot, d.id);
-      shopSlot = (shopSlot + 1) % 8;
+      if (!buyDance(d.id)) { toast(t('notEnough'), 'red'); return; }
+      shopStage?.dance(danceIndex(d.id));
       $('shop-shards').textContent = `💠 ${profile.shards}`;
       renderShopDances();
       refreshMenu();
     });
     card.appendChild(btn);
     grid.appendChild(card);
+  }
+}
+
+// ---- locker tabs (skins / dances) ----
+export function setupLockerTabs() {
+  const tabs = document.querySelectorAll('.locker-tab');
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => {
+      SFX.click();
+      const which = tab.dataset.tab;
+      for (const x of tabs) x.classList.toggle('sel', x === tab);
+      $('tab-skins').classList.toggle('hidden', which !== 'skins');
+      $('tab-dances').classList.toggle('hidden', which !== 'dances');
+    });
   }
 }
 
@@ -534,19 +557,29 @@ export function banner(text, ms = 2000) {
   bannerTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-// Fortnite-style radial emote wheel. Populated from the player's 8 equipped
-// emote slots (profile.emotes). onPick receives the DANCES index to play.
-// Shared by the in-game HUD button and the lobby dance button.
+// Fortnite-style radial emote wheel. Shows ALL owned dances, paged 8 per ring
+// with ‹ › arrows so you're never limited to a fixed handful. onPick receives
+// the DANCES index. Shared by the in-game HUD button and the lobby dance button.
+const EW_PER_PAGE = 8;
+let ewPage = 0;
+let ewOnPick = null;
 export function buildEmoteWheel(onPick) {
+  ewOnPick = onPick;
+  ewPage = 0;
+  renderEmoteWheel();
+}
+function ownedDances() { return DANCES.filter((d) => ownsDance(d.id)); }
+function renderEmoteWheel() {
   const ring = $('ew-ring');
   if (!ring) return;
   ring.innerHTML = '';
-  const ids = (profile.emotes || []).slice(0, 8);
-  const n = Math.max(ids.length, 1);
+  const owned = ownedDances();
+  const pages = Math.max(1, Math.ceil(owned.length / EW_PER_PAGE));
+  ewPage = ((ewPage % pages) + pages) % pages;
+  const page = owned.slice(ewPage * EW_PER_PAGE, ewPage * EW_PER_PAGE + EW_PER_PAGE);
+  const n = Math.max(page.length, 1);
   const R = 40; // percent radius from centre
-  ids.forEach((id, i) => {
-    const d = DANCES.find((x) => x.id === id);
-    if (!d) return;
+  page.forEach((d, i) => {
     const ang = (i / n) * Math.PI * 2 - Math.PI / 2;   // start at top, clockwise
     const x = 50 + Math.cos(ang) * R;
     const y = 50 + Math.sin(ang) * R;
@@ -555,11 +588,32 @@ export function buildEmoteWheel(onPick) {
     b.style.left = x + '%';
     b.style.top = y + '%';
     b.innerHTML = `<span class="ew-emoji">${d.icon}</span><span class="ew-name">${escapeHtml(d.name)}</span>`;
-    const fn = () => { onPick(danceIndex(id)); $('emote-wheel').classList.add('hidden'); };
+    const fn = () => { ewOnPick?.(danceIndex(d.id)); $('emote-wheel').classList.add('hidden'); };
     b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
     b.addEventListener('click', fn);
     ring.appendChild(b);
   });
+  // arrows + page label only matter when there's more than one page
+  const multi = pages > 1;
+  $('ew-prev').style.visibility = multi ? '' : 'hidden';
+  $('ew-next').style.visibility = multi ? '' : 'hidden';
+  const pg = $('ew-page');
+  if (pg) pg.textContent = multi ? `${ewPage + 1}/${pages}` : '';
+}
+export function emoteWheelPage(dir) { ewPage += dir; renderEmoteWheel(); }
+
+// one-time wiring of the wheel's hub (cancel) + paging arrows. Called at boot so
+// it works over both the lobby and the in-match HUD.
+export function initEmoteWheel() {
+  const close = () => $('emote-wheel').classList.add('hidden');
+  const tap = (el, fn) => {
+    if (!el) return;
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
+    el.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+  };
+  tap($('ew-hub'), () => { SFX.click(); close(); });
+  tap($('ew-prev'), () => { SFX.click(); emoteWheelPage(-1); });
+  tap($('ew-next'), () => { SFX.click(); emoteWheelPage(1); });
 }
 
 export function resetHUD() {

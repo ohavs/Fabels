@@ -46,6 +46,12 @@
             <span id="menu-rank" class="chip rank">ארד</span>
             <span id="menu-shards" class="chip shards">💠 0</span>
           </div>
+          <div class="pilot-code">
+            <span class="pc-label">קוד חבר</span>
+            <b id="menu-friend-code">------</b>
+            <button id="btn-code-copy" class="pc-btn" title="העתקה">📋</button>
+            <button id="btn-code-share" class="pc-btn" title="שיתוף">📤</button>
+          </div>
           <div class="xpbar"><div id="menu-xpbar" class="xpbar-fill"></div></div>
         </div>
         <div class="home-top-right">
@@ -54,6 +60,7 @@
             <span id="google-label">התחברות עם Google</span>
           </button>
           <div id="menu-conn" class="conn-badge">מתחבר…</div>
+          <button id="btn-drawer-open" class="menu-toggle" title="תפריט" aria-label="תפריט">☰</button>
         </div>
       </header>
 
@@ -79,18 +86,41 @@
           <span id="home-status" class="home-status"></span>
           <button id="home-play" class="play-btn">🚀 שחק</button>
         </div>
-        <footer class="home-footer">
-          <button id="btn-shop" class="hf-btn" title="דמויות">🎽</button>
-          <button id="btn-friends" class="hf-btn" title="חברים">👥</button>
-          <button id="btn-join" class="hf-btn" title="הצטרפות עם קוד">🔑</button>
-          <button id="btn-board" class="hf-btn" title="לוח מובילים">🏆</button>
-          <button id="btn-chall" class="hf-btn" title="אתגרים">🎯</button>
-          <button id="btn-settings" class="hf-btn" title="הגדרות">⚙️</button>
+      </div>
+    </div>
+
+    <!-- Fortnite-style side drawer: friends + navigation -->
+    <div id="side-drawer" class="side-drawer hidden">
+      <div class="drawer-scrim" id="drawer-scrim"></div>
+      <aside class="drawer-panel">
+        <div class="drawer-head">
+          <h3>☰ תפריט</h3>
+          <button id="btn-drawer-close" class="pc-btn" aria-label="סגירה">✕</button>
+        </div>
+
+        <div class="drawer-sec">
+          <div class="drawer-sec-title">👥 חברים</div>
+          <div class="join-row">
+            <input id="drawer-friend-input" maxlength="6" placeholder="קוד של חבר" aria-label="קוד של חבר" />
+            <button id="drawer-add-friend" class="menu-btn slim">➕ הוספה</button>
+          </div>
+          <div id="drawer-friends-list" class="friends-list"></div>
+        </div>
+
+        <div class="drawer-nav">
+          <button id="btn-shop" class="drawer-btn"><span>🎽</span> לוקר</button>
+          <button id="btn-board" class="drawer-btn"><span>🏆</span> לוח מובילים</button>
+          <button id="btn-chall" class="drawer-btn"><span>🎯</span> אתגרים</button>
+          <button id="btn-join" class="drawer-btn"><span>🔑</span> הצטרפות עם קוד</button>
+          <button id="btn-settings" class="drawer-btn"><span>⚙️</span> הגדרות</button>
+          <button id="btn-admin" class="drawer-btn admin hidden"><span>👑</span> ניהול</button>
+        </div>
+
+        <div class="drawer-toggles">
           <button id="btn-sound" class="hf-btn" title="צליל">🔊</button>
           <button id="btn-music" class="hf-btn" title="מוזיקה">🎵</button>
-          <button id="btn-admin" class="hf-btn admin hidden" title="ניהול">👑</button>
-        </footer>
-      </div>
+        </div>
+      </aside>
     </div>
 
     <!-- floating mode picker -->
@@ -137,29 +167,50 @@
       </div>
     </div>
 
-    <!-- admin panel: grant goodies to another player by friend code -->
+    <!-- admin panel: grant goodies to another player -->
     <div id="admin-popover" class="mode-popover hidden">
-      <div class="mp-panel admin-panel">
+      <div class="mp-panel admin-panel scroll">
         <h3>👑 ניהול — מתן גישה</h3>
-        <p class="sb-hint">הענק כסף, ריקודים או דמויות לחשבון אחר לפי קוד החבר שלו.</p>
-        <label class="admin-row"><span>קוד חבר</span>
-          <input id="admin-code" maxlength="6" placeholder="ABC234" autocomplete="off"></label>
-        <label class="admin-row"><span>💠 כסף</span>
-          <input id="admin-shards" type="number" min="0" step="100" value="0"></label>
-        <div class="admin-row"><span>מה להעניק</span>
+
+        <div class="admin-field">
+          <div class="af-label">בחר חבר</div>
+          <div id="admin-friend-list" class="admin-friends"></div>
+          <div class="af-or">— או קוד ידני —</div>
+          <input id="admin-code" maxlength="6" placeholder="ABC234" class="admin-input" autocomplete="off">
+        </div>
+
+        <div class="admin-field">
+          <div class="af-label">💠 כסף</div>
+          <div class="admin-tiles wrap">
+            <button class="chip-pick" data-shards="500">+500</button>
+            <button class="chip-pick" data-shards="1000">+1,000</button>
+            <button class="chip-pick" data-shards="5000">+5,000</button>
+            <button class="chip-pick" data-shards="0">איפוס</button>
+            <input id="admin-shards" type="number" min="0" step="100" value="0" class="admin-input mini">
+          </div>
+        </div>
+
+        <div class="admin-field">
+          <div class="af-label">חבילות מהירות</div>
           <div class="admin-picks">
             <button class="admin-pick" data-grant="dances">🕺 כל הריקודים</button>
             <button class="admin-pick" data-grant="skins">🎽 כל הדמויות</button>
             <button class="admin-pick" data-grant="all">✨ הכל</button>
-            <button class="admin-pick sel" data-grant="none">— רק ספציפי/כסף</button>
+            <button class="admin-pick sel" data-grant="none">ספציפי בלבד</button>
           </div>
         </div>
-        <label class="admin-row"><span>🕺 ריקוד ספציפי</span>
-          <select id="admin-dance"><option value="">— ללא —</option></select></label>
-        <label class="admin-row"><span>🎽 דמות ספציפית</span>
-          <select id="admin-skin"><option value="">— ללא —</option></select></label>
+
+        <div class="admin-field">
+          <div class="af-label">🕺 ריקוד ספציפי</div>
+          <div id="admin-dance-tiles" class="admin-tiles"></div>
+        </div>
+        <div class="admin-field">
+          <div class="af-label">🎽 דמות ספציפית</div>
+          <div id="admin-skin-tiles" class="admin-tiles"></div>
+        </div>
+
         <div class="panel-actions">
-          <button id="btn-admin-grant" class="cta small">הענק</button>
+          <button id="btn-admin-grant" class="cta small">הענק ל<span id="admin-target-name">—</span></button>
           <button id="btn-admin-close" class="ghost-btn small">סגירה</button>
         </div>
       </div>
@@ -178,48 +229,54 @@
     </div>
   </section>
 
-  <!-- ═══════════ חנות דמויות ═══════════ -->
+  <!-- ═══════════ לוקר (דמויות + ריקודים) ═══════════ -->
   <section id="scr-shop" class="screen scroll">
     <div class="panel wide">
       <div class="panel-head">
-        <h2>🎽 חדר ההלבשה</h2>
+        <h2>🎒 הלוקר</h2>
         <span id="shop-shards" class="chip shards big">💠 0</span>
       </div>
-      <div id="shop-skins" class="ship-grid"></div>
 
-      <!-- dances / emotes shop -->
-      <div class="panel-head" style="margin-top:18px">
-        <h2>🕺 ריקודים</h2>
-        <span class="sb-hint" style="margin:0">הקש ריקוד לתצוגה · בחר משבצת ואז ריקוד</span>
+      <div class="locker-tabs">
+        <button class="locker-tab sel" data-tab="skins">🎽 דמויות</button>
+        <button class="locker-tab" data-tab="dances">🕺 ריקודים</button>
       </div>
-      <div class="dance-shop-top">
-        <canvas id="shop-dance-preview" class="dance-preview"></canvas>
-        <div id="shop-emote-slots" class="emote-slots"></div>
-      </div>
-      <div id="shop-dances" class="dance-grid"></div>
 
-      <!-- custom skin builder -->
-      <div class="panel-head" style="margin-top:18px"><h2>🎨 הסקין שלי</h2></div>
-      <div id="skin-builder" class="skin-builder">
-        <div class="sb-preview">
-          <canvas id="sb-canvas"></canvas>
-          <button id="sb-equip" class="cta small">לבש אותי ✓</button>
-        </div>
-        <div class="sb-controls">
-          <label class="sb-row"><span>צבע גוף</span><input type="color" id="sb-body" value="#3b82f6"></label>
-          <label class="sb-row"><span>צבע משלים</span><input type="color" id="sb-accent" value="#fbbf24"></label>
-          <label class="sb-row"><span>גוון עור</span><input type="color" id="sb-skin" value="#f1c27d"></label>
-          <label class="sb-row"><span>🛡️ כתפיות</span><input type="checkbox" id="sb-pads-on"><input type="color" id="sb-pads" value="#111827"></label>
-          <label class="sb-row"><span>🎒 תיק גב</span><input type="checkbox" id="sb-pack-on"><input type="color" id="sb-pack" value="#94a3b8"></label>
-          <label class="sb-row"><span>✨ מגן זוהר</span><input type="checkbox" id="sb-visor-on"><input type="color" id="sb-visor" value="#22d3ee"></label>
-          <div class="sb-row sb-face">
-            <span>🤳 תמונת פנים</span>
-            <input type="file" id="sb-face-file" accept="image/*" hidden>
-            <button id="sb-face-pick" class="ghost-btn small">העלאת תמונה</button>
-            <button id="sb-face-clear" class="ghost-btn small hidden">✕ הסרה</button>
+      <!-- SKINS TAB -->
+      <div id="tab-skins" class="locker-pane">
+        <div id="shop-skins" class="ship-grid"></div>
+
+        <div class="panel-head" style="margin-top:18px"><h2>🎨 הסקין שלי</h2></div>
+        <div id="skin-builder" class="skin-builder">
+          <div class="sb-preview">
+            <canvas id="sb-canvas"></canvas>
+            <button id="sb-equip" class="cta small">לבש אותי ✓</button>
           </div>
-          <p class="sb-hint">התמונה מוקטנת ונמתחת על פני הדמות שלכם (רק אתם ואתם בלבד מעלים אותה — היא נשמרת בפרופיל שלכם)</p>
+          <div class="sb-controls">
+            <label class="sb-row"><span>צבע גוף</span><input type="color" id="sb-body" value="#3b82f6"></label>
+            <label class="sb-row"><span>צבע משלים</span><input type="color" id="sb-accent" value="#fbbf24"></label>
+            <label class="sb-row"><span>גוון עור</span><input type="color" id="sb-skin" value="#f1c27d"></label>
+            <label class="sb-row"><span>🛡️ כתפיות</span><input type="checkbox" id="sb-pads-on"><input type="color" id="sb-pads" value="#111827"></label>
+            <label class="sb-row"><span>🎒 תיק גב</span><input type="checkbox" id="sb-pack-on"><input type="color" id="sb-pack" value="#94a3b8"></label>
+            <label class="sb-row"><span>✨ מגן זוהר</span><input type="checkbox" id="sb-visor-on"><input type="color" id="sb-visor" value="#22d3ee"></label>
+            <div class="sb-row sb-face">
+              <span>🤳 תמונת פנים</span>
+              <input type="file" id="sb-face-file" accept="image/*" hidden>
+              <button id="sb-face-pick" class="ghost-btn small">העלאת תמונה</button>
+              <button id="sb-face-clear" class="ghost-btn small hidden">✕ הסרה</button>
+            </div>
+            <p class="sb-hint">התמונה מוקטנת ונמתחת על פני הדמות שלכם (רק אתם ואתם בלבד מעלים אותה — היא נשמרת בפרופיל שלכם)</p>
+          </div>
         </div>
+      </div>
+
+      <!-- DANCES TAB -->
+      <div id="tab-dances" class="locker-pane hidden">
+        <div class="dance-shop-top">
+          <canvas id="shop-dance-preview" class="dance-preview"></canvas>
+          <div class="dance-hint">הקש על ריקוד כדי לראות אותו על הדמות שלך · הריקודים שברשותך יופיעו בגלגלת</div>
+        </div>
+        <div id="shop-dances" class="dance-grid"></div>
       </div>
 
       <div class="panel-actions">
@@ -410,8 +467,10 @@
   <!-- emote wheel: Fortnite-style radial, populated from equipped emotes.
        top-level overlay so it works over both the in-game HUD and the lobby. -->
   <div id="emote-wheel" class="emote-wheel hidden">
+    <button id="ew-prev" class="ew-arrow ew-prev" aria-label="הקודם">‹</button>
     <div class="ew-ring" id="ew-ring"></div>
-    <div class="ew-hub">בטל</div>
+    <button id="ew-next" class="ew-arrow ew-next" aria-label="הבא">›</button>
+    <div class="ew-hub" id="ew-hub"><span>בטל</span><small id="ew-page"></small></div>
   </div>
 
   <!-- ═══════════ תוצאות ═══════════ -->

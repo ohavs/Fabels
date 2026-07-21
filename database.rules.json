@@ -76,6 +76,14 @@
         ".read": "auth != null && auth.uid == $toUid",
         ".write": "auth != null && (auth.uid == $toUid || auth.token.email == 'ohav88@gmail.com')"
       }
+    },
+    "friendAdds": {
+      "$toUid": {
+        ".read": "auth != null && auth.uid == $toUid",
+        "$fromUid": {
+          ".write": "auth != null && (auth.uid == $fromUid || auth.uid == $toUid)"
+        }
+      }
     }
   }
 }

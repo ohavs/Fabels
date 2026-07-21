@@ -108,6 +108,8 @@ export const STR = {
   frDup: 'כבר ברשימת החברים',
   frNeedOnline: 'רשימת החברים דורשת חיבור',
   frCodeCopied: '✓ הקוד הועתק! שלחו לחברים',
+  frAddedYou: '👋 {name} הוסיף אתכם לחברים!',
+  frAddBack: 'להוסיף את {name} בחזרה?',
   frInvited: '📨 {name} מזמין אתכם למשחק!',
   frInviteLabel: 'הזמינו חברים מחוברים:',
   frInviteSent: '📨 ההזמנה נשלחה!',
