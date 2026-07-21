@@ -77,6 +77,25 @@ export class Room {
     return room;
   }
 
+  // A "party": a private room that lives on the home screen. Not indexed
+  // (never quick-matched — friends join by code/invite only) so its mode can
+  // change freely while friends stand in the lineup, Fortnite-style.
+  static async createParty(mode, lobbyInfo, options = {}) {
+    const id = roomCode();
+    const room = new Room(id, mode);
+    room.party = true;
+    const meta = {
+      mode, state: 'waiting', host: FB.uid, party: true,
+      map: options.map || 'town', botLevel: options.botLevel || 'normal',
+      botCount: options.botCount ?? 4, startAt: 0, private: true,
+      createdAt: FB.serverNow(), maxPlayers: options.maxPlayers || maxFor(mode),
+    };
+    await FB.d.set(room._ref('meta'), meta);
+    room.meta = meta;
+    await room._enter(lobbyInfo);
+    return room;                       // no index entry → invisible to matchmaking
+  }
+
   static async joinByCode(code, lobbyInfo) {
     code = String(code).trim().toUpperCase();
     const metaSnap = await FB.d.get(FB.d.ref(FB.db, `rooms/${code}/meta`));
@@ -84,6 +103,7 @@ export class Room {
     if (!meta) throw new Error('roomNotFound');
     if (meta.state !== 'waiting' && meta.state !== 'starting') throw new Error('roomNotFound');
     const room = new Room(code, meta.mode);
+    room.party = !!meta.party;
     if (!(await room._tryJoin(lobbyInfo, true))) throw new Error('joinFailed');
     return room;
   }
@@ -152,6 +172,7 @@ export class Room {
       const prev = this.meta;
       this.meta = s.val();
       if (!this.meta) return;
+      if (this.meta.mode) this.mode = this.meta.mode;   // follow host mode changes
       if (this.onMeta) this.onMeta(this.meta, prev);
       this._emitLobby();
     }));
@@ -197,7 +218,9 @@ export class Room {
   // host-only lobby options
   setOptions(patch) {
     if (!this.isHost) return;
+    if (patch.mode) this.mode = patch.mode;        // party: mode is changeable
     FB.d.update(this._ref('meta'), patch).catch(() => {});
+    if (this.party) return;                        // parties aren't indexed
     // private rooms are hidden from quick-match (still joinable by code)
     if (patch.private !== undefined) {
       FB.d.update(this._idxRef(), {
@@ -210,7 +233,7 @@ export class Room {
     if (!this.isHost || !this.meta || this.meta.state !== 'waiting') return;
     const startAt = FB.serverNow() + GAME.lobbyCountdown * 1000;
     await FB.d.update(this._ref('meta'), { state: 'starting', startAt });
-    FB.d.update(this._idxRef(), { state: 'starting', at: FB.serverNow() }).catch(() => {});
+    if (!this.party) FB.d.update(this._idxRef(), { state: 'starting', at: FB.serverNow() }).catch(() => {});
   }
 
   // ---------------- gameplay sync ----------------

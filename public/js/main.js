@@ -136,6 +136,7 @@ function finishBoot(online) {
   UI.refreshMenu();
   const daily = claimDaily();
   UI.showScreen('menu');
+  renderHome();
   if (daily) UI.toast(t('daily', { n: daily }), 'gold');
 
   // google account button
@@ -215,10 +216,12 @@ function handleGamepadBack() {
 async function joinRoomByCode(code) {
   if (!code) return;
   if (!FB.online) { UI.toast(t('onlineNeedsFirebase'), 'red'); return; }
+  if (state.room) { await state.room.leave(); state.room = null; state._partyPlayers = null; }
   UI.toast(t('joiningRoom'));
   try {
     const room = await Room.joinByCode(code, lobbyInfo());
-    enterOnlineLobby(room);
+    attachParty(room);
+    showHome();
   } catch (e) {
     UI.toast(t(e.message === 'roomNotFound' ? 'roomNotFound' : 'joinFailed'), 'red');
   }
@@ -239,41 +242,49 @@ function fitRenderer() {
 }
 
 function wireMenu() {
-  for (const m of ['gungame', 'duel', 'team', 'zombies', 'ctf', 'tactical', 'br', 'zonewars', 'builddm', 'boxfight', 'creative']) {
-    $('btn-' + m).addEventListener('click', () => { SFX.click(); enterMode(m); });
-  }
-  $('btn-practice').addEventListener('click', () => { SFX.click(); enterPracticeLobby(state.practice.mode || 'gungame'); });
-
-  // lobby: floating mode switcher (practice lobby only) + lineup dance
-  $('lobby-mode-card').addEventListener('click', () => {
-    if (state.room) return;                       // online rooms keep their mode
+  // ---- home = lobby ----
+  $('home-mode-card').addEventListener('click', () => {
+    if (state.room && !state.room.isHost) return;   // only the party host picks the mode
     SFX.click();
-    UI.openModePopover(state.practice.mode, (m) => enterPracticeLobby(m));
+    UI.openModePopover(state.practice.mode, (m) => setHomeMode(m));
   });
   $('btn-mode-close').addEventListener('click', () => { SFX.click(); UI.closeModePopover(); });
-  $('btn-lobby-dance').addEventListener('click', () => {
+  $('home-cfg').addEventListener('click', () => { SFX.click(); openHomeOpts(); });
+  $('btn-mode-opts-close').addEventListener('click', () => { SFX.click(); $('mode-opts-popover').classList.add('hidden'); });
+  $('home-play').addEventListener('click', () => { SFX.click(); onPlay(); });
+  $('home-dance').addEventListener('click', () => {
     SFX.click();
     state.lobbyDance = ((state.lobbyDance ?? -1) + 1) % 9;
     state.lobbyStage?.dance(state.lobbyDance);
   });
+  $('btn-leave-party').addEventListener('click', () => { SFX.click(); leaveParty(); });
+  $('btn-chall').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); $('chall-popover').classList.remove('hidden'); });
+  $('btn-chall-close').addEventListener('click', () => { SFX.click(); $('chall-popover').classList.add('hidden'); });
+  $('btn-join').addEventListener('click', () => {
+    SFX.click();
+    if (!FB.online) { UI.toast(t('onlineNeedsFirebase'), 'red'); return; }
+    const code = prompt(t('roomCodePrompt'));
+    if (code) joinRoomByCode(code.trim().toUpperCase());
+  });
 
-  $('btn-shop').addEventListener('click', () => { SFX.click(); UI.renderShop(); UI.showScreen('shop'); });
-  $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); UI.showScreen('menu'); });
+  $('btn-shop').addEventListener('click', () => { SFX.click(); state.lobbyStage?.stop(); UI.renderShop(); UI.showScreen('shop'); });
+  $('btn-back-shop').addEventListener('click', () => { SFX.click(); showHome(); });
 
   $('btn-board').addEventListener('click', async () => {
     SFX.click();
+    state.lobbyStage?.stop();
     UI.showScreen('board');
     UI.renderBoard(FB.online ? [] : null, FB.uid);
     if (FB.online) UI.renderBoard(await fetchLeaderboard() || [], FB.uid);
   });
-  $('btn-back-board').addEventListener('click', () => { SFX.click(); UI.showScreen('menu'); });
+  $('btn-back-board').addEventListener('click', () => { SFX.click(); showHome(); });
 
   // ---- friends screen ----
-  $('btn-friends').addEventListener('click', () => { SFX.click(); openFriendsScreen(); });
+  $('btn-friends').addEventListener('click', () => { SFX.click(); state.lobbyStage?.stop(); openFriendsScreen(); });
   $('btn-back-friends').addEventListener('click', () => {
     SFX.click();
     stopFriendsWatch();
-    UI.showScreen('menu');
+    showHome();
   });
   $('btn-copy-code').addEventListener('click', async () => {
     SFX.click();
@@ -296,44 +307,15 @@ function wireMenu() {
   $('menu-name-input').addEventListener('change', (e) => {
     if (setName(e.target.value)) UI.toast(t('nameSaved'));
     UI.refreshMenu();
+    renderHome();
   });
 
-  $('btn-join-code').addEventListener('click', async () => {
-    SFX.click();
-    const code = $('join-code-input').value.trim();
-    if (!code) return;
-    if (!FB.online) { UI.toast(t('onlineNeedsFirebase'), 'red'); return; }
-    try {
-      const room = await Room.joinByCode(code, lobbyInfo());
-      enterOnlineLobby(room);
-    } catch (e) {
-      UI.toast(t(e.message === 'roomNotFound' ? 'roomNotFound' : 'joinFailed'), 'red');
-    }
-  });
-
-  $('btn-start').addEventListener('click', () => {
-    SFX.click();
-    if (state.room) state.room.startMatch();
-    else startOffline();     // practice lobby
-  });
-  $('btn-leave-lobby').addEventListener('click', async () => {
-    SFX.click();
-    clearInterval(state.lobbyTimer);
-    stopLobbyFriends();
-    state.lobbyStage?.stop();
-    UI.closeModePopover();
-    setPresence('menu');
-    if (state.room) { await state.room.leave(); state.room = null; }
-    UI.refreshMenu();
-    UI.showScreen('menu');
-  });
-
-  $('btn-menu').addEventListener('click', () => { SFX.click(); UI.refreshMenu(); UI.showScreen('menu'); });
+  $('btn-menu').addEventListener('click', () => { SFX.click(); showHome(); });
   $('btn-again').addEventListener('click', () => {
     SFX.click();
     const e = state.lastEntry;
-    if (e?.online) enterMode(e.mode);
-    else enterPracticeLobby(state.practice.mode);
+    if (e) state.practice.mode = e.mode;
+    showHome();
   });
 
   $('btn-sound').addEventListener('click', () => {
@@ -356,6 +338,7 @@ function wireMenu() {
   // settings / controls screen
   $('btn-settings').addEventListener('click', () => {
     SFX.click();
+    state.lobbyStage?.stop();
     UI.renderSettings(() => state.input?.applySettings(settings), applyDisplaySettings);
     UI.showScreen('settings');
   });
@@ -364,7 +347,7 @@ function wireMenu() {
     if (state.input) state.input.applySettings(settings);
     gamepad.clearFocus();
     if (state.paused) resumeFromSettings();   // opened mid-match → resume
-    else UI.showScreen('menu');
+    else showHome();
   });
 }
 
@@ -417,159 +400,180 @@ function applyDisplaySettings() {
 
 const lobbyInfo = () => ({ name: profile.name, skin: profile.skin, lvl: playerLevel() });
 
-// ---------------- offline practice lobby ----------------
-function enterPracticeLobby(mode) {
-  state.practice.mode = mode;
-  state.room = null;
-  state.lastEntry = { mode, online: false };
-  UI.showScreen('lobby');
-  renderPracticeLobby();
-}
-
-// the 3D lineup stage — created on first lobby, reused after
-function lobbyStage() {
-  if (!state.lobbyStage) state.lobbyStage = new LobbyStage($('lobby-stage'));
+// ═══════════ HOME = the lobby (Fortnite-style) ═══════════
+// The 3D lineup stage lives on the home screen. Solo players see just their
+// own character (no network). Inviting a friend lazily spins up a "party"
+// room; friends fill the slots. PLAY launches the selected mode — offline
+// with bots when solo, online for the whole party.
+function homeStage() {
+  if (!state.lobbyStage) state.lobbyStage = new LobbyStage($('home-stage'));
   return state.lobbyStage;
 }
 
-function stageForPlayers(players, maxPlayers) {
-  const slots = Math.min(Math.max(4, players.length), 6);
-  lobbyStage().setPlayers(players.map((p) => ({
+export function showHome() {
+  UI.closeModePopover();
+  $('mode-opts-popover').classList.add('hidden');
+  UI.refreshMenu();
+  UI.showScreen('menu');
+  renderHome();
+}
+
+function renderHome() {
+  const pr = state.practice;
+  const room = state.room;
+  const mode = room ? room.mode : pr.mode;
+  const isHost = !room || room.isHost;
+  UI.setLobbyModeCard(mode, isHost);            // guests can't change the mode
+
+  // characters on stage
+  let players, max;
+  if (room && state._partyPlayers && state._partyPlayers.length) {
+    players = state._partyPlayers.map((p) => ({ name: p.name, skin: p.skin, me: p.uid === FB.uid }));
+    max = (room.meta && room.meta.maxPlayers) || 6;
+  } else {
+    players = [{ name: profile.name, skin: profile.skin, me: true }];
+    max = 4;
+  }
+  const slots = Math.min(Math.max(4, players.length), Math.max(4, max), 6);
+  homeStage().setPlayers(players.map((p) => ({
     name: p.name || '?', skin: p.skin || (p.me ? profile.skin : 'scout'),
     me: !!p.me, face: p.me ? profile.facePhoto : undefined,
-  })), Math.min(slots, maxPlayers || slots));
-  lobbyStage().start();
+  })), slots);
+  homeStage().start();
+
+  // party code + leave button
+  $('home-code').classList.toggle('hidden', !room);
+  if (room) $('home-code').textContent = t('roomCode', { code: room.id });
+  $('btn-leave-party').classList.toggle('hidden', !room);
+
+  // PLAY button + status (guests wait for the host to launch)
+  const playBtn = $('home-play');
+  if (room && !isHost) {
+    playBtn.disabled = true;
+    $('home-status').textContent = t('frWaitHost');
+  } else {
+    playBtn.disabled = false;
+    $('home-status').textContent = room ? t('partySize', { n: players.length }) : '';
+  }
+  updateHomeInvites();
 }
 
-function renderPracticeLobby() {
+// online-friends invite chips over the stage
+let homeInvitesUnsub = null;
+function updateHomeInvites() {
+  if (homeInvitesUnsub) { homeInvitesUnsub(); homeInvitesUnsub = null; }
+  const wrap = $('home-party-invite');
+  if (!FB.online) { wrap.classList.add('hidden'); return; }
+  homeInvitesUnsub = watchFriends((pres) => UI.renderLobbyFriends(pres, {
+    onInvite: async (uid) => {
+      const room = await ensureParty();
+      if (room) { sendInvite(uid, room.id); UI.toast(t('frInviteSent')); }
+    },
+  }));
+}
+
+// select a game mode from the floating picker
+function setHomeMode(mode) {
+  state.practice.mode = mode;
+  state.lastEntry = { mode, online: !!state.room };
+  UI.closeModePopover();
+  if (state.room && state.room.isHost) state.room.setOptions({ mode });
+  renderHome();
+}
+
+// per-mode settings popover (map / bots / player cap)
+function openHomeOpts() {
   const pr = state.practice;
-  $('btn-invite').style.display = 'none';   // offline practice — nobody to invite
-  const fakeMeta = { mode: pr.mode, state: 'waiting', host: 'me', maxPlayers: 1 + pr.botCount };
-  UI.renderLobby([{ uid: 'me', name: profile.name, lvl: playerLevel(), me: true }], fakeMeta, 'me', '');
-  UI.setLobbyModeCard(pr.mode, true);
-  stageForPlayers([{ name: profile.name, skin: profile.skin, me: true }], 4);
+  const room = state.room;
+  const mode = room ? room.mode : pr.mode;
+  const m = room ? (room.meta || {}) : pr;
+  const cap = mode === 'duel' ? 2 : 12;
+  const canPick = !room || room.isHost;
+  $('mode-opts-title').textContent = `⚙️ ${t('mode_' + mode)}`;
   UI.renderLobbyOptions({
-    map: pr.map, botLevel: pr.botLevel, botCount: pr.botCount,
-    showBots: pr.mode !== 'zombies' && pr.mode !== 'duel', canPick: true,
-    onPick: (patch) => { Object.assign(pr, patch); renderPracticeLobby(); },
+    map: m.map || pr.map, botLevel: m.botLevel || pr.botLevel, botCount: m.botCount ?? pr.botCount,
+    showBots: mode !== 'zombies' && mode !== 'duel' && mode !== 'creative',
+    maxPlayers: room && mode !== 'duel'
+      ? { value: m.maxPlayers || 6, options: [2, 3, 4, 6, 8, 10, 12].filter((n) => n <= cap) } : null,
+    privacy: null,                              // parties are invite-only
+    canPick,
+    onPick: (patch) => {
+      if (room && room.isHost) room.setOptions(patch);
+      else Object.assign(pr, patch);
+      openHomeOpts();
+      renderHome();
+    },
   });
-  $('lobby-status').textContent = t('mode_practice') + ' · ' + t('mode_' + pr.mode);
-  $('btn-start').disabled = false;
-  $('btn-start').style.display = '';
+  $('mode-opts-popover').classList.remove('hidden');
 }
 
-// ---------------- online mode entry ----------------
-async function enterMode(mode) {
-  if (!FB.online) {
-    UI.toast(t('offlineMode'));
-    enterPracticeLobby(mode);
+// PLAY: party host launches for everyone; solo runs offline with bots (no net)
+function onPlay() {
+  const room = state.room;
+  if (room) {
+    if (room.isHost) room.startMatch();
+    else UI.toast(t('frWaitHost'));
     return;
   }
-  UI.setLoadStatus(t('connecting'));
-  UI.showScreen('load');
+  state.lastEntry = { mode: state.practice.mode, online: false };
+  startOffline();
+}
+
+// lazily create the party room the first time you invite / a friend joins
+async function ensureParty() {
+  if (state.room) return state.room;
+  if (!FB.online) { UI.toast(t('onlineNeedsFirebase'), 'red'); return null; }
+  const pr = state.practice;
   try {
-    const room = await Room.quickMatch(mode, lobbyInfo(), {
-      map: MAP_ORDER[(Math.random() * MAP_ORDER.length) | 0],
+    const room = await Room.createParty(pr.mode, lobbyInfo(), {
+      map: pr.map, botLevel: pr.botLevel, botCount: pr.botCount, maxPlayers: pr.maxPlayers,
     });
-    enterOnlineLobby(room);
-  } catch (e) {
-    console.warn(e);
-    UI.toast(t('netError'), 'red');
-    UI.showScreen('menu');
-  }
+    attachParty(room);
+    return room;
+  } catch (e) { console.warn(e); UI.toast(t('netError'), 'red'); return null; }
 }
 
-let lobbyFriendsUnsub = null;
-function stopLobbyFriends() {
-  if (lobbyFriendsUnsub) { lobbyFriendsUnsub(); lobbyFriendsUnsub = null; }
-  $('lobby-friends').classList.add('hidden');
-}
-
-function enterOnlineLobby(room) {
+// wire a party room's callbacks to the home screen
+function attachParty(room) {
   state.room = room;
   state.matchStarted = false;
   state.lastEntry = { mode: room.mode, online: true };
-  // transport watchdog: tell the player when the connection drops/returns
   room.onConnState = (ok) => UI.toast(t(ok ? 'connBack' : 'connLost'), ok ? 'gold' : 'red');
-  // presence + online-friends invite chips
   setPresence('lobby', room.id);
-  stopLobbyFriends();
-  lobbyFriendsUnsub = watchFriends((pres) => UI.renderLobbyFriends(pres, {
-    onInvite: (uid) => { sendInvite(uid, room.id); UI.toast(t('frInviteSent')); },
-  }));
-  UI.showScreen('lobby');
-
-  // invite-by-link: share/copy a URL that drops friends straight into this room
-  const inviteBtn = $('btn-invite');
-  inviteBtn.style.display = '';
-  inviteBtn.textContent = t('inviteFriends');
-  inviteBtn.classList.remove('copied');
-  inviteBtn.onclick = async () => {
-    const url = `${location.origin}${location.pathname}?room=${room.id}`;
-    SFX.click();
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: t('inviteShareTitle'), text: t('inviteShareText'), url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        inviteBtn.textContent = t('linkCopied');
-        inviteBtn.classList.add('copied');
-        UI.toast(t('linkCopied'), 'gold');
-      }
-    } catch {
-      // clipboard blocked → show the URL so they can copy manually
-      prompt(t('inviteFriends'), url);
-    }
-  };
-
-  const renderOpts = () => {
-    const m = room.meta || {};
-    const cap = room.mode === 'duel' ? 2 : 12;   // duel is strictly 1v1
-    UI.renderLobbyOptions({
-      map: m.map || 'town', botLevel: m.botLevel || 'normal', botCount: m.botCount ?? 4,
-      showBots: ['team', 'ctf', 'tactical', 'br', 'zonewars'].includes(room.mode),
-      maxPlayers: room.mode === 'duel' ? null : {
-        value: m.maxPlayers || 6,
-        options: [2, 3, 4, 6, 8, 10, 12].filter((n) => n <= cap),
-      },
-      privacy: { value: m.private ? 'private' : 'public' },
-      canPick: room.isHost && m.state === 'waiting',
-      onPick: (patch) => room.setOptions(patch),
-    });
-  };
-
-  room.onLobby = (players, meta) => {
+  room.onLobby = (players) => {
     if (state.matchStarted) return;
-    UI.renderLobby(players, meta, FB.uid, room.id);
-    UI.setLobbyModeCard(room.mode, false);
-    stageForPlayers(players, meta.maxPlayers);
-    renderOpts();
-    if (room.mode === 'duel' && players.length >= 2 && room.isHost && meta.state === 'waiting') {
-      room.startMatch();
-    }
-    if (room.isHost && meta.state === 'waiting' && players.length >= (meta.maxPlayers || 6)) {
-      room.startMatch();
+    state._partyPlayers = players;
+    renderHome();
+    const meta = room.meta || {};
+    if (room.isHost && meta.state === 'waiting') {
+      const capN = room.mode === 'duel' ? 2 : (meta.maxPlayers || 6);
+      if (players.length >= capN) room.startMatch();
     }
   };
   room.onMeta = (meta) => {
     if (state.matchStarted || !meta) return;
-    renderOpts();
     if (meta.state === 'starting' && meta.startAt) {
       clearInterval(state.lobbyTimer);
       state.lobbyTimer = setInterval(() => {
         const left = (meta.startAt - FB.serverNow()) / 1000;
-        if (left <= 0) {
-          clearInterval(state.lobbyTimer);
-          beginOnlineMatch();
-        } else {
-          UI.setLobbyCountdown(left);
-          if (left < 3.5) SFX.countdown();
-        }
+        if (left <= 0) { clearInterval(state.lobbyTimer); beginOnlineMatch(); }
+        else { UI.setLobbyCountdown(left); if (left < 3.5) SFX.countdown(); }
       }, 250);
+    } else {
+      renderHome();
     }
   };
   room._emitLobby();
   if (room.meta) room.onMeta(room.meta);
+}
+
+async function leaveParty() {
+  clearInterval(state.lobbyTimer);
+  if (homeInvitesUnsub) { homeInvitesUnsub(); homeInvitesUnsub = null; }
+  if (state.room) { await state.room.leave(); state.room = null; }
+  state._partyPlayers = null;
+  setPresence('menu');
+  renderHome();
 }
 
 // ---------------- creative: save / load my island ----------------
@@ -650,7 +654,7 @@ function beginOnlineMatch() {
   if (room.isHost) game.spawnBrLoot();
   // creative online: the host restores their island; builds sync to everyone
   if (room.mode === 'creative' && room.isHost) loadCreativeMap(game, true);
-  stopLobbyFriends();
+  if (homeInvitesUnsub) { homeInvitesUnsub(); homeInvitesUnsub = null; }
   setPresence('match', room.id);
   startLoop(game);
   SFX.go();
@@ -785,11 +789,11 @@ async function exitMatch() {
   stopLoop();
   startMusic('menu');
   if (state.room) { await state.room.leave(); state.room = null; }
+  state._partyPlayers = null;
   state.game?.dispose();
   state.game = null;
   setPresence('menu');
-  UI.refreshMenu();
-  UI.showScreen('menu');
+  showHome();
 }
 
 // ---------------- results & rewards ----------------
@@ -801,6 +805,7 @@ function finishMatch(results) {
     stopLoop();
     const wasOnline = !!state.room;
     if (state.room) { state.room.leave(); state.room = null; }
+    state._partyPlayers = null;
     setPresence('menu');
 
     const myRow = results.placements.find((p) => p.me) || { kills: 0, deaths: 0 };

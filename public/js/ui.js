@@ -19,7 +19,7 @@ import { gamepad } from './gamepad.js';
 const $ = (id) => document.getElementById(id);
 
 // ---------------- screens ----------------
-const SCREENS = ['load', 'menu', 'lobby', 'shop', 'board', 'friends', 'settings', 'game', 'results'];
+const SCREENS = ['load', 'menu', 'shop', 'board', 'friends', 'settings', 'game', 'results'];
 export function showScreen(name) {
   for (const s of SCREENS) $('scr-' + s).classList.toggle('active', s === name);
 }
@@ -85,12 +85,13 @@ export const MODE_ICONS = {
 };
 export const MODE_LIST = ['gungame', 'builddm', 'boxfight', 'zonewars', 'tactical', 'duel', 'team', 'zombies', 'ctf', 'br', 'creative'];
 
-// lobby mode card (top corner) + the floating switch panel
+// home mode card + the floating switch panel
 export function setLobbyModeCard(mode, switchable) {
-  $('lobby-mode-icon').textContent = MODE_ICONS[mode] || '🎮';
-  $('lobby-mode-name').textContent = t('mode_' + mode);
-  $('lobby-mode-hint').style.display = switchable ? '' : 'none';
-  $('lobby-mode-card').classList.toggle('static', !switchable);
+  $('home-mode-icon').textContent = MODE_ICONS[mode] || '🎮';
+  $('home-mode-name').textContent = t('mode_' + mode);
+  $('home-mode-card').classList.toggle('static', !switchable);
+  const k = document.querySelector('#home-mode-card .hm-kicker');
+  if (k) k.style.visibility = switchable ? '' : 'hidden';
 }
 
 export function openModePopover(current, onPick) {
@@ -129,45 +130,10 @@ export function renderLobbyOptions({ map, botLevel, botCount, showBots, canPick,
   }
 }
 
-export function renderLobby(players, meta, myUid, roomId) {
-  if (!meta) return;
-  $('lobby-title').textContent = t('lobbyTitle_' + meta.mode);
-  $('lobby-code').textContent = roomId ? t('roomCode', { code: roomId }) : '';
-
-  const ul = $('lobby-players');
-  ul.innerHTML = '';
-  for (const p of players) {
-    const li = document.createElement('li');
-    li.innerHTML =
-      `<span class="p-ship">🪖</span>` +
-      `<span class="p-name">${escapeHtml(p.name || '?')}${p.me ? ' (אתם)' : ''}</span>` +
-      `<span class="p-lvl">${t('level', { n: p.lvl || 1 })}</span>` +
-      (p.uid === meta.host ? `<span class="p-host">★ מארח</span>` : '');
-    ul.appendChild(li);
-  }
-  const max = meta.maxPlayers || 6;
-  for (let i = players.length; i < Math.min(max, players.length + 2); i++) {
-    const li = document.createElement('li');
-    li.className = 'empty';
-    li.textContent = '· מקום פנוי ·';
-    ul.appendChild(li);
-  }
-
-  const isHost = meta.host === myUid;
-  const btn = $('btn-start');
-  btn.style.display = isHost && meta.state === 'waiting' ? '' : 'none';
-  btn.disabled = !(isHost && players.length >= 1);
-  if (meta.state === 'waiting') {
-    $('lobby-status').className = 'lobby-status';
-    $('lobby-status').textContent = isHost ? t('youAreHost') : t('waitingForPlayers');
-  }
-}
-
+// launch countdown on the home screen
 export function setLobbyCountdown(sec) {
-  const el = $('lobby-status');
-  el.className = 'lobby-status count';
-  el.textContent = t('startsIn', { n: Math.max(0, Math.ceil(sec)) });
-  $('btn-start').style.display = 'none';
+  $('home-status').textContent = t('startsIn', { n: Math.max(0, Math.ceil(sec)) });
+  $('home-play').disabled = true;
 }
 
 // ---------------- skins shop ----------------
@@ -264,7 +230,7 @@ export function renderFriendsList(presence, ctl) {
 
 // online-friends chips inside the online lobby. ctl: { onInvite(uid) }
 export function renderLobbyFriends(presence, ctl) {
-  const wrap = $('lobby-friends');
+  const wrap = $('home-party-invite');
   const online = Object.entries(profile.friends || {}).filter(([uid]) => presence[uid]);
   wrap.classList.toggle('hidden', !online.length);
   wrap.innerHTML = '';

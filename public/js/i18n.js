@@ -111,6 +111,9 @@ export const STR = {
   frInvited: '📨 {name} מזמין אתכם למשחק!',
   frInviteLabel: 'הזמינו חברים מחוברים:',
   frInviteSent: '📨 ההזמנה נשלחה!',
+  frWaitHost: '⏳ ממתינים שהמארח יתחיל…',
+  partySize: '👥 חבורה של {n}',
+  roomCodePrompt: 'הכניסו קוד חדר של חבר:',
 
   // HUD / battle
   kill: '{a} חיסל את {b}',

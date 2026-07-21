@@ -32,9 +32,10 @@
   </section>
 
   <!-- ═══════════ תפריט ראשי ═══════════ -->
-  <section id="scr-menu" class="screen">
-    <header class="menu-header">
-      <div class="pilot-card">
+  <!-- Home = the lobby: your character centre-stage, mode picker on the side -->
+  <section id="scr-menu" class="screen home">
+    <header class="home-topbar">
+      <div class="pilot-card compact">
         <input id="menu-name-input" maxlength="20" placeholder="כינוי לוחם" aria-label="כינוי לוחם" />
         <div class="pilot-meta">
           <span id="menu-level" class="chip">רמה 1</span>
@@ -42,146 +43,69 @@
           <span id="menu-shards" class="chip shards">💠 0</span>
         </div>
         <div class="xpbar"><div id="menu-xpbar" class="xpbar-fill"></div></div>
+      </div>
+      <div class="home-top-right">
         <button id="btn-google" class="google-btn hidden">
           <svg viewBox="0 0 24 24" width="16" height="16"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
           <span id="google-label">התחברות עם Google</span>
         </button>
+        <div id="menu-conn" class="conn-badge">מתחבר…</div>
       </div>
-      <div id="menu-conn" class="conn-badge">מתחבר…</div>
     </header>
 
-    <div class="menu-hero">
-      <h1 class="game-title small">זירת האש</h1>
-      <p class="lore">משחק רובים בגוף ראשון: כל חיסול משדרג את הנשק. הראשון שמסיים את הסולם עם סכין הזהב — מנצח.</p>
-    </div>
-
-    <nav class="mode-cards">
-      <button id="btn-gungame" class="mode-card pvp">
-        <span class="mode-icon">🔫</span>
-        <span class="mode-name">משחק רובים</span>
-        <span class="mode-desc">‏PvP · עד 6 · סולם 8 נשקים</span>
-      </button>
-      <button id="btn-br" class="mode-card br">
-        <span class="mode-icon">🌀</span>
-        <span class="mode-name">באטל רויאל</span>
-        <span class="mode-desc">אזור מתכווץ · אחרון ששורד</span>
-      </button>
-      <button id="btn-duel" class="mode-card duel">
-        <span class="mode-icon">⚔️</span>
-        <span class="mode-name">דו-קרב 1v1</span>
-        <span class="mode-desc">ראש בראש · סולם נשקים</span>
-      </button>
-      <button id="btn-team" class="mode-card coop">
-        <span class="mode-icon">🤖</span>
-        <span class="mode-name">נגד בוטים</span>
-        <span class="mode-desc">קבוצה נגד בוטים · בחירת רמה</span>
-      </button>
-      <button id="btn-zombies" class="mode-card zombies">
-        <span class="mode-icon">🧟</span>
-        <span class="mode-name">מתקפת זומבים</span>
-        <span class="mode-desc">‏Co-op · גלים אינסופיים</span>
-      </button>
-      <button id="btn-ctf" class="mode-card ctf">
-        <span class="mode-icon">🚩</span>
-        <span class="mode-name">כיבוש הדגל</span>
-        <span class="mode-desc">קבוצות · 3 כיבושים לניצחון</span>
-      </button>
-      <button id="btn-builddm" class="mode-card builddm">
-        <span class="mode-icon">🧱</span>
-        <span class="mode-name">קרב בנייה</span>
-        <span class="mode-desc">‏Deathmatch עם בניות · 10 דק' · הכי הרבה חיסולים</span>
-      </button>
-      <button id="btn-zonewars" class="mode-card zonewars">
-        <span class="mode-icon">⛰️</span>
-        <span class="mode-name">זון וורס</span>
-        <span class="mode-desc">זירה קטנה · אזור מתכווץ מהיר · בונים ונלחמים · אחרון ששורד</span>
-      </button>
-      <button id="btn-boxfight" class="mode-card boxfight">
-        <span class="mode-icon">🥊</span>
-        <span class="mode-name">בוקספייט</span>
-        <span class="mode-desc">זירה קטנה חסומה · קרב בנייה צמוד · respawn · 4 דק' · הכי הרבה חיסולים</span>
-      </button>
-      <button id="btn-creative" class="mode-card creative">
-        <span class="mode-icon">🏝️</span>
-        <span class="mode-name">קריאייטיב</span>
-        <span class="mode-desc">האי שלכם · בנייה חופשית בלי עלות · שמירה וטעינה של המפה · שחקו עם חברים</span>
-      </button>
-      <button id="btn-tactical" class="mode-card tactical">
-        <span class="mode-icon">💣</span>
-        <span class="mode-name">טקטי</span>
-        <span class="mode-desc">סבבים בסגנון קאונטר-סטרייק · שתילה מול פירוק · בלי respawn בסבב · ראשון ל-5</span>
-      </button>
-      <button id="btn-practice" class="mode-card practice wide2">
-        <span class="mode-icon">🎯</span>
-        <span class="mode-name">אימון חופשי</span>
-        <span class="mode-desc">מול בוטים · ללא חיבור · כל המפות והמצבים</span>
-      </button>
-    </nav>
-
-    <div class="menu-row">
-      <button id="btn-shop" class="menu-btn">🎽 דמויות</button>
-      <button id="btn-board" class="menu-btn">🏆 לוח מובילים</button>
-      <button id="btn-friends" class="menu-btn">👥 חברים</button>
-    </div>
-
-    <div class="join-row">
-      <input id="join-code-input" maxlength="5" placeholder="קוד חדר" aria-label="קוד חדר" />
-      <button id="btn-join-code" class="menu-btn slim">הצטרפות עם קוד</button>
-    </div>
-
-    <div id="challenges" class="chall-panel"></div>
-
-    <footer class="menu-footer">
-      <button id="btn-sound" class="icon-btn" title="צליל">🔊</button>
-      <button id="btn-music" class="icon-btn" title="מוזיקה">🎵</button>
-      <button id="btn-settings" class="icon-btn" title="הגדרות">⚙️</button>
-      <span class="credits">גרסה 3.1 · תלת־ממד · תמיכת שלט · כל הנכסים נוצרו בקוד</span>
-    </footer>
-  </section>
-
-  <!-- ═══════════ הגדרות ובקרים ═══════════ -->
-  <section id="scr-settings" class="screen scroll">
-    <div class="panel wide">
-      <h2 id="settings-title">⚙️ הגדרות ובקרים</h2>
-      <div id="pad-status" class="pad-status">לא זוהה שלט</div>
-      <div id="settings-body" class="settings-body"></div>
-      <div class="panel-actions">
-        <button id="btn-back-settings" class="ghost-btn">חזרה</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ לובי (Fortnite-style) ═══════════ -->
-  <section id="scr-lobby" class="screen">
-    <div class="panel lobby-panel">
-      <div class="lobby-head">
-        <button id="lobby-mode-card" class="lmode-card">
-          <span id="lobby-mode-icon" class="lmode-icon">🔫</span>
-          <span class="lmode-txt">
-            <b id="lobby-mode-name">משחק רובים</b>
-            <small id="lobby-mode-hint">לחצו להחלפה</small>
+    <div class="home-body">
+      <!-- mode selector (side) -->
+      <div class="home-left">
+        <button id="home-mode-card" class="home-mode-card">
+          <span id="home-mode-icon" class="hm-icon">🔫</span>
+          <span class="hm-txt">
+            <small class="hm-kicker">מצב משחק ▾</small>
+            <b id="home-mode-name">משחק רובים</b>
           </span>
         </button>
-        <div class="lobby-head-mid">
-          <h2 id="lobby-title">לובי</h2>
-          <div id="lobby-code" class="room-code"></div>
-        </div>
-        <button id="btn-invite" class="invite-btn" style="display:none">🔗</button>
+        <button id="home-cfg" class="home-cfg-btn">⚙️ <span>הגדרות המצב</span></button>
+        <div id="home-code" class="home-code hidden"></div>
+        <button id="btn-leave-party" class="ghost-btn slim hidden">↩ עזיבת החבורה</button>
       </div>
 
-      <div id="lobby-friends" class="lobby-friends hidden"></div>
-
-      <!-- 3D lineup: me + friend slots -->
-      <div class="lobby-stage-wrap">
-        <canvas id="lobby-stage"></canvas>
-        <button id="btn-lobby-dance" class="dance-btn" aria-label="ריקוד">🕺</button>
+      <!-- 3D character lineup: you + friend slots -->
+      <div class="home-stage-wrap">
+        <canvas id="home-stage"></canvas>
+        <div id="home-party-invite" class="lobby-friends hidden"></div>
+        <button id="home-dance" class="dance-btn" aria-label="ריקוד">🕺</button>
       </div>
+    </div>
 
-      <!-- compact, collapsible match options -->
-      <details id="lobby-opts-sheet" class="lobby-opts-sheet">
-        <summary>⚙️ אפשרויות משחק</summary>
+    <div class="home-play-row">
+      <span id="home-status" class="home-status"></span>
+      <button id="home-play" class="play-btn">🚀 שחק</button>
+    </div>
+
+    <footer class="home-footer">
+      <button id="btn-shop" class="hf-btn" title="דמויות">🎽</button>
+      <button id="btn-friends" class="hf-btn" title="חברים">👥</button>
+      <button id="btn-join" class="hf-btn" title="הצטרפות עם קוד">🔑</button>
+      <button id="btn-board" class="hf-btn" title="לוח מובילים">🏆</button>
+      <button id="btn-chall" class="hf-btn" title="אתגרים">🎯</button>
+      <button id="btn-settings" class="hf-btn" title="הגדרות">⚙️</button>
+      <button id="btn-sound" class="hf-btn" title="צליל">🔊</button>
+      <button id="btn-music" class="hf-btn" title="מוזיקה">🎵</button>
+    </footer>
+
+    <!-- floating mode picker -->
+    <div id="mode-popover" class="mode-popover hidden">
+      <div class="mp-panel">
+        <h3>בחרו מצב משחק</h3>
+        <div id="mode-popover-grid" class="mp-grid"></div>
+        <button id="btn-mode-close" class="ghost-btn small">סגירה</button>
+      </div>
+    </div>
+
+    <!-- floating per-mode options -->
+    <div id="mode-opts-popover" class="mode-popover hidden">
+      <div class="mp-panel">
+        <h3 id="mode-opts-title">⚙️ הגדרות המצב</h3>
         <div class="lobby-opts">
-          <div id="practice-mode-wrap" class="opt-group" style="display:none"></div>
           <div class="opt-group">
             <div class="opt-label">מפה</div>
             <div id="map-picker" class="opt-row"></div>
@@ -200,22 +124,27 @@
             <div id="privacy-picker" class="opt-row"></div>
           </div>
         </div>
-      </details>
-
-      <ul id="lobby-players" class="player-list hidden"></ul>
-      <p id="lobby-status" class="lobby-status">ממתין ללוחמים נוספים…</p>
-      <div class="panel-actions">
-        <button id="btn-start" class="primary-btn" disabled>🚀 התחל קרב</button>
-        <button id="btn-leave-lobby" class="ghost-btn">חזרה</button>
+        <button id="btn-mode-opts-close" class="ghost-btn small">סגירה</button>
       </div>
     </div>
 
-    <!-- floating mode picker -->
-    <div id="mode-popover" class="mode-popover hidden">
+    <!-- floating challenges -->
+    <div id="chall-popover" class="mode-popover hidden">
       <div class="mp-panel">
-        <h3>בחרו מצב משחק</h3>
-        <div id="mode-popover-grid" class="mp-grid"></div>
-        <button id="btn-mode-close" class="ghost-btn small">סגירה</button>
+        <div id="challenges" class="chall-panel"></div>
+        <button id="btn-chall-close" class="ghost-btn small">סגירה</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ הגדרות ובקרים ═══════════ -->
+  <section id="scr-settings" class="screen scroll">
+    <div class="panel wide">
+      <h2 id="settings-title">⚙️ הגדרות ובקרים</h2>
+      <div id="pad-status" class="pad-status">לא זוהה שלט</div>
+      <div id="settings-body" class="settings-body"></div>
+      <div class="panel-actions">
+        <button id="btn-back-settings" class="ghost-btn">חזרה</button>
       </div>
     </div>
   </section>
