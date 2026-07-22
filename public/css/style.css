@@ -193,8 +193,8 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 /* top-left corner back arrow (replaces the bottom "חזרה" buttons) */
 .corner-back {
   position: absolute; top: 12px; left: 12px; z-index: 6;
-  width: 46px; height: 46px; border-radius: 12px; font-size: 1.7rem; font-weight: 900; line-height: 1;
-  background: rgba(30, 18, 60, 0.92); border: 2px solid var(--violet); color: #fff;
+  width: 56px; height: 56px; border-radius: 14px; font-size: 2.1rem; font-weight: 900; line-height: 1;
+  background: rgba(20, 12, 44, 0.85); border: 1.5px solid rgba(255, 255, 255, 0.12); color: #fff;
   display: flex; align-items: center; justify-content: center;
 }
 .corner-back:active { transform: scale(0.9); background: rgba(157,92,255,0.4); }
@@ -718,20 +718,34 @@ body.touch .rstack { display: grid; }
 .admin-pick { padding: 9px 12px; border-radius: 10px; background: rgba(30, 18, 60, 0.85);
   border: 2px solid var(--line); color: #e6ddff; font-weight: 700; font-size: 0.82rem; }
 .admin-pick.sel { border-color: var(--yellow); background: rgba(157, 92, 255, 0.35); }
-/* gamey tile scroller (dance / skin pickers — replaces dropdowns) */
-.admin-tiles { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
-.admin-tiles.wrap { flex-wrap: wrap; overflow: visible; align-items: center; }
-.admin-tile {
-  flex: 0 0 auto; width: 72px; padding: 9px 4px; border-radius: 12px;
-  background: rgba(20, 12, 44, 0.85); border: 2px solid var(--line); color: #e6ddff;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
+/* gamey horizontal reel (dance / skin pickers — replaces dropdowns) */
+.admin-tiles {
+  display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 4px 2px 12px;
+  scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: var(--violet) transparent;
+  /* fade the edges so it clearly reads as a scrollable reel */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 22px), transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 22px, #000 calc(100% - 22px), transparent);
 }
-.admin-tile .at-emoji { font-size: 1.6rem; }
-.admin-tile .at-name { font-size: 0.6rem; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.admin-tile.sel { border-color: var(--yellow); background: rgba(157, 92, 255, 0.4); box-shadow: 0 0 10px rgba(255,210,0,0.3); }
-.chip-pick { padding: 8px 12px; border-radius: 10px; background: rgba(30, 18, 60, 0.85);
-  border: 2px solid var(--line); color: #cde; font-weight: 800; font-size: 0.82rem; }
-.chip-pick:active { background: rgba(157, 92, 255, 0.4); }
+.admin-tiles::-webkit-scrollbar { height: 6px; }
+.admin-tiles::-webkit-scrollbar-thumb { background: var(--violet); border-radius: 3px; }
+.admin-tiles.wrap { flex-wrap: wrap; overflow: visible; align-items: center; -webkit-mask-image: none; mask-image: none; }
+.admin-tile {
+  flex: 0 0 auto; width: 82px; padding: 12px 6px; border-radius: 16px; scroll-snap-align: center;
+  background: linear-gradient(160deg, rgba(52,32,104,0.9), rgba(16,10,38,0.95));
+  border: 2px solid var(--line); color: #e6ddff; box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  display: flex; flex-direction: column; align-items: center; gap: 5px; transition: transform 0.1s, border-color 0.15s;
+}
+.admin-tile .at-emoji { font-size: 2rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+.admin-tile .at-name { font-size: 0.66rem; font-weight: 800; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-tile:active { transform: scale(0.94); }
+.admin-tile.sel {
+  border-color: var(--yellow);
+  background: linear-gradient(160deg, rgba(120,80,220,0.95), rgba(60,36,120,0.95));
+  box-shadow: 0 0 16px rgba(255,210,0,0.45), inset 0 0 0 1px rgba(255,210,0,0.3); transform: translateY(-2px);
+}
+.chip-pick { padding: 9px 13px; border-radius: 11px; background: linear-gradient(160deg, rgba(44,28,84,0.9), rgba(18,11,40,0.9));
+  border: 2px solid var(--line); color: #cde; font-weight: 800; font-size: 0.82rem; box-shadow: 0 3px 10px rgba(0,0,0,0.4); }
+.chip-pick:active { background: rgba(157, 92, 255, 0.4); transform: scale(0.95); }
 
 /* ---------- topbar friend code ---------- */
 .pilot-code { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
