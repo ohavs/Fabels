@@ -179,6 +179,7 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
 
 /* ---------- panels ---------- */
 .panel {
+  position: relative;
   width: min(470px, 94vw); background: var(--panel);
   border: 2.5px solid var(--line); border-radius: 16px; padding: 20px;
   box-shadow: 0 14px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -189,6 +190,14 @@ input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 14px rgb
   width: min(1200px, 96vw); margin: 2vh auto; max-height: none; min-height: 92vh;
   text-align: right;
 }
+/* top-left corner back arrow (replaces the bottom "חזרה" buttons) */
+.corner-back {
+  position: absolute; top: 12px; left: 12px; z-index: 6;
+  width: 46px; height: 46px; border-radius: 12px; font-size: 1.7rem; font-weight: 900; line-height: 1;
+  background: rgba(30, 18, 60, 0.92); border: 2px solid var(--violet); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.corner-back:active { transform: scale(0.9); background: rgba(157,92,255,0.4); }
 /* on real desktops the wide panels spread across the whole screen */
 @media (min-width: 900px) {
   .panel.wide { width: 96vw; min-height: 94vh; padding: 26px 34px; }
@@ -639,12 +648,14 @@ body.touch .rstack { display: grid; }
   transform: skewX(var(--skew)); touch-action: none;
 }
 
-/* emote wheel — Fortnite-style radial */
+/* emote wheel — Fortnite-style radial (full-screen backdrop → tap outside closes) */
 .emote-wheel {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 20; pointer-events: auto; touch-action: none;
+  position: fixed; inset: 0; z-index: 20; pointer-events: auto; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 3, 16, 0.4); backdrop-filter: blur(2px);
 }
 .emote-wheel.hidden { display: none; }
+.ew-inner { position: relative; flex: 0 0 auto; }
 .ew-ring {
   position: relative;
   width: min(80vw, 80vh, 470px); height: min(80vw, 80vh, 470px);

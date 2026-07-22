@@ -281,6 +281,10 @@ function wireMenu() {
     UI.openModePopover(state.practice.mode, (m) => setHomeMode(m));
   });
   $('btn-mode-close').addEventListener('click', () => { SFX.click(); UI.closeModePopover(); });
+  // click on the dark backdrop (outside the panel) closes any popover
+  for (const pop of document.querySelectorAll('.mode-popover')) {
+    pop.addEventListener('click', (e) => { if (e.target === pop) pop.classList.add('hidden'); });
+  }
   $('home-cfg').addEventListener('click', () => { SFX.click(); openHomeOpts(); });
   $('btn-mode-opts-close').addEventListener('click', () => { SFX.click(); $('mode-opts-popover').classList.add('hidden'); });
   $('home-play').addEventListener('click', () => { SFX.click(); onPlay(); });

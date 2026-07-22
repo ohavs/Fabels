@@ -705,6 +705,10 @@ export function initEmoteWheel() {
   // RTL: ‹ (points left) advances forward, › (points right) goes back
   tap($('ew-prev'), () => { SFX.click(); emoteWheelPage(1); });
   tap($('ew-next'), () => { SFX.click(); emoteWheelPage(-1); });
+  // tap the dark backdrop (outside the wheel) to close
+  const wheel = $('emote-wheel');
+  wheel?.addEventListener('click', (e) => { if (e.target === wheel) close(); });
+  wheel?.addEventListener('touchstart', (e) => { if (e.target === wheel) { e.preventDefault(); close(); } }, { passive: false });
 }
 
 export function resetHUD() {

@@ -231,18 +231,17 @@
   <!-- ═══════════ הגדרות ובקרים ═══════════ -->
   <section id="scr-settings" class="screen scroll">
     <div class="panel wide">
+      <button id="btn-back-settings" class="corner-back" aria-label="חזרה">←</button>
       <h2 id="settings-title">⚙️ הגדרות ובקרים</h2>
       <div id="pad-status" class="pad-status">לא זוהה שלט</div>
       <div id="settings-body" class="settings-body"></div>
-      <div class="panel-actions">
-        <button id="btn-back-settings" class="ghost-btn">חזרה</button>
-      </div>
     </div>
   </section>
 
   <!-- ═══════════ לוקר (דמויות + ריקודים) ═══════════ -->
   <section id="scr-shop" class="screen scroll">
     <div class="panel wide">
+      <button id="btn-back-shop" class="corner-back" aria-label="חזרה">←</button>
       <div class="panel-head">
         <h2>🎒 הלוקר</h2>
         <span id="shop-shards" class="chip shards big">💠 0</span>
@@ -297,27 +296,22 @@
         </div>
         <div id="shop-dances" class="dance-grid"></div>
       </div>
-
-      <div class="panel-actions">
-        <button id="btn-back-shop" class="ghost-btn">חזרה</button>
-      </div>
     </div>
   </section>
 
   <!-- ═══════════ לוח מובילים ═══════════ -->
   <section id="scr-board" class="screen scroll">
     <div class="panel wide">
+      <button id="btn-back-board" class="corner-back" aria-label="חזרה">←</button>
       <h2>🏆 לוח המובילים</h2>
       <div id="board-list" class="board-list"></div>
-      <div class="panel-actions">
-        <button id="btn-back-board" class="ghost-btn">חזרה</button>
-      </div>
     </div>
   </section>
 
   <!-- ═══════════ חברים ═══════════ -->
   <section id="scr-friends" class="screen scroll">
     <div class="panel wide">
+      <button id="btn-back-friends" class="corner-back" aria-label="חזרה">←</button>
       <h2>👥 חברים</h2>
       <div class="fr-mycode">
         <span>הקוד שלי:</span>
@@ -329,9 +323,6 @@
         <button id="btn-add-friend" class="menu-btn slim">➕ הוספה</button>
       </div>
       <div id="friends-list" class="friends-list"></div>
-      <div class="panel-actions">
-        <button id="btn-back-friends" class="ghost-btn">חזרה</button>
-      </div>
     </div>
   </section>
 
@@ -486,10 +477,12 @@
   <!-- emote wheel: Fortnite-style radial, populated from equipped emotes.
        top-level overlay so it works over both the in-game HUD and the lobby. -->
   <div id="emote-wheel" class="emote-wheel hidden">
-    <button id="ew-prev" class="ew-arrow ew-prev" aria-label="הקודם">‹</button>
-    <div class="ew-ring" id="ew-ring"></div>
-    <button id="ew-next" class="ew-arrow ew-next" aria-label="הבא">›</button>
-    <div class="ew-hub" id="ew-hub"><span>בטל</span><small id="ew-page"></small></div>
+    <div class="ew-inner">
+      <button id="ew-prev" class="ew-arrow ew-prev" aria-label="הקודם">‹</button>
+      <div class="ew-ring" id="ew-ring"></div>
+      <button id="ew-next" class="ew-arrow ew-next" aria-label="הבא">›</button>
+      <div class="ew-hub" id="ew-hub"><span>בטל</span><small id="ew-page"></small></div>
+    </div>
   </div>
 
   <!-- ═══════════ תוצאות ═══════════ -->
