@@ -12,7 +12,7 @@ import { t } from './i18n.js';
 import { FB, initFirebase, signInWithGoogle, signOutGoogle, isGoogleUser } from './fb.js';
 import {
   profile, loadProfile, playerLevel, setName, claimDaily, applyRewards, fetchLeaderboard,
-  trackChallenges, saveProfile, isAdmin, applyAdminUnlocks,
+  trackChallenges, saveProfile, isAdmin, applyAdminUnlocks, currentPickaxeStyle,
 } from './profile.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
@@ -840,6 +840,7 @@ function beginOnlineMatch() {
     startAt: meta.startAt,
     endAt: endAtFor(room.mode, meta.startAt),
     myFace: profile.facePhoto || null,
+    myPickaxe: currentPickaxeStyle(),
     baseFov: settings.fov,
   });
 
@@ -895,6 +896,7 @@ function startOffline() {
     startAt: now,
     endAt: endAtFor(mode, now),
     myFace: profile.facePhoto || null,
+    myPickaxe: currentPickaxeStyle(),
     baseFov: settings.fov,
   });
 

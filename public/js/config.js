@@ -172,6 +172,19 @@ export const FREE_DANCES = DANCES.filter((d) => d.cost === 0).map((d) => d.id);
 // default equipped wheel (up to 8 shown on the emote wheel)
 export const DEFAULT_EMOTES = ['floss', 'wave', 'flex', 'cheer', 'bow', 'clap', 'robot', 'disco'];
 
+// ---- pickaxe designs (harvesting tool cosmetics) -----------------------
+// handle/head/tip are hex colors; glow makes the head emissive (neon look)
+export const PICKAXES = [
+  { id: 'default', name: 'קלאסי',  icon: '⛏️', cost: 0,   handle: 0x6b4a2f, head: 0x8a929e, tip: 0xbfc6cf },
+  { id: 'gold',    name: 'זהב',    icon: '🥇', cost: 300, handle: 0x5a3d22, head: 0xffcf3f, tip: 0xffe58a },
+  { id: 'neon',    name: 'ניאון',  icon: '💠', cost: 350, handle: 0x1b1030, head: 0x37e0ff, tip: 0x9d5cff, glow: true },
+  { id: 'ruby',    name: 'אודם',   icon: '❤️', cost: 400, handle: 0x2a0a10, head: 0xff3e6a, tip: 0xff9db3, glow: true },
+  { id: 'toxic',   name: 'רעל',    icon: '☢️', cost: 350, handle: 0x14200f, head: 0x8ee53a, tip: 0xd8ff9d, glow: true },
+  { id: 'shadow',  name: 'צל',     icon: '🌑', cost: 450, handle: 0x0a0a12, head: 0x2a2f3a, tip: 0x6a7280 },
+  { id: 'candy',   name: 'סוכריה', icon: '🍭', cost: 300, handle: 0xffffff, head: 0xff6ec7, tip: 0x7cf9ff },
+];
+export const PICKAXE_BY_ID = Object.fromEntries(PICKAXES.map((p) => [p.id, p]));
+
 // accounts with full unlock / admin powers (matched against the Google email)
 export const ADMIN_EMAILS = ['ohav88@gmail.com'];
 

@@ -6,7 +6,7 @@
 
 import { FB } from './fb.js';
 import { SKINS, levelFor, rankFor, DAILY_SHARDS, dailyChallenges,
-  DANCES, FREE_DANCES, DEFAULT_EMOTES, ADMIN_EMAILS } from './config.js';
+  DANCES, FREE_DANCES, DEFAULT_EMOTES, ADMIN_EMAILS, PICKAXES, PICKAXE_BY_ID } from './config.js';
 import { randomName } from './i18n.js';
 
 const LS_KEY = 'starshards.profile.v2';
@@ -28,6 +28,8 @@ function defaultProfile() {
     skins: { scout: true },
     dances: baseDances(),
     emotes: [...DEFAULT_EMOTES],
+    pickaxe: 'default',
+    pickaxes: { default: true },
     stats: { kills: 0, deaths: 0, wins: 0, matches: 0 },
     chall: { date: '', prog: {}, done: {} },
     lastDaily: 0,
@@ -42,6 +44,8 @@ function normalize(p) {
   const out = { ...d, ...p };
   out.skins = { scout: true, ...(p.skins || {}) };
   out.dances = { ...baseDances(), ...(p.dances || {}) };
+  out.pickaxes = { default: true, ...(p.pickaxes || {}) };
+  if (!PICKAXE_BY_ID[out.pickaxe] || !out.pickaxes[out.pickaxe]) out.pickaxe = 'default';
   out.stats = { ...d.stats, ...(p.stats || {}) };
   out.chall = { date: '', prog: {}, done: {}, ...(p.chall || {}) };
   // equipped emote slots: keep only owned/known dances, pad to 8 slots
@@ -68,6 +72,7 @@ export function applyAdminUnlocks() {
   if (!isAdmin()) return false;
   for (const id of Object.keys(SKINS)) profile.skins[id] = true;
   for (const d of DANCES) profile.dances[d.id] = true;
+  for (const pk of PICKAXES) profile.pickaxes[pk.id] = true;
   if (profile.shards < 999999) profile.shards = 999999;
   profile.isAdmin = true;
   saveProfile();
@@ -168,6 +173,25 @@ export function emoteIndices() {
   return profile.emotes.map((id) => DANCES.findIndex((d) => d.id === id));
 }
 export const danceIndex = (id) => DANCES.findIndex((d) => d.id === id);
+
+// ---- pickaxes ------------------------------------------------------------
+export const ownsPickaxe = (id) => !!profile.pickaxes[id];
+export const currentPickaxeStyle = () => PICKAXE_BY_ID[profile.pickaxe] || PICKAXE_BY_ID.default;
+export function buyPickaxe(id) {
+  const pk = PICKAXE_BY_ID[id];
+  if (!pk || profile.pickaxes[id]) return false;
+  if (!isAdmin() && profile.shards < pk.cost) return false;
+  if (!isAdmin()) profile.shards -= pk.cost;
+  profile.pickaxes[id] = true;
+  saveProfile();
+  return true;
+}
+export function equipPickaxe(id) {
+  if (!profile.pickaxes[id]) return false;
+  profile.pickaxe = id;
+  saveProfile();
+  return true;
+}
 
 // save (or clear with '') the face photo independently of the equipped skin,
 // so it can be applied/removed without switching to a custom skin

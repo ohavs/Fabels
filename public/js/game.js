@@ -84,6 +84,8 @@ export class Game {
     this.isTactical = o.mode === 'tactical';          // round-based plant/defuse
     this.isCreative = o.mode === 'creative';          // free build canvas, save/load
     this.myFace = o.myFace || null;                   // my uploaded face photo (dataURL)
+    this.myPickaxe = o.myPickaxe || null;             // my equipped pickaxe style (cosmetic)
+    this.viewModel.pickStyle = this.myPickaxe;        // first-person pickaxe recolor
     this.baseFov = o.baseFov || 75;                   // user FOV setting (settings screen)
     this.teamplay = ['team', 'zombies', 'ctf', 'tactical'].includes(o.mode);
     this.wave = 0;
@@ -1229,6 +1231,7 @@ export class Game {
     p.y = stepTop + 0.02;
     p.vy = Math.max(p.vy, 2.6);      // small pop to settle onto the ledge
     p.mantleCd = 0.45;
+    p.climbT = 0.45;                 // drive the 3rd-person climb pose
     if (p === this.me) { this.addShake(0.12); this.onRumble?.(0.3, 90); SFX.jump?.(); }
   }
 
@@ -1734,6 +1737,7 @@ export class Game {
   _swingPickaxe(p) {
     if (p.pickCd > 0) return;
     p.pickCd = WEAPONS.pickaxe.rate;
+    p.swingT = 0.3;   // drive the 3rd-person chop animation
     const f = forwardOf(p.yaw, p.pitch);
     const eye = { x: p.x, y: p.y + GAME.eyeHeight, z: p.z };
     const range = WEAPONS.pickaxe.range;
@@ -2609,7 +2613,7 @@ export class Game {
       if (isSelf && char.nameSprite) char.nameSprite.visible = false;
       if (!p.alive || !char.group.visible) continue;
       // keep the held weapon in the character's hand up to date (pickaxe while building)
-      setCharacterWeapon(char, isSelf ? this._heldItem() : p.weapon);
+      setCharacterWeapon(char, isSelf ? this._heldItem() : p.weapon, isSelf ? this.myPickaxe : null);
       // crouch/slide squash follows the synced stance
       p.crouchK = lerp(p.crouchK, p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0, 0.2);
       const zs = p.zscale || 1;
@@ -2621,6 +2625,23 @@ export class Game {
         : Math.hypot(p.vx, p.vz);
       p.speedSm = lerp(p.speedSm, sp, 0.2);
       animateCharacter(char, dt, p.speedSm, true, p.danceT > 0 ? (p.danceType || 0) : -1);
+      // pickaxe / melee swing: raise-and-chop the weapon arm + the held tool
+      if (p.swingT > 0 && p.danceT <= 0) {
+        p.swingT = Math.max(0, p.swingT - dt);
+        const chop = Math.sin((1 - p.swingT / 0.3) * Math.PI);   // 0→1→0
+        char.shR.rotation.x = -2.5 + chop * 2.7;
+        char.shR.rotation.z = -0.15;
+        char.gunAnchor.rotation.set(-1.35 + chop * 2.0, 0, 0);
+      } else {
+        char.gunAnchor.rotation.set(0, 0, 0);
+      }
+      // climbing / mantle: arms reach up, legs tuck as you pull over the ledge
+      if (p.climbT > 0 && p.danceT <= 0) {
+        p.climbT = Math.max(0, p.climbT - dt);
+        const k = p.climbT / 0.45;                                // 1→0
+        char.shL.rotation.x = -2.7; char.shR.rotation.x = -2.7;
+        char.hipL.rotation.x = 0.6 + k * 0.5; char.hipR.rotation.x = 0.4 + k * 0.3;
+      }
       updateHpBar(bar, p.hp / p.maxHp);
       // spawn-protection shimmer
       char.group.traverse((o) => {

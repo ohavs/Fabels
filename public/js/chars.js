@@ -107,12 +107,13 @@ export function buildCharacter(skinId, opts = {}) {
   };
 }
 
-export function setCharacterWeapon(char, weaponId) {
-  if (char.curWeapon === weaponId) return;
+export function setCharacterWeapon(char, weaponId, pickStyle = null) {
+  const styleId = pickStyle?.id || '';
+  if (char.curWeapon === weaponId && char._pickStyle === styleId) return;
   char.curWeapon = weaponId;
+  char._pickStyle = styleId;
   char.gunAnchor.clear();
-  const gun = buildGunMesh(weaponId, 0.8);
-  gun.rotation.y = -Math.PI / 2 * 0 ;
+  const gun = buildGunMesh(weaponId, 0.8, weaponId === 'pickaxe' ? pickStyle : null);
   char.gunAnchor.add(gun);
 }
 

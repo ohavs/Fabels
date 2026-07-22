@@ -55,7 +55,7 @@ function reddot(parent, z) {
 
 // each builder returns a Group with muzzle at group.userData.muzzle (local Vector3).
 // Everything points down -Z (forward); sights sit +Y, grip/mag hang -Y.
-export function buildGunMesh(id, scale = 1) {
+export function buildGunMesh(id, scale = 1, style = null) {
   const g = new THREE.Group();
   const col = WEAPONS[id]?.color ?? 0x888888;
   switch (id) {
@@ -155,10 +155,12 @@ export function buildGunMesh(id, scale = 1) {
       g.userData.muzzle = new THREE.Vector3(0, 0.03, -0.34);
       break;
     }
-    case 'pickaxe': {  // harvesting tool (building modes)
-      const handle = post(g, 0.02, 0.5, COL.wood, 0, -0.04, -0.08); handle.rotation.x = Math.PI / 2;
-      const head = p(g, 0.05, 0.07, 0.3, COL.steel, 0, 0.07, -0.32); head.rotation.x = 0.32;
-      p(g, 0.045, 0.045, 0.09, COL.chrome, 0, 0.13, -0.44);  // pick tip
+    case 'pickaxe': {  // harvesting tool (building modes) — recolored by style
+      const hc = style?.handle ?? COL.wood, hd = style?.head ?? COL.steel, tp = style?.tip ?? COL.chrome;
+      const glow = !!style?.glow;
+      const handle = post(g, 0.02, 0.5, hc, 0, -0.04, -0.08); handle.rotation.x = Math.PI / 2;
+      const head = p(g, 0.05, 0.07, 0.3, hd, 0, 0.07, -0.32, glow); head.rotation.x = 0.32;
+      p(g, 0.045, 0.045, 0.09, tp, 0, 0.13, -0.44, glow);  // pick tip
       g.userData.muzzle = new THREE.Vector3(0, 0.08, -0.46);
       break;
     }
@@ -291,7 +293,7 @@ export class ViewModel {
     if (this.gun) this.root.remove(this.gun);
     if (this.sprite) { this.root.remove(this.sprite); this.sprite = null; }
     // procedural 3D model shows immediately as a fallback
-    this.gun = buildGunMesh(id, 0.9);
+    this.gun = buildGunMesh(id, 0.9, id === 'pickaxe' ? this.pickStyle : null);
     this.root.add(this.gun);
     this.raiseK = 0;
 

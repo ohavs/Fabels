@@ -6,11 +6,12 @@
 import { t } from './i18n.js';
 import {
   SKINS, SKIN_ORDER, MAP_ORDER, BOT_LEVEL_ORDER, WEAPON_LADDER, WEAPONS, xpForLevel, RETICLE,
-  BUILD, BUILD_MATERIALS, TAC_PRICES, CREATIVE, DANCES,
+  BUILD, BUILD_MATERIALS, TAC_PRICES, CREATIVE, DANCES, PICKAXES,
 } from './config.js';
 import { paintIcons } from './icons.js';
 import { profile, playerLevel, playerRank, buySkin, equipSkin, equipCustomSkin, getChallenges,
-  buyDance, ownsDance, setEmoteSlot, danceIndex, isAdmin, saveFace } from './profile.js';
+  buyDance, ownsDance, setEmoteSlot, danceIndex, isAdmin, saveFace,
+  buyPickaxe, equipPickaxe, ownsPickaxe } from './profile.js';
 import { packCustomSkin, parseCustomSkin } from './chars.js';
 import { LobbyStage } from './lobbystage.js';
 import { fmtTime, escapeHtml, clamp } from './util.js';
@@ -490,6 +491,7 @@ export function renderShop() {
     drawSkinPreview(card.querySelector('canvas'), id);
   }
   renderShopDances();
+  renderShopPickaxes();
 }
 
 // single shared animated dance-preview stage (one WebGL context, started only
@@ -544,13 +546,45 @@ function renderShopDances() {
   }
 }
 
-// ---- locker tabs (shop / skins / dances) ----
-const LOCKER_PANES = ['skins', 'dances', 'shop'];
+// ---- locker tabs (skins / dances / pickaxes / shop) ----
+const LOCKER_PANES = ['skins', 'dances', 'pickaxes', 'shop'];
 export function setLockerTab(which) {
   if (!LOCKER_PANES.includes(which)) which = 'skins';
   for (const x of document.querySelectorAll('.locker-tab')) x.classList.toggle('sel', x.dataset.tab === which);
   for (const p of LOCKER_PANES) $('tab-' + p)?.classList.toggle('hidden', p !== which);
   if (which === 'shop') renderShopFeatured();
+}
+
+// pickaxe cosmetics: color swatches, buy/equip
+function renderShopPickaxes() {
+  const grid = $('shop-pickaxes');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const hex = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0').slice(-6);
+  for (const pk of PICKAXES) {
+    const owned = ownsPickaxe(pk.id);
+    const equipped = profile.pickaxe === pk.id;
+    const card = document.createElement('div');
+    card.className = 'dance-card pick-card' + (equipped ? ' owned' : '');
+    card.innerHTML =
+      `<span class="dc-emoji">${pk.icon}</span>` +
+      `<span class="pk-swatch"><i style="background:${hex(pk.head)}"></i><i style="background:${hex(pk.tip)}"></i><i style="background:${hex(pk.handle)}"></i></span>` +
+      `<span class="dc-name">${escapeHtml(pk.name)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'shop-buy' + (owned ? ' own' : '');
+    if (equipped) { btn.textContent = '✓ ' + t('equipped'); btn.disabled = true; }
+    else if (owned) { btn.textContent = t('equip'); }
+    else { btn.textContent = pk.cost === 0 ? t('free') : `💠 ${pk.cost}`; if (!isAdmin()) btn.disabled = profile.shards < pk.cost; }
+    btn.addEventListener('click', () => {
+      SFX.click();
+      const ok = owned ? equipPickaxe(pk.id) : (buyPickaxe(pk.id) && equipPickaxe(pk.id));
+      if (!ok) { toast(t('notEnough'), 'red'); return; }
+      $('shop-shards').textContent = `💠 ${profile.shards}`;
+      renderShopPickaxes(); refreshMenu();
+    });
+    card.appendChild(btn);
+    grid.appendChild(card);
+  }
 }
 export function setupLockerTabs() {
   for (const tab of document.querySelectorAll('.locker-tab')) {
