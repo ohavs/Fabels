@@ -893,7 +893,9 @@ export class Game {
       if (wl > 1) { wishX /= wl; wishZ /= wl; }
 
       // ---- stance state machine: stand / sprint / crouch / slide ----
-      p.ads = input.aiming && !WEAPONS[p.weapon].melee;
+      // no ADS while holding the pickaxe or a build piece (you can't scope a pickaxe)
+      const holdingTool = (this.canBuild && input.tool && input.tool !== 'gun') || p.weapon === 'pickaxe';
+      p.ads = input.aiming && !WEAPONS[p.weapon].melee && !holdingTool;
       const moving = wl > 0.3;
       const sprinting = input.sprintHeld && moving && input.move.y > 0.2
         && !p.ads && !input.crouchHeld && p.slideT <= 0 && p.grounded;
@@ -906,8 +908,8 @@ export class Game {
         wishX = p.slideDirX; wishZ = p.slideDirZ;
         p.stance = 2;
         if (p.slideT <= 0) p.stance = input.crouchHeld ? 1 : 0;
-      } else if (input.crouchHeld && this._wasSprinting && p.grounded && p.slideCd <= 0 && moving) {
-        // sprint + crouch = slide
+      } else if ((input.consumeSlide() || (input.crouchHeld && this._wasSprinting)) && p.grounded && p.slideCd <= 0 && moving) {
+        // slide: sprint+crouch, OR a long-press of the crouch button (wantSlide)
         p.slideT = GAME.slideTime;
         p.slideCd = GAME.slideCd + GAME.slideTime;
         p.slideDirX = wishX; p.slideDirZ = wishZ;

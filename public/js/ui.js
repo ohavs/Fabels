@@ -40,7 +40,8 @@ export function setLoadStatus(text) { $('load-status').textContent = text; }
 
 export function setConn(online) {
   const b = $('menu-conn');
-  b.textContent = online ? t('connected') : 'לא מקוון';
+  if (!b) return;
+  b.title = online ? t('connected') : 'לא מקוון';
   b.classList.toggle('online', online);
 }
 
@@ -110,10 +111,16 @@ export function setLobbyModeCard(mode, switchable) {
   if (k) k.style.visibility = switchable ? '' : 'hidden';
 }
 
+// visual categories for the mode picker (same cards, just grouped)
+const MODE_CATS = [
+  { name: '🧱 בניות', modes: ['builddm', 'boxfight', 'zonewars', 'creative'] },
+  { name: '🎯 קלאסי', modes: ['gungame', 'team', 'duel', 'ctf'] },
+  { name: '⭐ מיוחד', modes: ['tactical', 'zombies', 'br'] },
+];
 export function openModePopover(current, onPick) {
   const grid = $('mode-popover-grid');
   grid.innerHTML = '';
-  for (const m of MODE_LIST) {
+  const addCard = (m) => {
     const b = document.createElement('button');
     b.className = 'mp-card' + (m === current ? ' sel' : '');
     b.innerHTML = `
@@ -124,7 +131,16 @@ export function openModePopover(current, onPick) {
       </span>
       ${m === current ? '<span class="mpc-check">✓</span>' : ''}`;
     b.addEventListener('click', () => { SFX.click(); closeModePopover(); onPick(m); });
-    grid.appendChild(b);
+    return b;
+  };
+  for (const cat of MODE_CATS) {
+    const head = document.createElement('div');
+    head.className = 'mp-cat'; head.textContent = cat.name;
+    grid.appendChild(head);
+    const row = document.createElement('div');
+    row.className = 'mp-cat-grid';
+    for (const m of cat.modes) if (MODE_LIST.includes(m)) row.appendChild(addCard(m));
+    grid.appendChild(row);
   }
   $('mode-popover').classList.remove('hidden');
 }
@@ -528,19 +544,71 @@ function renderShopDances() {
   }
 }
 
-// ---- locker tabs (skins / dances) ----
+// ---- locker tabs (shop / skins / dances) ----
+const LOCKER_PANES = ['skins', 'dances', 'shop'];
+export function setLockerTab(which) {
+  if (!LOCKER_PANES.includes(which)) which = 'skins';
+  for (const x of document.querySelectorAll('.locker-tab')) x.classList.toggle('sel', x.dataset.tab === which);
+  for (const p of LOCKER_PANES) $('tab-' + p)?.classList.toggle('hidden', p !== which);
+  if (which === 'shop') renderShopFeatured();
+}
 export function setupLockerTabs() {
-  const tabs = document.querySelectorAll('.locker-tab');
-  for (const tab of tabs) {
-    tab.addEventListener('click', () => {
-      SFX.click();
-      const which = tab.dataset.tab;
-      for (const x of tabs) x.classList.toggle('sel', x === tab);
-      $('tab-skins').classList.toggle('hidden', which !== 'skins');
-      $('tab-dances').classList.toggle('hidden', which !== 'dances');
-    });
+  for (const tab of document.querySelectorAll('.locker-tab')) {
+    tab.addEventListener('click', () => { SFX.click(); setLockerTab(tab.dataset.tab); });
   }
 }
+
+// featured "shop": everything you don't own yet — skins + dances — to buy
+function renderShopFeatured() {
+  const grid = $('shop-featured');
+  if (!grid) return;
+  grid.innerHTML = '';
+  let any = false;
+  for (const id of SKIN_ORDER) {
+    if (profile.skins[id]) continue;
+    any = true;
+    const s = SKINS[id];
+    const card = document.createElement('div');
+    card.className = 'ship-card';
+    card.innerHTML = `<canvas></canvas><div class="s-name">${t('skin_' + id)}</div>`;
+    const btn = document.createElement('button');
+    btn.className = 'shop-buy';
+    btn.textContent = s.cost === 0 ? t('free') : `💠 ${s.cost}`;
+    if (!isAdmin()) btn.disabled = profile.shards < s.cost;
+    btn.addEventListener('click', () => {
+      SFX.click();
+      if (!buySkin(id)) { toast(t('notEnough'), 'red'); return; }
+      $('shop-shards').textContent = `💠 ${profile.shards}`;
+      renderShop(); setLockerTab('shop'); refreshMenu();
+    });
+    card.appendChild(btn);
+    grid.appendChild(card);
+    drawSkinPreview(card.querySelector('canvas'), id);
+  }
+  for (const d of DANCES) {
+    if (ownsDance(d.id)) continue;
+    any = true;
+    const card = document.createElement('div');
+    card.className = 'dance-card';
+    card.innerHTML = `<span class="dc-emoji">${d.icon}</span><span class="dc-name">${escapeHtml(d.name)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'shop-buy';
+    btn.textContent = d.cost === 0 ? t('free') : `💠 ${d.cost}`;
+    if (!isAdmin()) btn.disabled = profile.shards < d.cost;
+    btn.addEventListener('click', () => {
+      SFX.click();
+      if (!buyDance(d.id)) { toast(t('notEnough'), 'red'); return; }
+      $('shop-shards').textContent = `💠 ${profile.shards}`;
+      renderShop(); setLockerTab('shop'); refreshMenu();
+    });
+    card.appendChild(btn);
+    grid.appendChild(card);
+  }
+  if (!any) grid.innerHTML = `<p class="fr-empty">יש לך הכל! 🎉</p>`;
+}
+
+// close the emote wheel (used when navigating away / opening other UI)
+export function closeEmoteWheel() { $('emote-wheel')?.classList.add('hidden'); }
 
 // ---------------- leaderboard ----------------
 export function renderBoard(rows, myUid) {
@@ -1073,6 +1141,19 @@ export function bindHUD(input, { onExit, onChat, onSettings, onSaveMap, onLoadMa
     input.crouchHeld = !input.crouchHeld;
     $('btn-crouch').classList.toggle('on', input.crouchHeld);
   });
+  // long-press the crouch button → slide (fires while moving on the ground)
+  {
+    const cb = $('btn-crouch');
+    let lpTimer = null;
+    const startLP = () => { lpTimer = setTimeout(() => { input.wantSlide = true; try { navigator.vibrate?.(30); } catch { /* ignore */ } }, 240); };
+    const endLP = () => { clearTimeout(lpTimer); lpTimer = null; };
+    cb.addEventListener('touchstart', startLP, { passive: true });
+    cb.addEventListener('touchend', endLP);
+    cb.addEventListener('touchcancel', endLP);
+    cb.addEventListener('mousedown', startLP);
+    cb.addEventListener('mouseup', endLP);
+    cb.addEventListener('mouseleave', endLP);
+  }
   hold($('btn-sprint'), () => {
     input.sprintToggle = !input.sprintToggle;
     $('btn-sprint').classList.toggle('on', input.sprintToggle);

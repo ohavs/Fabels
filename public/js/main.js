@@ -197,8 +197,10 @@ function finishBoot(online) {
 function refreshGoogleBtn() {
   const signed = isGoogleUser();
   $('btn-admin').classList.toggle('hidden', !isAdmin());
-  $('btn-google').classList.toggle('signed', signed);
-  $('google-label').textContent = signed
+  // compact chip: green ✓ ring when signed in, plain Google mark otherwise
+  const g = $('btn-google');
+  g.classList.toggle('signed', signed);
+  g.title = signed
     ? `✓ ${FB.user.displayName || FB.user.email || 'Google'} · ${t('googleSignOut')}`
     : t('googleSignIn');
 }
@@ -286,7 +288,12 @@ function wireMenu() {
     SFX.click();
     const w = $('emote-wheel');
     if (w.classList.contains('hidden')) {
-      UI.buildEmoteWheel((idx) => { state.lobbyStage?.dance(idx); });
+      UI.buildEmoteWheel((idx) => {
+        state.lobbyStage?.dance(idx);
+        // lobby dances auto-stop after a few seconds (back to idle sway)
+        clearTimeout(state._lobbyDanceT);
+        state._lobbyDanceT = setTimeout(() => state.lobbyStage?.dance(-1), 6000);
+      });
       w.classList.remove('hidden');
     } else {
       w.classList.add('hidden');
@@ -302,8 +309,25 @@ function wireMenu() {
     if (code) joinRoomByCode(code.trim().toUpperCase());
   });
 
-  $('btn-shop').addEventListener('click', () => { SFX.click(); state.lobbyStage?.stop(); UI.renderShop(); UI.showScreen('shop'); });
+  $('btn-shop').addEventListener('click', () => { SFX.click(); openLocker('skins'); });
   $('btn-back-shop').addEventListener('click', () => { SFX.click(); UI.stopShopPreview(); showHome(); });
+
+  // ---- top navigation tabs (Fortnite-style) ----
+  const navHome = (which) => {
+    UI.closeEmoteWheel();
+    if (which === 'play') { showHome(); }
+    else if (which === 'locker') openLocker('skins');
+    else if (which === 'shop') openLocker('shop');
+    else if (which === 'chall') { state.lobbyStage?.stop(); UI.refreshMenu(); $('chall-popover').classList.remove('hidden'); }
+    else if (which === 'board') $('btn-board').click();
+  };
+  for (const b of document.querySelectorAll('.home-tab')) {
+    b.addEventListener('click', () => {
+      SFX.click();
+      for (const x of document.querySelectorAll('.home-tab')) x.classList.toggle('sel', x === b);
+      navHome(b.dataset.nav);
+    });
+  }
 
   // ---- admin grants panel (visible only to the admin account) ----
   let adminGrant = 'none';      // quick-pack: none|dances|skins|all
@@ -528,6 +552,7 @@ function renderDrawerFriends() {
 
 // Fortnite-style side drawer: friends live-list + navigation
 function openDrawer() {
+  UI.closeEmoteWheel();           // don't leave the wheel hanging behind the drawer
   state.lobbyStage?.stop?.();     // pause the 3D stage while the drawer is up (perf)
   UI.renderFriendCode(ensureFriendCode());
   $('side-drawer').classList.remove('hidden');
@@ -587,10 +612,20 @@ function homeStage() {
 
 export function showHome() {
   UI.closeModePopover();
+  UI.closeEmoteWheel();
   $('mode-opts-popover').classList.add('hidden');
   UI.refreshMenu();
   UI.showScreen('menu');
   renderHome();
+}
+
+// open the full-screen locker on a given sub-tab (skins|dances|pickaxes|shop)
+function openLocker(tab = 'skins') {
+  state.lobbyStage?.stop();
+  UI.closeEmoteWheel();
+  UI.renderShop();
+  UI.setLockerTab(tab);
+  UI.showScreen('shop');
 }
 
 function renderHome() {

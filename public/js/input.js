@@ -32,6 +32,7 @@ export class Input {
     this.sprintHeld = false;
     this.sprintToggle = false;
     this.crouchHeld = false;
+    this.wantSlide = false;      // long-press crouch → one-shot slide
     this.wantJump = false;
     this.wantReload = false;
     this.wantNade = false;
@@ -90,6 +91,7 @@ export class Input {
 
   consumeLook() { const d = { dx: this.lookDX, dy: this.lookDY }; this.lookDX = 0; this.lookDY = 0; return d; }
   consumeJump()   { const v = this.wantJump;   this.wantJump = false;   return v; }
+  consumeSlide()  { const v = this.wantSlide;  this.wantSlide = false;  return v; }
   consumeReload() { const v = this.wantReload; this.wantReload = false; return v; }
   consumeNade()   { const v = this.wantNade;   this.wantNade = false;   return v; }
   consumeEmote()  { const v = this.wantEmote;  this.wantEmote = -1;     return v; }
