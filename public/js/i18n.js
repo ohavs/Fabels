@@ -26,6 +26,9 @@ export const STR = {
   map_canyon: 'קניון האש',
   map_city: 'עיר הניאון',
   map_ice: 'האי הקפוא',
+  map_towers: 'מגדלי הקרב',
+  map_maze: 'המבוך',
+  map_dunes: 'הדיונות',
 
   // weapons (gun-game ladder)
   weapon_pistol: 'אקדח',

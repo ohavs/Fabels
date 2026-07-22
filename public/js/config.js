@@ -80,15 +80,19 @@ export const RETICLE = {
 };
 
 // ---- Maps ----------------------------------------------------------------
-export const MAP_ORDER = ['town', 'mine', 'port', 'canyon', 'city', 'ice', 'island'];
+export const MAP_ORDER = ['town', 'mine', 'port', 'canyon', 'city', 'ice', 'towers', 'maze', 'dunes', 'island'];
 export const MAPS = {
-  town:   { size: 72, sky: 0x87ceeb, fog: 0xbfe3f2, sun: 0xfff2cc, ground: 0x7ec850, accent: '#e0b23e' },
-  mine:   { size: 64, sky: 0x1a1033, fog: 0x241645, sun: 0xb28dff, ground: 0x3d2f57, accent: '#b478ff' },
-  port:   { size: 70, sky: 0x0b1e3d, fog: 0x14294d, sun: 0xcfe8ff, ground: 0x4a5568, accent: '#57c4e5' },
-  canyon: { size: 76, sky: 0xffb347, fog: 0xf7c873, sun: 0xffe0b3, ground: 0xd9a066, accent: '#e07a5f' },
-  city:   { size: 78, sky: 0x151538, fog: 0x252550, sun: 0xb8c4ff, ground: 0x3a3a52, accent: '#ff3e8a' },
-  ice:    { size: 70, sky: 0xcfe8ff, fog: 0xe6f2ff, sun: 0xffffff, ground: 0xe8f4ff, accent: '#7db4ff' },
-  island: { size: 80, sky: 0x8fd7f0, fog: 0xcdeef8, sun: 0xfff6d8, ground: 0x8ed06a, accent: '#3ec9a7' },
+  town:   { size: 92, sky: 0x87ceeb, fog: 0xbfe3f2, sun: 0xfff2cc, ground: 0x7ec850, accent: '#e0b23e' },
+  mine:   { size: 84, sky: 0x1a1033, fog: 0x241645, sun: 0xb28dff, ground: 0x3d2f57, accent: '#b478ff' },
+  port:   { size: 90, sky: 0x0b1e3d, fog: 0x14294d, sun: 0xcfe8ff, ground: 0x4a5568, accent: '#57c4e5' },
+  canyon: { size: 96, sky: 0xffb347, fog: 0xf7c873, sun: 0xffe0b3, ground: 0xd9a066, accent: '#e07a5f' },
+  city:   { size: 98, sky: 0x151538, fog: 0x252550, sun: 0xb8c4ff, ground: 0x3a3a52, accent: '#ff3e8a' },
+  ice:    { size: 90, sky: 0xcfe8ff, fog: 0xe6f2ff, sun: 0xffffff, ground: 0xe8f4ff, accent: '#7db4ff' },
+  // new large / complex arenas
+  towers: { size: 100, sky: 0x2a2a4a, fog: 0x3a3a5c, sun: 0xd8c4ff, ground: 0x44485c, accent: '#8ab4ff' },
+  maze:   { size: 90,  sky: 0x2b2f36, fog: 0x3a4048, sun: 0xe8eef5, ground: 0x3f4650, accent: '#e0a83e' },
+  dunes:  { size: 112, sky: 0xffcf8f, fog: 0xf2d8a8, sun: 0xfff0cc, ground: 0xe0b877, accent: '#e07a5f' },
+  island: { size: 96, sky: 0x8fd7f0, fog: 0xcdeef8, sun: 0xfff6d8, ground: 0x8ed06a, accent: '#3ec9a7' },
 };
 
 // ---- Bot difficulty --------------------------------------------------------

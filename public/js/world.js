@@ -321,11 +321,54 @@ export class World {
     ({
       town: this._town, mine: this._mine, port: this._port,
       canyon: this._canyon, city: this._city, ice: this._ice,
+      towers: this._towers, maze: this._maze, dunes: this._dunes,
       island: this._island,
     })[this.mapId].call(this, r);
+    // classic maps were designed for a smaller arena — fill the enlarged outer
+    // band with themed cover + perimeter spawns so bigger doesn't mean emptier
+    if (!['island', 'towers', 'maze', 'dunes'].includes(this.mapId)) this._outer(r);
     // scatter nav points between spawns
     const S = this.size;
-    for (let i = 0; i < 14; i++) this.nav((r() - 0.5) * S * 0.8, (r() - 0.5) * S * 0.8);
+    for (let i = 0; i < 18; i++) this.nav((r() - 0.5) * S * 0.82, (r() - 0.5) * S * 0.82);
+  }
+
+  // themed clutter in the outer ring of the (now larger) classic maps
+  _outer(r) {
+    const half = this.size / 2;
+    const r0 = 27, r1 = half - 6;
+    if (r1 <= r0 + 3) return;
+    const ring = (fn, count) => {
+      for (let i = 0; i < count; i++) {
+        const a = r() * TAU, rad = r0 + r() * (r1 - r0);
+        fn(Math.cos(a) * rad, Math.sin(a) * rad, a);
+      }
+    };
+    switch (this.mapId) {
+      case 'town':
+        ring((x, z) => { if (r() < 0.4) this.house(x, z, 5 + r() * 2, 4 + r() * 1.5, 3.5 + r() * 1.5, 0xe8d8b8, 0x8e5b3a, r() * 0.6); else this.tree(x, z, 0.8 + r() * 0.7); }, 16);
+        ring((x, z) => this.crate(x, 0, z, 1 + r() * 0.4), 6);
+        ring((x, z) => this.lamp(x, z, 0xffe9a0), 3); break;
+      case 'mine':
+        ring((x, z) => { const c = [0xb478ff, 0x7dd3fc, 0xf472b6][(r() * 3) | 0]; this.cone(x, 0, z, 1 + r() * 0.8, 2.5 + r() * 3, c, { collide: true, emissive: c, rotY: r() * 3 }); }, 12);
+        ring((x, z) => this.cyl(x, 0, z, 1.4 + r() * 1.2, 4 + r() * 5, 0x4a3d63, { seg: 7 }), 7); break;
+      case 'port':
+        ring((x, z) => this.container(x, z, [0xd35d47, 0x3d8bfd, 0x43aa8b, 0xf9c74f][(r() * 4) | 0], r() < 0.4 ? Math.PI / 2 : 0, r() < 0.4), 11);
+        ring((x, z) => this.barrelStack(x, z, 0xf9a825), 5); break;
+      case 'canyon':
+        ring((x, z) => { if (r() < 0.45) { this.box(x, 0, z, 6 + r() * 3, 4 + r() * 4, 6 + r() * 3, 0xc4763f); this.box(x, 0, z, 8 + r() * 3, 2 + r() * 1.5, 8 + r() * 3, 0xa85f33); } else this.rock(x, z, 0.7 + r() * 0.7, 0x9a5a33); }, 12);
+        ring((x, z) => { const h = 1.8 + r() * 1.4; this.cyl(x, 0, z, 0.35, h, 0x3f9b4f, { seg: 7 }); }, 6); break;
+      case 'city':
+        ring((x, z) => { const h = 6 + r() * 9, w = 7 + r() * 3; this.box(x, 0, z, w, h, w, [0x565678, 0x4a4a6b, 0x626287][(r() * 3) | 0]); const c = [0xff3e8a, 0x00d5ff, 0xffd200, 0x9d5cff][(r() * 4) | 0]; this.box(x, h - 0.8, z + w / 2 + 0.05, w * 0.85, 0.35, 0.12, c, { collide: false, emissive: c, shadow: false }); }, 11);
+        ring((x, z) => this.car(x, z, [0xff3e8a, 0x00d5ff, 0xffd200][(r() * 3) | 0], r() * 0.5), 5); break;
+      case 'ice':
+        ring((x, z) => { if (r() < 0.5) { this.cyl(x, 0, z, 0.25, 1.3, 0x7a5c48, { seg: 6 }); this.cone(x, 1, z, 1.2, 2.8, 0xd8ecdf, { seg: 7 }); } else this.cone(x, 0, z, 1 + r(), 3 + r() * 3, 0xd6ecff, { collide: true, emissive: 0x9fccf5, rotY: r() * 3 }); }, 13);
+        ring((x, z) => this.box(x, 0, z, 2 + r() * 1.5, 0.7, 2 + r() * 1.5, 0xeef6ff, { collide: false }), 5); break;
+      default: break;
+    }
+    // perimeter spawns near the new border so fights use the whole map
+    const s = half - 9;
+    this.spawn(-s, -s); this.spawn(s, s); this.spawn(-s, s); this.spawn(s, -s);
+    this.spawn(0, -s); this.spawn(0, s); this.spawn(-s, 0); this.spawn(s, 0);
   }
 
   // ═══════════ MAP 1: העיירה — sunny village with distinct districts ═══════════
@@ -677,5 +720,112 @@ export class World {
     // spawns spread around the canvas
     this.spawn(-12, -12); this.spawn(12, 12); this.spawn(-12, 12); this.spawn(12, -12);
     this.spawn(0, -20); this.spawn(0, 20); this.spawn(-20, 0); this.spawn(20, 0);
+  }
+
+  // ═══════════ MAP 8: מגדלי הקרב — vertical high-ground fortress ═══════════
+  _towers(r) {
+    const core = 0x555a6b, deck = 0x6a7080, neon = 0x8ab4ff;
+    // ---- ground level: cover for low fights ----
+    for (let i = 0; i < 12; i++) this.crate(-34 + r() * 68, 0, -34 + r() * 68, 1 + r() * 0.5, 0x4a4f60);
+    for (let i = 0; i < 4; i++) { const a = i / 4 * TAU; this.sandbags(Math.cos(a) * 15, Math.sin(a) * 15, 3, i % 2 ? Math.PI / 2 : 0); }
+    this.lamp(-18, 18, neon, 5); this.lamp(18, -18, neon, 5);
+
+    // ---- central keep: deck @6, upper core @12, glowing spire ----
+    this.platform(0, 0, 12, 12, 6, core, 'z');
+    this.box(0, 6, 0, 6, 6, 6, core);                 // upper core up to 12
+    this.stairs(0, 6, 4.6, 'z', 12, 3, deck);         // deck (6) → roof (12)
+    this.box(0, 12, 0, 7.5, 0.4, 7.5, deck);          // roof slab
+    this.crate(2.4, 12, 2.4, 1, deck); this.crate(-2.4, 12, -2.4, 1, deck);
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(2.2, 5, 6), mat(neon, { emissive: neon }));
+    spire.position.set(0, 14.9, 0); spire.castShadow = true; this.scene.add(spire);
+    const beacon = new THREE.PointLight(neon, 7, 34); beacon.position.set(0, 16, 0); this.scene.add(beacon);
+    this.nav(0, 0, 6); this.nav(0, 0, 12);
+
+    // ---- 4 axis towers @6, each bridged to the centre deck ----
+    for (const [x, z, sd] of [[0, -26, '-z'], [0, 26, 'z'], [26, 0, 'x'], [-26, 0, '-x']]) {
+      this.platform(x, z, 9, 9, 6, core, sd);         // reachable from the ground
+      this.crate(x + 2.2, 6, z, 1, deck); this.crate(x - 2.2, 6, z, 1, deck);
+      if (x === 0) {                                   // bridge along Z
+        const z0 = Math.sign(z) * 6, z1 = z - Math.sign(z) * 4.5, cz = (z0 + z1) / 2, len = Math.abs(z1 - z0);
+        this.box(0, 6, cz, 3, 0.3, len, deck);
+        this.box(0, 6.55, cz, 3.4, 0.12, len, neon, { collide: false, emissive: neon, shadow: false });
+      } else {                                         // bridge along X
+        const x0 = Math.sign(x) * 6, x1 = x - Math.sign(x) * 4.5, cx = (x0 + x1) / 2, len = Math.abs(x1 - x0);
+        this.box(cx, 6, 0, len, 0.3, 3, deck);
+        this.box(cx, 6.55, 0, len, 0.12, 3.4, neon, { collide: false, emissive: neon, shadow: false });
+      }
+    }
+    this.spawn(-36, -36); this.spawn(36, 36); this.spawn(-36, 36); this.spawn(36, -36);
+    this.spawn(0, -38); this.spawn(0, 38); this.spawn(-38, 0); this.spawn(38, 0);
+  }
+
+  // ═══════════ MAP 9: המבוך — walled CQB compound ═══════════
+  _maze(r) {
+    const wc = 0x555c66, wc2 = 0x47505a, roof = 0x3a4048;
+    // ring of buildings — some enterable (door + walkable roof), some solid
+    for (const [x, z] of [[-26, -26], [0, -26], [26, -26], [-26, 0], [26, 0], [-26, 26], [0, 26], [26, 26]]) {
+      if (r() < 0.6) {
+        this.room(x, z, 8, 8, 4, wc, roof, ['z', '-z', 'x', '-x'][(r() * 4) | 0]);
+        this.stairs(x + 4.6, 0, z - 2, 'z', 9, 2, wc2);
+        this.nav(x, z, 4.3);
+      } else {
+        this.box(x, 0, z, 8, 3.5 + r() * 2.5, 8, wc2);
+      }
+    }
+    // central objective platform + sandbag cover
+    this.platform(0, 0, 9, 9, 2.5, wc, 'x');
+    for (let i = 0; i < 4; i++) { const a = i / 4 * TAU; this.sandbags(Math.cos(a) * 4, Math.sin(a) * 4, 2.4, i % 2 ? Math.PI / 2 : 0); }
+    // connecting corridor walls (cover + sightline breaks)
+    const wall = (x, z, w, d) => this.box(x, 0, z, w, 3, d, wc2);
+    wall(-13, -26, 5, 0.6); wall(13, -26, 5, 0.6); wall(-26, -13, 0.6, 5); wall(26, 13, 0.6, 5);
+    wall(-13, 26, 5, 0.6); wall(13, 13, 5, 0.6); wall(0, 14, 0.6, 5); wall(-14, 0, 5, 0.6);
+    // scattered crates / barrels
+    for (let i = 0; i < 14; i++) {
+      const x = -32 + r() * 64, z = -32 + r() * 64;
+      if (Math.hypot(x, z) < 6) continue;
+      if (r() < 0.6) this.crate(x, 0, z, 1 + r() * 0.4, 0x6a5a3a); else this.barrel(x, z, 0x8a5a2b);
+    }
+    this.lamp(-14, -14, 0xffe0a0); this.lamp(14, 14, 0xffe0a0);
+    this.lamp(14, -14, 0xffe0a0); this.lamp(-14, 14, 0xffe0a0);
+    this.spawn(-34, -34); this.spawn(34, 34); this.spawn(-34, 34); this.spawn(34, -34);
+    this.spawn(0, -36); this.spawn(0, 36); this.spawn(-36, 0); this.spawn(36, 0);
+  }
+
+  // ═══════════ MAP 10: הדיונות — vast open desert, long-range ═══════════
+  _dunes(r) {
+    const sand = 0xe0b877, rock = 0xb98a52, rock2 = 0x9a6f3f, acc = 0xe07a5f;
+    // rolling dune mounds (wide low cones)
+    for (let i = 0; i < 10; i++) {
+      const x = (r() - 0.5) * 92, z = (r() - 0.5) * 92;
+      if (Math.hypot(x, z) < 12) continue;
+      this.cone(x, 0, z, 5 + r() * 4, 3 + r() * 2.5, sand, { collide: true, seg: 6, rotY: r() * 3 });
+    }
+    // big rock formations (cover + low high-ground)
+    for (let i = 0; i < 5; i++) {
+      const x = (r() - 0.5) * 82, z = (r() - 0.5) * 82;
+      if (Math.hypot(x, z) < 15) continue;
+      this.box(x, 0, z, 6 + r() * 4, 3 + r() * 3, 6 + r() * 4, rock);
+      this.box(x, 0, z, 9 + r() * 3, 1.5, 9 + r() * 3, rock2);
+    }
+    // central ruin: broken pillar ring + raised platform (mid high-ground)
+    this.platform(0, 0, 10, 10, 3, rock, 'x');
+    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; this.box(Math.cos(a) * 8, 0, Math.sin(a) * 8, 1.4, 4 + r() * 3, 1.4, rock2); }
+    this.box(0, 3, 0, 2, 3, 2, acc, { emissive: 0x5a2a1a });
+    // oasis with palms
+    const oasis = new THREE.Mesh(new THREE.CircleGeometry(5, 20), mat(0x3a89a8));
+    oasis.rotation.x = -Math.PI / 2; oasis.position.set(-30, 0.03, 26); this.scene.add(oasis);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; this.tree(-30 + Math.cos(a) * 7, 26 + Math.sin(a) * 7, 0.9 + r() * 0.5); }
+    // sparse cover: cacti, rocks, a wreck
+    for (let i = 0; i < 10; i++) {
+      const x = (r() - 0.5) * 98, z = (r() - 0.5) * 98;
+      if (Math.hypot(x, z) < 10) continue;
+      if (r() < 0.5) { const h = 1.8 + r() * 1.4; this.cyl(x, 0, z, 0.35, h, 0x4f8f4f, { seg: 7 }); }
+      else this.rock(x, z, 0.8 + r() * 0.8, rock2);
+    }
+    this.car(10, -12, 0x8a6a4a, 0.4);
+    // ruined arch landmark
+    this.box(22, 0, -22, 2, 7, 2, rock2); this.box(30, 0, -22, 2, 7, 2, rock2); this.box(26, 7, -22, 10, 1.6, 2.4, rock);
+    this.spawn(-42, -42); this.spawn(42, 42); this.spawn(-42, 42); this.spawn(42, -42);
+    this.spawn(0, -44); this.spawn(0, 44); this.spawn(-44, 0); this.spawn(44, 0);
   }
 }
