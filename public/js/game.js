@@ -15,7 +15,7 @@ import {
   GAME, WEAPONS, WEAPON_LADDER, BOT_LEVELS, SKINS,
   GRENADE, ARMOR_MAX, PICKUPS, LOADOUT_MODES, CRATE_TIERS, KILLSTREAKS,
   ZOMBIES, zombieWave, BR, ZONEWARS, CTF, TACTICAL, BUILD, BUILDDM, BOXFIGHT, BUILD_MODES, LOADOUT_KIT,
-  BUILD_MATERIALS, MATERIAL_ORDER, TAC_KIT, TAC_ECON, TAC_PRICES, CREATIVE,
+  BUILD_MATERIALS, MATERIAL_ORDER, TAC_KIT, TAC_ECON, TAC_PRICES, CREATIVE, PICKAXE_BY_ID,
 } from './config.js';
 import { clamp, lerp, lerpAngle, rayAABB, raySphere, randId } from './util.js';
 import { World, mat } from './world.js';
@@ -786,6 +786,7 @@ export class Game {
     p.stance = st.st || 0;
     if (st.tm) p.team = st.tm;
     p.tier = st.tier || 0;
+    if (st.pk) p.pickId = st.pk;   // remember their pickaxe cosmetic
     if (st.w && st.w !== p.weapon) {
       p.weapon = st.w;
       if (p.view) setCharacterWeapon(p.view.char, p.weapon);
@@ -2612,8 +2613,10 @@ export class Game {
       if (isSelf && bar) { bar.bg.visible = false; bar.fg.visible = false; }
       if (isSelf && char.nameSprite) char.nameSprite.visible = false;
       if (!p.alive || !char.group.visible) continue;
-      // keep the held weapon in the character's hand up to date (pickaxe while building)
-      setCharacterWeapon(char, isSelf ? this._heldItem() : p.weapon, isSelf ? this.myPickaxe : null);
+      // keep the held weapon in the character's hand up to date (pickaxe while
+      // building); each player's pickaxe shows their own equipped cosmetic
+      setCharacterWeapon(char, isSelf ? this._heldItem() : p.weapon,
+        isSelf ? this.myPickaxe : (PICKAXE_BY_ID[p.pickId] || null));
       // crouch/slide squash follows the synced stance
       p.crouchK = lerp(p.crouchK, p.stance === 2 ? 1.15 : p.stance === 1 ? 1 : 0, 0.2);
       const zs = p.zscale || 1;
@@ -2716,6 +2719,7 @@ export class Game {
       yaw: +p.yaw.toFixed(2), pitch: +p.pitch.toFixed(2),
       hp: Math.round(p.hp), maxHp: p.maxHp, alive: p.alive, ar: Math.round(p.armor),
       tier: p.tier, w: p.weapon, st: p.stance, tm: p.team,
+      pk: this.myPickaxe?.id || 'default',   // pickaxe cosmetic (so others see your skin)
       kills: p.kills, deaths: p.deaths, score: p.score,
     };
   }

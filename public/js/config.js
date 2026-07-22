@@ -118,8 +118,15 @@ export const SKINS = {
   toxic:   { body: 0x3f6212, accent: 0x84cc16, skin: 0x8d5524, visorGlow: 0xa3e635, cost: 1300 },
   royal:   { body: 0x6d28d9, accent: 0xfbbf24, skin: 0xf1c27d, pads: 0x4c1d95, pack: 0xfbbf24, cost: 1800 },
   galaxy:  { body: 0x1e1b4b, accent: 0xa78bfa, skin: 0xe0ac69, visorGlow: 0xc4b5fd, pack: 0x312e81, cost: 2600 },
+  // fresh drop
+  inferno:   { body: 0x991b1b, accent: 0xf59e0b, skin: 0xe0ac69, visorGlow: 0xff5a1f, pads: 0x431407, cost: 1500 },
+  oceanic:   { body: 0x0e7490, accent: 0x67e8f9, skin: 0xf1c27d, pack: 0x155e75, cost: 1200 },
+  viper:     { body: 0x166534, accent: 0xa3e635, skin: 0x8d5524, visorGlow: 0x84cc16, pads: 0x14532d, cost: 1400 },
+  phantom:   { body: 0x1f2937, accent: 0x9ca3af, skin: 0xf1c27d, visorGlow: 0xe5e7eb, pack: 0x111827, cost: 1700 },
+  bubblegum: { body: 0xf472b6, accent: 0x22d3ee, skin: 0xf1c27d, pads: 0xdb2777, cost: 1300 },
+  sunflare:  { body: 0xf59e0b, accent: 0xfde68a, skin: 0xc68642, pack: 0xb45309, cost: 1600 },
 };
-export const SKIN_ORDER = ['scout', 'ember', 'jungle', 'shadow', 'sunset', 'neon', 'crimson', 'arctic', 'toxic', 'legend', 'royal', 'galaxy'];
+export const SKIN_ORDER = ['scout', 'ember', 'jungle', 'shadow', 'sunset', 'neon', 'crimson', 'arctic', 'toxic', 'bubblegum', 'oceanic', 'viper', 'sunflare', 'inferno', 'phantom', 'legend', 'royal', 'galaxy'];
 
 // ---- Progression --------------------------------------------------------------
 export const RANKS = [
@@ -186,6 +193,9 @@ export const PICKAXES = [
   { id: 'toxic',   name: 'רעל',    icon: '☢️', cost: 350, handle: 0x14200f, head: 0x8ee53a, tip: 0xd8ff9d, glow: true },
   { id: 'shadow',  name: 'צל',     icon: '🌑', cost: 450, handle: 0x0a0a12, head: 0x2a2f3a, tip: 0x6a7280 },
   { id: 'candy',   name: 'סוכריה', icon: '🍭', cost: 300, handle: 0xffffff, head: 0xff6ec7, tip: 0x7cf9ff },
+  { id: 'ocean',   name: 'אוקיינוס', icon: '🌊', cost: 350, handle: 0x0e3a4a, head: 0x22d3ee, tip: 0x67e8f9, glow: true },
+  { id: 'magma',   name: 'לבה',    icon: '🔥', cost: 400, handle: 0x2a0a05, head: 0xff6a2a, tip: 0xffb066, glow: true },
+  { id: 'emerald', name: 'אזמרגד', icon: '💚', cost: 400, handle: 0x06251a, head: 0x34d399, tip: 0xa7f3d0, glow: true },
 ];
 export const PICKAXE_BY_ID = Object.fromEntries(PICKAXES.map((p) => [p.id, p]));
 

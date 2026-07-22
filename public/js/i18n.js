@@ -54,6 +54,12 @@ export const STR = {
   skin_toxic: 'רעיל',
   skin_royal: 'מלכותי',
   skin_galaxy: 'גלקסיה',
+  skin_inferno: 'תופת',
+  skin_oceanic: 'אוקיינוס',
+  skin_viper: 'צפע',
+  skin_phantom: 'רפאים',
+  skin_bubblegum: 'מסטיק',
+  skin_sunflare: 'התלקחות',
   customEquipped: '🎨 הסקין המותאם שלכם נלבש!',
 
   // bots
