@@ -159,7 +159,7 @@ export class Input {
       if (isCrouch(c)) { e.preventDefault(); this._kbCrouch = true; }
       if (e.repeat) return;
       this._keys.add(c);
-      if (c === kb.jump) { e.preventDefault(); this.wantJump = true; }
+      if (c === kb.jump) { e.preventDefault(); this.wantJump = true; this.jumpHeld = true; }
       if (c === kb.reload) this.wantReload = true;
       if (c === kb.nade) this.wantNade = true;
       if (c === kb.emote) this.wantEmote = 0;
@@ -182,6 +182,7 @@ export class Input {
       if (c === this.kb.score) this._kbScore = false;
       if (isSprint(c)) this._kbSprint = false;
       if (isCrouch(c)) this._kbCrouch = false;
+      if (c === this.kb.jump) this.jumpHeld = false;
       this._keys.delete(c);
     });
     window.addEventListener('blur', () => {

@@ -747,6 +747,40 @@ body.touch .rstack { display: grid; }
   border: 2px solid var(--line); color: #cde; font-weight: 800; font-size: 0.82rem; box-shadow: 0 3px 10px rgba(0,0,0,0.4); }
 .chip-pick:active { background: rgba(157, 92, 255, 0.4); transform: scale(0.95); }
 
+/* ---------- admin GOD MODE (in-match) ---------- */
+.god-btn {
+  width: 40px; height: 40px; border-radius: 10px; font-size: 1.3rem;
+  background: rgba(20,12,44,0.85); border: 2px solid var(--yellow); box-shadow: 0 0 10px rgba(255,210,0,0.4);
+  pointer-events: auto; touch-action: manipulation;
+}
+.god-btn.hidden { display: none; }
+.god-btn:active { transform: scale(0.92); }
+.god-panel {
+  position: absolute; top: 58px; left: 12px; z-index: 15; width: min(280px, 80vw);
+  background: rgba(12,8,30,0.96); border: 2px solid var(--yellow); border-radius: 14px; padding: 12px;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+}
+.god-panel.hidden { display: none; }
+.god-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.god-head b { color: var(--yellow); font-size: 1rem; }
+.god-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: 10px; border: 2px solid var(--line);
+  background: rgba(30,18,60,0.8); color: #e6ddff; font-weight: 800; font-size: 0.9rem; text-align: right;
+}
+.god-toggle i {
+  flex: 0 0 auto; width: 42px; height: 24px; border-radius: 999px; position: relative;
+  background: rgba(255,255,255,0.14); transition: background 0.15s;
+}
+.god-toggle i::after {
+  content: ''; position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; transition: transform 0.15s;
+}
+.god-toggle.on { border-color: var(--yellow); }
+.god-toggle.on i { background: var(--green); }
+.god-toggle.on i::after { transform: translateX(-18px); }
+
 /* ---------- topbar friend code ---------- */
 .pilot-code { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .pilot-code .pc-label { font-size: 0.66rem; color: var(--muted); font-weight: 700; }

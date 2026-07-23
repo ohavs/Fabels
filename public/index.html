@@ -359,6 +359,16 @@
         <div id="hud-center" class="hud-center">0:00</div>
         <div class="hud-stat"><span class="hud-label">חיסולים</span><span id="hud-kills">0</span></div>
         <button id="btn-exit" class="exit-btn" aria-label="יציאה">✕</button>
+        <button id="btn-godmode" class="god-btn hidden" aria-label="God Mode">👑</button>
+      </div>
+
+      <!-- admin GOD MODE panel (in-match; admin only) -->
+      <div id="god-panel" class="god-panel hidden">
+        <div class="god-head"><b>👑 GOD MODE</b><button id="god-close" class="pc-btn">✕</button></div>
+        <button class="god-toggle" data-cheat="god"><span>🛡️ אלמוות</span><i></i></button>
+        <button class="god-toggle" data-cheat="fly"><span>🕊️ מעוף (קפיצה=מעלה)</span><i></i></button>
+        <button class="god-toggle" data-cheat="infAmmo"><span>🔫 תחמושת אינסופית</span><i></i></button>
+        <button class="god-toggle" data-cheat="infMats"><span>🧱 חומרי בנייה אינסופיים</span><i></i></button>
       </div>
 
       <!-- weapon + ammo (bottom left-ish) -->

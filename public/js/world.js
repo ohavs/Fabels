@@ -142,10 +142,11 @@ export class World {
         this.box(xx + (xx > x ? 0.02 : -0.02), 1.1, z, 0.1, 1, 1.4, 0x9fd8ef, { collide: false, shadow: false });
       }
     }
-    // walkable roof slab + parapet
+    // walkable roof slab + parapet (parapets are visual only — colliders made
+    // roofs jittery/snaggy to walk on and mantle onto)
     this.box(x, h, z, w + 0.5, 0.3, d + 0.5, roofColor);
-    this.box(x, h + 0.3, z - d / 2 - 0.1, w + 0.5, 0.45, 0.25, roofColor);
-    this.box(x, h + 0.3, z + d / 2 + 0.1, w + 0.5, 0.45, 0.25, roofColor);
+    this.box(x, h + 0.3, z - d / 2 - 0.1, w + 0.5, 0.45, 0.25, roofColor, { collide: false });
+    this.box(x, h + 0.3, z + d / 2 + 0.1, w + 0.5, 0.45, 0.25, roofColor, { collide: false });
     // interior cover
     this.crate(x + w / 4, 0, z - d / 4, 0.9);
   }

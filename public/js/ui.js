@@ -1255,6 +1255,32 @@ export function bindHUD(input, { onExit, onChat, onSettings, onSaveMap, onLoadMa
 }
 
 // show/hide the build bar & reset tool for a new match
+// ---- admin GOD MODE panel (in-match) ----
+let _godGame = null, _godWired = false;
+function refreshGodUI() {
+  for (const b of document.querySelectorAll('.god-toggle')) {
+    b.classList.toggle('on', !!(_godGame && _godGame.cheats[b.dataset.cheat]));
+  }
+}
+function setupGodMode(game) {
+  _godGame = game;
+  $('btn-godmode').classList.toggle('hidden', !isAdmin());
+  $('god-panel').classList.add('hidden');
+  if (!_godWired) {
+    _godWired = true;
+    $('btn-godmode').addEventListener('click', () => { SFX.click(); $('god-panel').classList.toggle('hidden'); refreshGodUI(); });
+    $('god-close').addEventListener('click', () => { SFX.click(); $('god-panel').classList.add('hidden'); });
+    for (const b of document.querySelectorAll('.god-toggle')) {
+      b.addEventListener('click', () => {
+        if (!_godGame) return;
+        _godGame.cheats[b.dataset.cheat] = !_godGame.cheats[b.dataset.cheat];
+        SFX.click(); refreshGodUI();
+      });
+    }
+  }
+  refreshGodUI();
+}
+
 export function setupHudForMode(game, input) {
   const bar = $('build-bar');
   bar.classList.toggle('hidden', !game.canBuild);
@@ -1264,6 +1290,7 @@ export function setupHudForMode(game, input) {
   $('btn-sprint').classList.remove('on');
   $('btn-crouch').classList.remove('on');
   $('btn-aim').classList.remove('on');
+  setupGodMode(game);
 }
 
 // ---------------- results ----------------

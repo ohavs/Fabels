@@ -134,37 +134,48 @@ export class GamePad {
       return;
     }
 
-    // continuous
-    inp._padFire = held('fire');
-    inp._padAim = held('aim');
-    inp._padSprint = held('sprint');
-    inp._padCrouch = held('crouch');
-    inp._padScore = held('score');
+    // ════════ Fortnite-style modal controller ════════
+    // B swaps combat⇄build · Y draws the pickaxe · the 4 shoulders are modal:
+    // build → the 4 pieces (Builder-Pro: press = select+place, hold = turbo),
+    // combat → fire/aim + weapon swap. (Fixed scheme; overrides rebinds.)
+    // movement / stance / utility
+    inp._padSprint = btns[10];              // LS-click sprint
+    inp._padCrouch = btns[11];              // RS-click crouch (hold while moving → slide)
+    inp._padScore = btns[8];                // View: scoreboard
+    if (just(0)) inp.wantJump = true;       // A: jump
+    inp.jumpHeld = btns[0];                  // (held → fly up in god-mode)
+    if (just(9)) inp.wantEmote = 0;         // Menu: emote
+    if (just(13)) inp.wantNade = true;      // D-pad down: grenade
+    if (just(12)) inp.wantCamera = true;    // D-pad up: 3rd-person toggle
 
-    // edges
-    if (hit('jump')) inp.wantJump = true;
-    if (hit('nade')) inp.wantNade = true;
-    if (hit('camera')) inp.wantCamera = true;
-    if (hit('emote')) inp.wantEmote = 0;
-    if (hit('gun')) inp.toggleBuild();          // Y swaps weapon ↔ build
-    // LB / RB cycle the inventory (weapons in combat, build material while
-    // building — the D-pad already direct-selects the four pieces)
-    if (hit('slotPrev')) inp.padCycle(-1);
-    if (hit('slotNext')) inp.padCycle(1);
-    // X is context-sensitive: reload in combat, toggle edit while building
-    if (hit('reload')) {
-      if (inp.tool !== 'gun') inp.setTool(inp.tool === 'edit' ? (inp.lastPiece || 'wall') : 'edit');
-      else inp.wantReload = true;
+    // mode swaps
+    if (just(1)) inp.toggleBuild();                                  // B: combat ⇄ build
+    if (just(3)) inp.setTool(inp.tool === 'pick' ? 'gun' : 'pick');  // Y: pickaxe
+
+    if (inp.tool === 'gun') {
+      // combat: RT fire · LT aim · LB/RB weapon swap · X reload
+      inp._padFire = btns[7];
+      inp._padAim = btns[6];
+      if (just(4)) inp.padCycle(-1);
+      if (just(5)) inp.padCycle(1);
+      if (just(2)) inp.wantReload = true;
+    } else if (inp.tool === 'pick') {
+      inp._padFire = btns[7];               // RT: swing pickaxe
+      inp._padAim = false;
+    } else if (inp.tool === 'edit') {
+      inp._padFire = btns[7];               // RT: apply edit
+      inp._padAim = false;
+      if (just(2)) inp.setTool(inp.lastPiece || 'wall');   // X: exit edit
+    } else {
+      // build (Builder-Pro): LB wall · RB ramp · LT floor · RT cone
+      let placing = false;
+      for (const [bi, piece] of [[4, 'wall'], [5, 'ramp'], [6, 'floor'], [7, 'cone']]) {
+        if (btns[bi]) { if (inp.tool !== piece) inp.setTool(piece); placing = true; }
+      }
+      if (just(2)) inp.setTool('edit');     // X: edit
+      inp._padFire = placing;
+      inp._padAim = false;
     }
-    // D-pad: direct piece select — or simple-edit presets while editing
-    const editing = inp.tool === 'edit';
-    if (hit('wall')) { if (editing) inp.onEditPreset?.(0); else inp.setTool('wall'); }
-    if (hit('ramp')) { if (editing) inp.onEditPreset?.(1); else inp.setTool('ramp'); }
-    if (hit('floor')) { if (editing) inp.onEditPreset?.(2); else inp.setTool('floor'); }
-    if (hit('cone')) { if (editing) inp.onEditPreset?.(3); else inp.setTool('cone'); }
-    // optional extra binds (unbound by default)
-    if (hit('pick')) inp.setTool('pick');
-    if (hit('edit')) inp.setTool(inp.tool === 'edit' ? 'gun' : 'edit');
   }
 
   // ---- in-menu: spatial focus navigation ----

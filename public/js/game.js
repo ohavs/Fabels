@@ -86,6 +86,8 @@ export class Game {
     this.myFace = o.myFace || null;                   // my uploaded face photo (dataURL)
     this.myPickaxe = o.myPickaxe || null;             // my equipped pickaxe style (cosmetic)
     this.viewModel.pickStyle = this.myPickaxe;        // first-person pickaxe recolor
+    // admin GOD MODE toggles (client-side; convenience only, not anti-cheat)
+    this.cheats = { fly: false, god: false, infAmmo: false, infMats: false };
     this.baseFov = o.baseFov || 75;                   // user FOV setting (settings screen)
     this.teamplay = ['team', 'zombies', 'ctf', 'tactical'].includes(o.mode);
     this.wave = 0;
@@ -903,6 +905,14 @@ export class Game {
       const sprinting = input.sprintHeld && moving && input.move.y > 0.2
         && !p.ads && !input.crouchHeld && p.slideT <= 0 && p.grounded;
 
+      // slide is triggered by *holding* crouch while moving on the ground —
+      // fires once per hold (latch), plus the mobile long-press one-shot and
+      // the classic sprint+crouch. Releasing crouch re-arms it.
+      if (input.crouchHeld) p._crouchT = (p._crouchT || 0) + dt;
+      else { p._crouchT = 0; p._slidLatch = false; }
+      const holdSlide = input.crouchHeld && p._crouchT > 0.14 && !p._slidLatch;
+      const wantSlide = input.consumeSlide() || holdSlide || (input.crouchHeld && this._wasSprinting && !p._slidLatch);
+
       if (p.slideT > 0) {
         // sliding: locked direction, decaying boost
         p.slideT -= dt;
@@ -911,12 +921,12 @@ export class Game {
         wishX = p.slideDirX; wishZ = p.slideDirZ;
         p.stance = 2;
         if (p.slideT <= 0) p.stance = input.crouchHeld ? 1 : 0;
-      } else if ((input.consumeSlide() || (input.crouchHeld && this._wasSprinting)) && p.grounded && p.slideCd <= 0 && moving) {
-        // slide: sprint+crouch, OR a long-press of the crouch button (wantSlide)
+      } else if (wantSlide && p.grounded && p.slideCd <= 0 && moving) {
         p.slideT = GAME.slideTime;
         p.slideCd = GAME.slideCd + GAME.slideTime;
         p.slideDirX = wishX; p.slideDirZ = wishZ;
         p.stance = 2;
+        p._slidLatch = true;
         SFX.jump();
       } else if (input.crouchHeld) {
         p.stance = 1;
@@ -945,6 +955,16 @@ export class Game {
           SFX.jump();
         }
       }
+      // GOD MODE fly: no gravity, jump = up, crouch = down (collisions still apply)
+      if (this.cheats.fly) {
+        p._fly = true;
+        p.vy = ((input.jumpHeld ? 1 : 0) - (input.crouchHeld ? 1 : 0)) * 12;
+        p.grounded = false;
+      } else p._fly = false;
+      // GOD MODE top-ups: invincibility / infinite ammo / infinite materials
+      if (this.cheats.god) { p.hp = p.maxHp; if (p.armor < ARMOR_MAX) p.armor = ARMOR_MAX; p.invulnT = Math.max(p.invulnT, 0.3); }
+      if (this.cheats.infAmmo) { const m = WEAPONS[p.weapon]?.mag; if (isFinite(m)) { p.ammo = m; if (p.inv && p.inv[p.slot]) p.inv[p.slot].ammo = m; } }
+      if (this.cheats.infMats) p.mats = this.matsMax();
       if (input.consumeReload()) this._startReload(p);
       if (input.consumeNade()) this.throwNade(p);
       const em = input.consumeEmote();
@@ -1137,7 +1157,7 @@ export class Game {
     const accel = p.grounded ? 11 : 3.2;
     p.vx = lerp(p.vx, wishX * speed, Math.min(1, accel * dt));
     p.vz = lerp(p.vz, wishZ * speed, Math.min(1, accel * dt));
-    p.vy += GAME.gravity * dt;
+    if (!p._fly) p.vy += GAME.gravity * dt;   // god-mode fly disables gravity
 
     const r = GAME.playerRadius, H = GAME.playerHeight;
     const cols = this.world.colliders;
@@ -1229,11 +1249,13 @@ export class Game {
   }
 
   _mantle(p, stepTop) {
-    p.y = stepTop + 0.02;
-    p.vy = Math.max(p.vy, 2.6);      // small pop to settle onto the ledge
-    p.mantleCd = 0.45;
+    // settle exactly on top of the ledge with NO upward launch — the old
+    // velocity pop made you overshoot and clip back into roofs/parapets
+    p.y = stepTop + 0.04;
+    p.vy = 0;
+    p.mantleCd = 0.6;
     p.climbT = 0.45;                 // drive the 3rd-person climb pose
-    if (p === this.me) { this.addShake(0.12); this.onRumble?.(0.3, 90); SFX.jump?.(); }
+    if (p === this.me) { this.addShake(0.1); this.onRumble?.(0.25, 80); SFX.jump?.(); }
   }
 
   // Record a timestamped position sample for a remote entity. The interp
@@ -2269,6 +2291,7 @@ export class Game {
   // ---------------- damage & kills ----------------
   _damagePlayer(q, dmg, fromUid, { hs = false, mel = false, nade = false } = {}) {
     if (!q.alive || q.invulnT > 0) return;
+    if (q === this.me && this.cheats.god) return;   // GOD MODE: invincible
     // guests don't own bots — relay damage to the host
     if (q.bot && this.online && !this.isHost) {
       if (this.onBotDamage) this.onBotDamage(q.uid, Math.round(dmg));
